@@ -111,9 +111,14 @@ pub async fn backfill(st: St) {
     .await
     .unwrap_or_default();
     for (id, ch) in rows {
-        if let Ok(ch) = db::channel(&st.db, ch).await {
-            let _ = refresh_inner(&st, &ch, id, false).await;
-        }
+        // Each in its own task: one odd page can't stop the rest.
+        let st2 = st.clone();
+        let _ = tokio::spawn(async move {
+            if let Ok(ch) = db::channel(&st2.db, ch).await {
+                let _ = refresh_inner(&st2, &ch, id, false).await;
+            }
+        })
+        .await;
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
@@ -438,7 +443,8 @@ fn decode_entities(s: &str) -> String {
     while let Some(amp) = rest.find('&') {
         out.push_str(&rest[..amp]);
         let tail = &rest[amp..];
-        let Some(semi) = tail[..tail.len().min(12)].find(';') else {
+        // Look for the ";" within a few characters (by character: a byte cut could split "—").
+        let Some(semi) = tail.char_indices().take(12).find(|&(_, c)| c == ';').map(|(i, _)| i) else {
             out.push('&');
             rest = &tail[1..];
             continue;
@@ -514,5 +520,7 @@ mod tests {
         assert_eq!(m.get(&["og:image"]).as_deref(), Some("/img/cover.jpg"));
         assert_eq!(m.title.as_deref(), Some("Fallback & title"));
         assert_eq!(m.tags.iter().filter(|(k, _)| k == "og:title").count(), 1, "stops at <body>");
+        // A bare "&" before multi-byte text (this crashed the first backfill on a real page).
+        assert_eq!(decode_entities("Tom &— Jerry &amp; co &#x27;"), "Tom &— Jerry & co '");
     }
 }

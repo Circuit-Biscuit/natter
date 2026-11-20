@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Server: a page with "&" just before non-English text no longer stops the link-preview catch-up (fixed live).
+
 ## [0.5.0] — 2026-11-20
 
 - **Link previews (embeds), like Discord's:** YouTube links get a card with the video's title, channel and
