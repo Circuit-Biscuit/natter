@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Natter is free software under the GNU AGPL v3.0 or later. The deploy guide covers servers without a Nextcloud.
+
 ## [0.6.0] — 2026-11-20
 
 - **Daily Word:** a five-letter word game in English or Turkish, from the grid button at the top of any channel. One

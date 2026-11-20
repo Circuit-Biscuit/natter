@@ -1,7 +1,7 @@
-# Deploying Natter next to Nextcloud
+# Deploying Natter
 
-One binary, one data folder, one HTTPS host name, one UDP port. These steps target Ubuntu 24.04 with Apache already
-serving Nextcloud; a Caddy variant follows.
+One binary, one data folder, one HTTPS host name, one UDP port — with or without a Nextcloud. These steps target
+Ubuntu 24.04 with Apache (for example next to an existing Nextcloud); a Caddy variant follows.
 
 ## 1. Install
 
@@ -25,6 +25,10 @@ NATTER_MEDIA_PORT=50000
 # NATTER_AUTOJOIN_SPACE=<space id>    # set after creating the company space (right-click it › Copy Space ID)
 RUST_LOG=natter_server=info
 ```
+
+**Without Nextcloud**, leave out the `NATTER_NEXTCLOUD_*` lines and set `NATTER_REGISTRATION=invite` (people need
+an invite link to make an account) or `open` (anyone who reaches the page may sign up). People then use Natter
+accounts with a username and password, and every file is stored in the data folder. Everything else works the same.
 
 `chmod 600 /etc/natter.env`. The data folder holds the database (with Nextcloud app passwords of signed-in sessions)
 and local uploads — keep it `700`, owned by `natter`.
@@ -92,7 +96,7 @@ chat.example.com {
 }
 ```
 
-## 5. Nextcloud side
+## 5. Nextcloud side (only if you use one)
 
 Nothing to install. Natter uses Nextcloud's standard client APIs:
 
@@ -104,10 +108,11 @@ Nothing to install. Natter uses Nextcloud's standard client APIs:
 
 ## 6. First run
 
-1. Open `https://chat.example.com` (or the desktop app) and **Sign in with Nextcloud**. The first person becomes the
-   server admin.
+1. Open `https://chat.example.com` (or the desktop app) and **Sign in with Nextcloud** — or, without Nextcloud,
+   **Create account** (the first account needs no invite). The first person becomes the server admin.
 2. Create the company space, copy its id (right-click › Copy Space ID), set `NATTER_AUTOJOIN_SPACE`, restart.
-   Everyone who signs in afterwards lands in it.
+   Everyone who signs in afterwards lands in it. Without Nextcloud, invite people from the space instead
+   (right-click › Invite People) and send them the link.
 
 ## Backups
 

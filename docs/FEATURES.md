@@ -17,7 +17,7 @@ Source: `nextcloud/spreed` at commit `f240551` (Talk 26.0.0-dev, 2026-11-20): `d
 | Rename, description | ✅ channel name and topic (Markdown) | |
 | Read-only conversations | ✅ announcement channels | only owners/admins post |
 | Lobby / webinar mode | ⬜ | |
-| Listable / open conversations | 🔁 everyone in a space sees its channels | private channels ⬜ |
+| Listable / open conversations | ✅ a space's channels are open to its members; private channels and categories for chosen roles and members | |
 | Favorites, archive, important, sensitive, tags | 🔁 mute per channel/space; categories | favorites/archive ⬜ |
 | Breakout rooms | ⬜ | voice channels cover the everyday case |
 | Federation (other Nextclouds), Matrix, Matterbridge | ➖ for now | |

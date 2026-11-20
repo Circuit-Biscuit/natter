@@ -221,12 +221,11 @@ publishes them as release `v0.2.0`. Pushes that don't change the version are bui
 The Android APK is signed with a key that never goes to GitHub, so it's built locally (command above) and attached to
 the draft while the workflow runs: `gh release upload v0.2.0 Natter_0.2.0.apk` — it then lands in the checksums too.
 
-First-time setup of the repository is a single command: `scripts\publish.ps1` (creates the private repository under
-the organization and pushes).
-
 ## License and credits
 
-© Circuit Biscuit. All rights reserved — private repository.
+© Circuit Biscuit. Natter is free software under the [GNU Affero General Public License v3.0](LICENSE) or later:
+use it, run it for your team, change it and share it. If you let people use a changed version over a network, offer
+them its source under the same licence.
 
 Built with Rust, axum, tokio, sqlx/SQLite, str0m, Leptos, Tauri, reqwest and argon2. Feature research from
 Nextcloud Talk (AGPL-3.0; no Talk code is used). Emoji data from the `emojis` crate (Unicode / gemoji).

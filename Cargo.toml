@@ -5,7 +5,7 @@ members = ["crates/proto", "crates/server", "crates/app", "crates/desktop"]
 [workspace.package]
 version = "0.6.0"
 edition = "2024"
-license = "LicenseRef-Proprietary"
+license = "AGPL-3.0-or-later"
 repository = "https://github.com/Circuit-Biscuit/natter"
 
 [profile.release]
