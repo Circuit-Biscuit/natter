@@ -3,7 +3,7 @@
 #   1. add a "## [x.y.z]" section to CHANGELOG.md, then run scripts/bump.ps1 x.y.z
 #   2. push to main
 #   3. this workflow sees there's no tag vx.y.z yet, builds the desktop installers for Windows, macOS and Linux
-#      plus the Linux server bundle, and publishes them as GitHub release vx.y.z with checksums.
+#      plus the Linux server bundle into a draft release vx.y.z, then publishes it with checksums.
 name: Release
 
 on:
@@ -42,11 +42,20 @@ jobs:
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
+      # Builds upload straight into a draft release (no Actions artifact storage, which has a shared quota).
+      - if: steps.v.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          gh release view "v$VERSION" >/dev/null 2>&1 ||             gh release create "v$VERSION" --draft --title "Natter $VERSION" --notes "Building…" --target "$GITHUB_SHA"
 
   desktop:
     name: Desktop (${{ matrix.name }})
     needs: version
     if: needs.version.outputs.release == 'true'
+    # macOS runners are billed on private repositories; don't let a missing one block the release.
+    continue-on-error: ${{ matrix.os == 'macos-14' }}
     strategy:
       fail-fast: false
       matrix:
@@ -62,9 +71,7 @@ jobs:
           - name: Linux
             os: ubuntu-22.04
             args: ""
-            files: |
-              target/release/bundle/appimage/*.AppImage
-              target/release/bundle/deb/*.deb
+            files: target/release/bundle/appimage/*.AppImage target/release/bundle/deb/*.deb
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -81,10 +88,11 @@ jobs:
           tool: trunk,tauri-cli
       - run: cargo tauri build ${{ matrix.args }}
         working-directory: crates/desktop
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-${{ matrix.name }}
-          path: ${{ matrix.files }}
+      - name: Upload to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v${{ needs.version.outputs.version }}" ${{ matrix.files }} --clobber
 
   server:
     name: Server (Linux x86_64, static)
@@ -112,28 +120,28 @@ jobs:
           cp -r crates/app/dist natter/web
           cp docs/DEPLOY.md natter/
           tar -czf "natter-server-$VERSION-linux-x86_64.tar.gz" natter
-      - uses: actions/upload-artifact@v4
-        with:
-          name: server
-          path: natter-server-*.tar.gz
+      - name: Upload to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$VERSION" natter-server-*.tar.gz --clobber
 
   publish:
     name: Publish release
     needs: [version, desktop, server]
+    if: ${{ !cancelled() && needs.server.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: out
-          merge-multiple: true
       - name: Release notes from CHANGELOG.md
         run: |
           awk -v v="$VERSION" '$0 ~ "^## \[" v "\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "Natter $VERSION" > notes.md
-      - run: |
-          cd out && sha256sum * > SHA256SUMS.txt && cd ..
-          gh release create "v$VERSION" out/* --title "Natter $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+      - name: Checksums and publish
+        run: |
+          gh release download "v$VERSION" --dir out --skip-existing
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          gh release upload "v$VERSION" out/SHA256SUMS.txt --clobber
+          gh release edit "v$VERSION" --draft=false --notes-file notes.md
