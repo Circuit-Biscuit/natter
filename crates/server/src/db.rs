@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use natter_proto::{
-    Attachment, Channel, ChannelKind, Id, Member, Message, Overwrite, Reaction, ReadState, ReplyPreview, Role,
+    Attachment, Channel, ChannelKind, Embed, Id, Member, Message, Overwrite, Reaction, ReadState, ReplyPreview, Role,
     RoleDef, Space, ThreadInfo, ThreadPreview, User, id_time, parse_user_mentions, perm,
 };
 use serde::Serialize;
@@ -676,6 +676,17 @@ pub async fn hydrate(db: &SqlitePool, rows: Vec<MsgRow>) -> R<Vec<Message>> {
         }
     }
 
+    let mut embeds: HashMap<Id, Vec<Embed>> = HashMap::new();
+    for (mid, data) in sqlx::query_as::<_, (Id, String)>(
+        "SELECT message_id, data FROM message_embeds WHERE message_id IN (SELECT value FROM json_each(?))",
+    )
+    .bind(&ids_json)
+    .fetch_all(db)
+    .await?
+    {
+        embeds.insert(mid, serde_json::from_str(&data).unwrap_or_default());
+    }
+
     let mut threads: HashMap<Id, ThreadPreview> = HashMap::new();
     for (id, starter, name, message_count, last_message_id, archived) in
         sqlx::query_as::<_, (Id, Id, String, i64, Option<Id>, bool)>(
@@ -726,6 +737,7 @@ pub async fn hydrate(db: &SqlitePool, rows: Vec<MsgRow>) -> R<Vec<Message>> {
                 mention_everyone: r.mention_everyone,
                 pinned: r.pinned_at.is_some(),
                 thread: threads.remove(&r.id),
+                embeds: embeds.remove(&r.id).unwrap_or_default(),
                 nonce: r.nonce,
                 content: r.content,
             }

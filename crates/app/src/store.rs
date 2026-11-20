@@ -35,6 +35,8 @@ pub struct Settings {
     pub font_size: u8,
     /// Space between message groups, in px.
     pub group_spacing: u8,
+    /// Show link previews (YouTube, pages, pictures).
+    pub embeds: bool,
     /// Accessibility: colour saturation in %, reduced motion, underlined links.
     pub saturation: u8,
     pub reduce_motion: bool,
@@ -67,6 +69,7 @@ impl Default for Settings {
             compact: false,
             font_size: 16,
             group_spacing: 16,
+            embeds: true,
             saturation: 100,
             reduce_motion: false,
             underline_links: false,
@@ -907,6 +910,7 @@ pub fn send_message(channel: Id, content: String, attachments: Vec<Attachment>, 
         pinned: false,
         nonce: Some(nonce.clone()),
         thread: None,
+        embeds: vec![],
     };
     s.logs.update(|l| l.entry(channel).or_default().msgs.push(pending));
     let body = SendMessage {

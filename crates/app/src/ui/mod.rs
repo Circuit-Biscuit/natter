@@ -3,6 +3,7 @@
 mod call;
 mod chat;
 mod composer;
+mod embed;
 mod emoji;
 pub mod icons;
 mod login;

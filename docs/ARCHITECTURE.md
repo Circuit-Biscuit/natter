@@ -269,3 +269,18 @@ gets message, thread, typing, reaction, voice and channel events) is only the me
 threads. When a permission change alters which channels someone can see (an override, a role's permissions, a role
 given or taken, `@everyone`, moving a channel between categories), each affected member gets the space again as
 they now see it (`SpaceCreate`, which apps treat as replace).
+
+### Link previews
+
+`embeds.rs`. After a message is sent or edited, the server picks up to four http(s) links (not in code, not
+`<wrapped>`, not into the configured Nextcloud), builds a preview for each and sends the message again
+(`MessageUpdate`) with `embeds`. YouTube links become a card with the oEmbed title/channel, the `i.ytimg.com`
+thumbnail and a `youtube-nocookie.com` player URL (the app shows the thumbnail and swaps in the player on click);
+pages become cards from OpenGraph / Twitter / `<title>` tags; links that answer with `image/*` or `video/*` are shown
+as such. Previews are stored per message (`message_embeds`) and per URL (`embed_cache`: a day, failures an hour).
+At start-up older messages with links get previews in the background (newest 2000, quietly).
+
+Fetching typed URLs is guarded against server-side request forgery: http(s) on ports 80/443 only, no credentials in
+the URL, every address the host resolves to must be public (no loopback, private, link-local, CGNAT, multicast,
+documentation, IPv4-mapped private), the connection is pinned to the checked address, redirects are followed by hand
+and re-checked (at most 4), 3 s to connect, 5 s in all, 512 KiB of HTML at most.

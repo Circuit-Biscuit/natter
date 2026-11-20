@@ -3,6 +3,7 @@
 
 mod auth;
 mod db;
+mod embeds;
 mod gateway;
 mod messages;
 mod nextcloud;
@@ -235,6 +236,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
     tokio::spawn(voice::watch_sfu(st.clone(), sfu_events));
     tokio::spawn(messages::gc_uploads(st.clone()));
     tokio::spawn(spaces::archive_idle_threads(st.clone()));
+    tokio::spawn(embeds::backfill(st.clone()));
 
     let mut app = Router::new()
         .route("/health", get(|| async { "ok" }))

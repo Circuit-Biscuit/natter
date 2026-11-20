@@ -288,7 +288,17 @@ pub fn inline(s: &str) -> Vec<Inline> {
             i += word.len();
             continue;
         }
-        // Bare links (also <https://...> to suppress nothing — we have no embeds yet).
+        // <https://…>: a link without a preview (the server skips it); the brackets don't show.
+        if (rest.starts_with("<https://") || rest.starts_with("<http://")) && let Some(end) = rest.find('>') {
+            let url = &rest[1..end];
+            if !url.contains(char::is_whitespace) {
+                push_text(&mut text, &mut out);
+                out.push(Inline::Link { url: url.to_string(), label: None });
+                i += end + 1;
+                continue;
+            }
+        }
+        // Bare links.
         if rest.starts_with("https://") || rest.starts_with("http://") {
             let end = rest.find(|c: char| c.is_whitespace() || c == '<' || c == '>').unwrap_or(rest.len());
             let mut url = &rest[..end];
@@ -500,6 +510,7 @@ mod tests {
     fn inline_basics() {
         assert_eq!(inline("a **b** c"), vec![Inline::Text("a ".into()), Inline::Bold(vec![Inline::Text("b".into())]), Inline::Text(" c".into())]);
         assert_eq!(inline("snake_case_word"), vec![Inline::Text("snake_case_word".into())]);
+        assert_eq!(inline("see <https://x.org/a>"), vec![Inline::Text("see ".into()), Inline::Link { url: "https://x.org/a".into(), label: None }]);
         assert_eq!(inline("`**x**`"), vec![Inline::Code("**x**".into())]);
         assert_eq!(inline("hi <@42>!")[1], Inline::User(42));
         assert_eq!(inline("see https://x.org/a."), vec![Inline::Text("see ".into()), Inline::Link { url: "https://x.org/a".into(), label: None }, Inline::Text(".".into())]);

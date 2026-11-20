@@ -221,7 +221,9 @@ impl Row {
                 let reacts: usize = m.reactions.iter().map(|r| r.users.len() * 31 + r.emoji.len()).sum();
                 let deleted = m.reply.as_ref().is_some_and(|r| r.deleted);
                 let thread = m.thread.as_ref().map(|t| (t.id, t.message_count, t.archived, t.name.len()));
-                format!("{}:{:?}:{}:{}:{}:{}:{}:{:?}", m.id, m.edited_at, reacts, m.reactions.len(), m.pinned, head, deleted, thread)
+                // Previews arrive a moment after the message, so they're part of the key.
+                let embeds: usize = m.embeds.iter().map(|e| e.url.len() + e.title.len() * 7 + e.description.len()).sum();
+                format!("{}:{:?}:{}:{}:{}:{}:{}:{:?}:{}", m.id, m.edited_at, reacts, m.reactions.len(), m.pinned, head, deleted, thread, embeds)
             }
         }
     }
@@ -606,6 +608,10 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
                 {(!m.attachments.is_empty()).then(|| view! {
                     <div class="attachments">{m.attachments.iter().cloned().map(|a| view! { <AttachmentView a=a/> }).collect_view()}</div>
                 })}
+                {
+                    let embeds = m.embeds.clone();
+                    move || s.settings.with(|st| st.embeds).then(|| embeds.clone().into_iter().map(|e| view! { <super::embed::EmbedView e=e/> }).collect_view())
+                }
                 {(!m.reactions.is_empty()).then(|| view! { <Reactions m=m.clone() space=space/> })}
                 {m.thread.clone().map(|t| view! { <ThreadCard t=t space=space/> })}
                 {move || failed().then(|| {

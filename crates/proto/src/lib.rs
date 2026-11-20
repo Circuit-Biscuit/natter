@@ -498,6 +498,43 @@ pub struct Message {
     /// The thread started from this message, if any.
     #[serde(default)]
     pub thread: Option<ThreadPreview>,
+    /// Previews of the links in it (filled in by the server a moment after sending: watch for `MessageUpdate`).
+    #[serde(default)]
+    pub embeds: Vec<Embed>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EmbedKind {
+    /// A page: site, title, description, picture.
+    Link,
+    /// A link straight to a picture (shown as the picture).
+    Image,
+    /// A link straight to a video file (played inline).
+    Video,
+    /// A YouTube video: thumbnail, then the player in place.
+    Youtube,
+}
+
+/// A link preview, like Discord's embeds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Embed {
+    pub url: String,
+    pub kind: EmbedKind,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub site: String,
+    #[serde(default)]
+    pub author: String,
+    /// Picture / thumbnail URL.
+    pub image: Option<String>,
+    /// Player (YouTube) or video file URL.
+    pub video: Option<String>,
+    /// The site's theme colour (`#rrggbb`), for the card's edge.
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

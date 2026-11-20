@@ -337,6 +337,10 @@ pub async fn send(
 
     let msg = db::message(&st.db, ch, id).await?;
     st.hub.send(&audience, &Event::MessageCreate(msg.clone()));
+    // Link previews follow a moment later as a MessageUpdate.
+    if !crate::embeds::urls(&msg.content, None).is_empty() {
+        tokio::spawn(crate::embeds::refresh(st.clone(), acc.ch.clone(), id));
+    }
     st.hub.send(
         &[me],
         &Event::ReadStateUpdate(db::read_state(&st.db, me, ch).await?),
@@ -375,6 +379,8 @@ pub async fn edit(
         &db::audience(&st.db, &acc.ch).await?,
         &Event::MessageUpdate(msg.clone()),
     );
+    // New links get previews, removed ones lose them.
+    tokio::spawn(crate::embeds::refresh(st.clone(), acc.ch.clone(), mid));
     Ok(Json(msg))
 }
 

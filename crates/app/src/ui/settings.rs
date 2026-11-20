@@ -330,6 +330,8 @@ fn AppearanceTab() -> impl IntoView {
                 <b>"Compact"</b><span class="muted small">"Fit more messages on screen at once."</span>
             </button>
         </div>
+        {switch("Show link previews", "YouTube videos, pages and pictures under the messages that link to them.",
+            move || st.with(|x| x.embeds), move |on| s.update_settings(|x| x.embeds = on))}
         <h3>"Space between message groups"</h3>
         {slider((0, 24, 4), "px", move || st.with(|x| i32::from(x.group_spacing)),
             move |v| st.update(|x| x.group_spacing = v as u8), move || s.save_settings())}

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0] — 2026-11-20
+
+- **Link previews (embeds), like Discord's:** YouTube links get a card with the video's title, channel and
+  thumbnail that plays right there; other links get the page's site, title, description and picture; links straight
+  to a picture or video show it inline. Wrap a link in `<…>` to send it without a preview. Messages from before
+  (and the history brought over from Talk) get their previews too. Settings › Appearance › "Show link previews" turns
+  them off.
+- Previews are fetched once by the server and cached, never from inside your network: only public addresses on the
+  standard ports, redirects re-checked, small and quick downloads.
+
 ## [0.4.1] — 2026-11-20
 
 - Phones: with a colour theme the app fell back to the desktop layout (channel list and chat side by side) once

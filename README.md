@@ -121,7 +121,8 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Android app: phone layout, back button, calls, notifications while open | ✅ (APK, sideload) |
 | Background push notifications on Android (app closed) | ⬜ |
 | Private channels and categories, per-channel permissions (allow / inherit / deny per role or member) | ✅ |
-| Polls, link previews, message scheduling | ⬜ |
+| Link previews: YouTube plays inline, page cards, pictures and videos (SSRF-guarded, cached) | ✅ |
+| Polls, message scheduling | ⬜ |
 | Simulcast (adaptive video quality for big calls), TURN / TCP fallback | ⬜ |
 | iOS app | ⬜ (the web app works in mobile browsers) |
 | Signed / notarised installers | ⬜ |
