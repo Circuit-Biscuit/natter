@@ -582,6 +582,55 @@ async fn full_flow() {
     let (s, _) = call(&app, "DELETE", &role_path(u2, admin_role), Some(&t1), None).await;
     assert_eq!(s, StatusCode::NO_CONTENT);
 
+    // Private channels: hidden from members without access, everywhere.
+    let (s, _) = call(&app, "DELETE", &role_path(u2, mods), Some(&t1), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let hide = json!({"id": sid, "kind": "role", "allow": 0, "deny": perm::VIEW_CHANNEL});
+    let (s, secret) = call(&app, "POST", &format!("/api/spaces/{sid}/channels"), Some(&t1),
+        Some(json!({"name": "secret", "kind": "text", "overwrites": [hide.clone()]}))).await;
+    assert_eq!(s, StatusCode::OK, "{secret}");
+    let secret = secret["id"].as_i64().unwrap();
+    let msgs = |ch: Id| format!("/api/channels/{ch}/messages");
+    let (s, _) = call(&app, "GET", &msgs(secret), Some(&t2), None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "a private channel looks like no channel");
+    let (s, _) = call(&app, "POST", &msgs(secret), Some(&t2), Some(json!({"content": "let me in"}))).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    // Its messages never reach them: the next message they hear about is the one in #general.
+    call(&app, "POST", &msgs(secret), Some(&t1), Some(json!({"content": "classified plans @everyone"}))).await;
+    call(&app, "POST", &msgs(general), Some(&t1), Some(json!({"content": "public note"}))).await;
+    let Event::MessageCreate(m) = next_event(&mut ws, |e| matches!(e, Event::MessageCreate(_))).await else { unreachable!() };
+    assert_eq!((m.channel_id, m.content.as_str()), (general, "public note"));
+    let found = |t: &str| {
+        let t = t.to_string();
+        let app = app.clone();
+        async move { call(&app, "GET", "/api/search?q=classified", Some(&t), None).await.1["total"].as_i64() }
+    };
+    assert_eq!((found(&t1).await, found(&t2).await), (Some(1), Some(0)), "search skips what you can't see");
+    // A member without Manage roles can't change who sees it.
+    let me_in = json!({"kind": "member", "allow": perm::VIEW_CHANNEL, "deny": 0});
+    let (s, _) = call(&app, "PUT", &format!("/api/channels/{secret}/permissions/{u2}"), Some(&t2), Some(me_in.clone())).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "they can't even see it");
+    // Letting them in sends them the space again, now with the channel; taking it back removes it.
+    let (s, _) = call(&app, "PUT", &format!("/api/channels/{secret}/permissions/{u2}"), Some(&t1), Some(me_in)).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let Event::SpaceCreate(seen) = next_event(&mut ws, |e| matches!(e, Event::SpaceCreate(_))).await else { unreachable!() };
+    assert!(seen.channels.iter().any(|c| c.id == secret));
+    let (s, list) = call(&app, "GET", &msgs(secret), Some(&t2), None).await;
+    assert_eq!(s, StatusCode::OK, "{list}");
+    let (s, _) = call(&app, "DELETE", &format!("/api/channels/{secret}/permissions/{u2}"), Some(&t1), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let Event::SpaceCreate(seen) = next_event(&mut ws, |e| matches!(e, Event::SpaceCreate(_))).await else { unreachable!() };
+    assert!(!seen.channels.iter().any(|c| c.id == secret));
+    // A private category hides the channels in it.
+    let (_, cat) = call(&app, "POST", &format!("/api/spaces/{sid}/channels"), Some(&t1),
+        Some(json!({"name": "Staff", "kind": "category", "overwrites": [hide]}))).await;
+    let (_, inside) = call(&app, "POST", &format!("/api/spaces/{sid}/channels"), Some(&t1),
+        Some(json!({"name": "payroll", "kind": "text", "parent_id": cat["id"]}))).await;
+    let (s, _) = call(&app, "GET", &msgs(inside["id"].as_i64().unwrap()), Some(&t2), None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = call(&app, "GET", &msgs(inside["id"].as_i64().unwrap()), Some(&t1), None).await;
+    assert_eq!(s, StatusCode::OK, "the owner sees everything");
+
     // Local upload, served back with safe headers.
     let png: &[u8] =
         b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x02\0\0\0\x03\x08\x06\0\0\0\x9d\x07\xab\x0f";

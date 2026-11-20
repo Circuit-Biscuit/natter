@@ -174,6 +174,7 @@ pub enum Modal {
     Nextcloud,
     CreateThread { channel: Id, message: Option<Id> },
     Threads(Id),
+    ChannelPermissions(Id),
     Confirm { title: String, body: String, ok: String, action: Action },
 }
 
@@ -411,9 +412,30 @@ impl Store {
         }
     }
 
-    /// Pinning: anyone in a DM, Manage messages in a space.
-    pub fn can_pin(&self, space: Option<Id>) -> bool {
-        space.is_none() || self.can(space, perm::MANAGE_MESSAGES)
+    /// What I may do in one channel: my space permissions with its overrides (and its category's) applied.
+    pub fn chan_perms(&self, channel: Id) -> u64 {
+        let Some(c) = self.channel(channel) else { return 0 };
+        let me = self.me_id();
+        match c.space_id {
+            Some(sp) => self.spaces.with(|v| v.iter().find(|x| x.id == sp).map_or(0, |x| x.channel_permissions(me, &c))),
+            None => self.perms(None) | perm::VIEW_CHANNEL,
+        }
+    }
+
+    pub fn can_in(&self, channel: Id, p: u64) -> bool {
+        self.chan_perms(channel) & p == p
+    }
+
+    /// Pinning in a channel: anyone in a DM, Manage messages in a space.
+    pub fn can_pin_in(&self, channel: Id) -> bool {
+        self.channel(channel).is_some_and(|c| c.space_id.is_none()) || self.can_in(channel, perm::MANAGE_MESSAGES)
+    }
+
+    /// Hidden from @everyone (a private channel, or one in a private category).
+    pub fn is_private(&self, channel: Id) -> bool {
+        let Some(c) = self.channel(channel) else { return false };
+        let Some(sp) = c.space_id else { return false };
+        self.spaces.with(|v| v.iter().find(|x| x.id == sp).is_some_and(|x| x.is_private(&c)))
     }
 
     pub fn can(&self, space: Option<Id>, p: u64) -> bool {

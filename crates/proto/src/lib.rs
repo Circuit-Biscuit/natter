@@ -91,14 +91,29 @@ pub mod perm {
     pub const ADD_REACTIONS: u64 = 1 << 13;
     pub const CREATE_THREADS: u64 = 1 << 14;
     pub const CONNECT: u64 = 1 << 15;
-    pub const ALL: u64 = (1 << 16) - 1;
+    pub const VIEW_CHANNEL: u64 = 1 << 16;
+    pub const ALL: u64 = (1 << 17) - 1;
     /// What `@everyone` may do in a new space.
     pub const EVERYONE_DEFAULT: u64 =
-        CREATE_INVITES | SEND_MESSAGES | ATTACH_FILES | ADD_REACTIONS | CREATE_THREADS | CONNECT;
+        VIEW_CHANNEL | CREATE_INVITES | SEND_MESSAGES | ATTACH_FILES | ADD_REACTIONS | CREATE_THREADS | CONNECT;
+    /// What a channel's permission overrides may change.
+    pub const CHANNEL: u64 = VIEW_CHANNEL
+        | MANAGE_CHANNELS
+        | MANAGE_ROLES
+        | CREATE_INVITES
+        | SEND_MESSAGES
+        | ATTACH_FILES
+        | ADD_REACTIONS
+        | CREATE_THREADS
+        | MENTION_EVERYONE
+        | MANAGE_MESSAGES
+        | MANAGE_THREADS
+        | CONNECT;
 
     /// For settings screens: (flag, name, what it allows, group).
-    pub const LIST: [(u64, &str, &str, &str); 16] = [
+    pub const LIST: [(u64, &str, &str, &str); 17] = [
         (ADMINISTRATOR, "Administrator", "Every permission, and every channel. Hand it out with care.", "Advanced"),
+        (VIEW_CHANNEL, "View channels", "See channels and read their messages. Turn it off in a channel to make it private.", "General"),
         (MANAGE_SPACE, "Manage space", "Rename the space, change its icon, see and revoke everyone's invites.", "General"),
         (MANAGE_ROLES, "Manage roles", "Create, edit and hand out roles below their own highest role.", "General"),
         (MANAGE_CHANNELS, "Manage channels", "Create, edit, reorder and delete channels and categories.", "General"),
@@ -211,6 +226,65 @@ impl Space {
     pub fn color_of(&self, user: Id) -> Option<&str> {
         self.roles_of(user).into_iter().find(|r| !r.color.is_empty()).map(|r| r.color.as_str())
     }
+
+    /// The category, then the channel itself, whose overrides apply to `ch` (threads go by their parent).
+    fn override_chain<'a>(&'a self, ch: &'a Channel) -> Vec<&'a Channel> {
+        let find = |id: Option<Id>| id.and_then(|id| self.channels.iter().find(|c| c.id == id));
+        let ch = if ch.kind == ChannelKind::Thread { find(ch.parent_id).unwrap_or(ch) } else { ch };
+        let mut chain: Vec<&Channel> = find(ch.parent_id).filter(|c| c.kind == ChannelKind::Category).into_iter().collect();
+        chain.push(ch);
+        chain
+    }
+
+    /// What `user` may do in `ch` (a channel of this space): their space permissions with the channel's
+    /// overrides applied. 0 means they can't see it.
+    pub fn channel_permissions(&self, user: Id, ch: &Channel) -> u64 {
+        let base = self.permissions(user);
+        if base & perm::ADMINISTRATOR != 0 || base == 0 {
+            return base;
+        }
+        let held: Vec<Id> = self.members.iter().find(|m| m.user_id == user).map(|m| m.roles.clone()).unwrap_or_default();
+        let mut p = base;
+        for c in self.override_chain(ch) {
+            p = apply_overwrites(p, &c.overwrites, self.id, |o| match o.kind {
+                OverwriteKind::Role => held.contains(&o.id),
+                OverwriteKind::Member => o.id == user,
+            });
+        }
+        if p & perm::VIEW_CHANNEL == 0 { 0 } else { p }
+    }
+
+    /// `ch` is hidden from `@everyone` (a private channel or category).
+    pub fn is_private(&self, ch: &Channel) -> bool {
+        let mut p = self.everyone_permissions;
+        for c in self.override_chain(ch) {
+            p = apply_overwrites(p, &c.overwrites, self.id, |_| false);
+        }
+        p & perm::VIEW_CHANNEL == 0
+    }
+
+    /// The members who can see `ch`.
+    pub fn viewers(&self, ch: &Channel) -> Vec<Id> {
+        self.members.iter().map(|m| m.user_id).filter(|&u| self.channel_permissions(u, ch) != 0).collect()
+    }
+}
+
+/// Discord's order: `@everyone`'s override, then all of the member's roles' overrides together, then the
+/// member's own. `applies` says which role / member overrides are theirs.
+fn apply_overwrites(mut p: u64, ows: &[Overwrite], space: Id, applies: impl Fn(&Overwrite) -> bool) -> u64 {
+    if let Some(o) = ows.iter().find(|o| o.kind == OverwriteKind::Role && o.id == space) {
+        p = (p & !(o.deny & perm::CHANNEL)) | (o.allow & perm::CHANNEL);
+    }
+    let (mut allow, mut deny) = (0, 0);
+    for o in ows.iter().filter(|o| o.kind == OverwriteKind::Role && o.id != space && applies(o)) {
+        allow |= o.allow;
+        deny |= o.deny;
+    }
+    p = (p & !(deny & perm::CHANNEL)) | (allow & perm::CHANNEL);
+    if let Some(o) = ows.iter().find(|o| o.kind == OverwriteKind::Member && applies(o)) {
+        p = (p & !(o.deny & perm::CHANNEL)) | (o.allow & perm::CHANNEL);
+    }
+    p
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -258,6 +332,36 @@ pub struct Channel {
     /// Set for threads.
     #[serde(default)]
     pub thread: Option<ThreadInfo>,
+    /// Permission overrides (Discord's "channel permissions"). A channel in a category gets the category's
+    /// first, then its own; threads go by their parent channel.
+    #[serde(default)]
+    pub overwrites: Vec<Overwrite>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OverwriteKind {
+    /// A role, or `@everyone` when `id` is the space's id.
+    Role,
+    Member,
+}
+
+/// Allow or deny permissions in one channel for a role, `@everyone` or one member; anything in neither is
+/// inherited.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Overwrite {
+    pub id: Id,
+    pub kind: OverwriteKind,
+    pub allow: u64,
+    pub deny: u64,
+}
+
+/// Body of `PUT /api/channels/{id}/permissions/{target}`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SetOverwrite {
+    pub kind: Option<OverwriteKind>,
+    pub allow: u64,
+    pub deny: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -685,6 +789,9 @@ pub struct CreateChannel {
     pub parent_id: Option<Id>,
     #[serde(default)]
     pub topic: String,
+    /// Start with these permission overrides (e.g. a private channel).
+    #[serde(default)]
+    pub overwrites: Vec<Overwrite>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -910,6 +1017,46 @@ mod tests {
         assert_eq!((space.rank(10), space.rank(11), space.rank(12), space.rank(13)), (i64::MAX, 3, 2, 0));
         assert_eq!(space.color_of(12), Some("#23a55a"), "highest coloured role");
         assert_eq!(space.color_of(11), None);
+    }
+
+    #[test]
+    fn private_channels() {
+        let ch = |id, kind, parent: Option<Id>, overwrites: Vec<Overwrite>| Channel {
+            id, space_id: Some(1), kind, name: format!("c{id}"), topic: String::new(), position: 0, parent_id: parent,
+            read_only: false, last_message_id: None, recipients: vec![], thread: None, overwrites,
+        };
+        let ow = |id, kind, allow, deny| Overwrite { id, kind, allow, deny };
+        let hide = ow(1, OverwriteKind::Role, 0, perm::VIEW_CHANNEL);
+        let member = |user_id, roles: Vec<Id>| Member { user_id, role: Role::Member, nickname: None, joined_at: 0, roles };
+        let space = Space {
+            id: 1, name: "s".into(), icon: None, owner_id: 10, users: vec![],
+            members: vec![member(10, vec![]), member(11, vec![100]), member(12, vec![]), member(13, vec![101])],
+            roles: vec![
+                RoleDef { id: 100, name: "staff".into(), color: String::new(), emoji: String::new(), position: 2, permissions: 0, hoist: false },
+                RoleDef { id: 101, name: "admin".into(), color: String::new(), emoji: String::new(), position: 1, permissions: perm::ADMINISTRATOR, hoist: false },
+            ],
+            everyone_permissions: perm::EVERYONE_DEFAULT,
+            channels: vec![
+                ch(2, ChannelKind::Category, None, vec![hide.clone(), ow(100, OverwriteKind::Role, perm::VIEW_CHANNEL, 0)]),
+                ch(3, ChannelKind::Text, Some(2), vec![]),
+                ch(4, ChannelKind::Text, None, vec![hide, ow(12, OverwriteKind::Member, perm::VIEW_CHANNEL, perm::SEND_MESSAGES)]),
+                ch(5, ChannelKind::Text, None, vec![ow(100, OverwriteKind::Role, 0, perm::SEND_MESSAGES)]),
+            ],
+        };
+        let c = |id| space.channels.iter().find(|c| c.id == id).unwrap().clone();
+        let mut thread = ch(6, ChannelKind::Thread, Some(4), vec![]);
+        thread.thread = None;
+        // A private category hides its channels, except from the role it lets in, admins and the owner.
+        assert_eq!(space.viewers(&c(3)), vec![10, 11, 13]);
+        assert!(space.is_private(&c(3)) && space.is_private(&c(2)) && !space.is_private(&c(5)));
+        // A member let into a private channel sees it, and their own deny wins over @everyone's allow.
+        assert_eq!(space.viewers(&c(4)), vec![10, 12, 13]);
+        assert_eq!(space.channel_permissions(12, &c(4)) & perm::SEND_MESSAGES, 0);
+        assert_eq!(space.viewers(&thread), vec![10, 12, 13], "threads follow their channel");
+        // A role's deny takes away what @everyone may do; admins keep everything.
+        assert_eq!(space.channel_permissions(11, &c(5)) & perm::SEND_MESSAGES, 0);
+        assert_ne!(space.channel_permissions(12, &c(5)) & perm::SEND_MESSAGES, 0);
+        assert_eq!(space.channel_permissions(13, &c(5)), perm::ALL);
     }
 
     #[test]

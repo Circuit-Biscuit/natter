@@ -599,7 +599,8 @@ macro_rules! search_where {
            AND (?3 IS NULL OR c.space_id = ?3)
            AND (?4 IS NULL OR m.channel_id = ?4)
            AND (?5 IS NULL OR m.author_id = ?5)
-           AND (?6 IS NULL OR ?6 = 0 OR EXISTS(SELECT 1 FROM uploads u WHERE u.message_id = m.id)) "
+           AND (?6 IS NULL OR ?6 = 0 OR EXISTS(SELECT 1 FROM uploads u WHERE u.message_id = m.id))
+           AND COALESCE(CASE WHEN c.kind = 'thread' THEN c.parent_id END, m.channel_id) NOT IN (SELECT value FROM json_each(?7)) "
     };
 }
 
@@ -613,11 +614,13 @@ pub async fn search(
         return Err(bad("type something to search for"));
     }
     let limit = q.limit.unwrap_or(25).clamp(1, 50) as i64;
+    // Private channels you can't see (and their threads) stay out of the results.
+    let hidden = serde_json::to_string(&db::hidden_channels(&st.db, auth.user).await?).unwrap_or_else(|_| "[]".into());
     let rows = sqlx::query_as::<_, MsgRow>(concat!(
         "SELECT m.id, m.channel_id, m.author_id, m.kind, m.content, m.edited_at, m.reply_to, m.reply_ping, m.mention_everyone, ",
         "m.pinned_at, m.nonce ",
         search_where!(),
-        "AND (?7 IS NULL OR m.id < ?7) ORDER BY m.id DESC LIMIT ?8"
+        "AND (?8 IS NULL OR m.id < ?8) ORDER BY m.id DESC LIMIT ?9"
     ))
     .bind(auth.user)
     .bind(&fts)
@@ -625,6 +628,7 @@ pub async fn search(
     .bind(q.channel_id)
     .bind(q.author_id)
     .bind(q.has_file)
+    .bind(&hidden)
     .bind(q.before)
     .bind(limit)
     .fetch_all(&st.db)
@@ -636,6 +640,7 @@ pub async fn search(
         .bind(q.channel_id)
         .bind(q.author_id)
         .bind(q.has_file)
+        .bind(&hidden)
         .fetch_one(&st.db)
         .await?;
     Ok(Json(SearchResult {

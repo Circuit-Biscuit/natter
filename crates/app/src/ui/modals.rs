@@ -15,7 +15,7 @@ pub fn ModalHost() -> impl IntoView {
     let s = store();
     view! {
         {move || s.modal.get().map(|m| {
-            let wide = matches!(m, Modal::UserSettings | Modal::SpaceSettings(_));
+            let wide = matches!(m, Modal::UserSettings | Modal::SpaceSettings(_) | Modal::ChannelPermissions(_));
             let image = matches!(m, Modal::Image(_));
             let body = match m {
                 Modal::CreateSpace => view! { <CreateSpace/> }.into_any(),
@@ -32,6 +32,7 @@ pub fn ModalHost() -> impl IntoView {
                 Modal::Nextcloud => view! { <NextcloudBrowser/> }.into_any(),
                 Modal::CreateThread { channel, message } => view! { <CreateThreadDialog channel=channel message=message/> }.into_any(),
                 Modal::Threads(c) => view! { <ThreadBrowser channel=c/> }.into_any(),
+                Modal::ChannelPermissions(c) => view! { <settings::ChannelPermissions channel=c/> }.into_any(),
                 Modal::Confirm { title, body, ok, action } => view! { <Confirm title=title body=body ok=ok action=action/> }.into_any(),
             };
             view! {
@@ -219,11 +220,21 @@ fn CreateChannel(space: Id, kind: ChannelKind, parent: Option<Id>) -> impl IntoV
     let kind_sig = RwSignal::new(kind);
     let name = RwSignal::new(String::new());
     let read_only = RwSignal::new(false);
+    let private = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let category = kind == ChannelKind::Category;
     let submit = move |e: leptos::ev::SubmitEvent| {
         e.prevent_default();
-        let body = CreateChannel { name: name.get_untracked(), kind: kind_sig.get_untracked(), parent_id: parent, topic: String::new() };
+        // Private: hidden from @everyone; whoever makes it keeps seeing it (admins see everything anyway).
+        let mut overwrites = vec![];
+        if private.get_untracked() {
+            overwrites.push(Overwrite { id: space, kind: OverwriteKind::Role, allow: 0, deny: perm::VIEW_CHANNEL });
+            if !s.can(Some(space), perm::ADMINISTRATOR) {
+                overwrites.push(Overwrite { id: s.me_id(), kind: OverwriteKind::Member, allow: perm::VIEW_CHANNEL, deny: 0 });
+            }
+        }
+        let body = CreateChannel { name: name.get_untracked(), kind: kind_sig.get_untracked(), parent_id: parent, topic: String::new(), overwrites };
+        let then_permissions = private.get_untracked();
         let ro = read_only.get_untracked();
         spawn_local(async move {
             match api::call::<_, Channel>("POST", &format!("/api/spaces/{space}/channels"), &body).await {
@@ -237,6 +248,10 @@ fn CreateChannel(space: Id, kind: ChannelKind, parent: Option<Id>) -> impl IntoV
                     close();
                     if k == ChannelKind::Text {
                         open_channel(id);
+                    }
+                    // Straight on to choosing who may see it.
+                    if then_permissions {
+                        store().modal.set(Some(Modal::ChannelPermissions(id)));
                     }
                 }
                 Err(e) => error.set(Some(e.message)),
@@ -274,6 +289,8 @@ fn CreateChannel(space: Id, kind: ChannelKind, parent: Option<Id>) -> impl IntoV
                 <label class="check"><input type="checkbox" prop:checked=move || read_only.get() on:change=move |e| read_only.set(event_target_checked(&e))/>
                     "Announcement channel — only admins can post"</label>
             </Show>
+            <label class="check"><input type="checkbox" prop:checked=move || private.get() on:change=move |e| private.set(event_target_checked(&e))/>
+                <Icon name="lock" size=16/>{if category { " Private category — only chosen roles and members see it and its channels" } else { " Private channel — only chosen roles and members see it" }}</label>
             {move || error.get().map(|e| view! { <div class="form-error">{e}</div> })}
             <div class="modal-foot">
                 <button type="button" class="btn link" on:click=|_| close()>"Cancel"</button>
@@ -339,6 +356,11 @@ fn EditChannel(id: Id) -> impl IntoView {
             {(c.kind == ChannelKind::Text).then(|| view! {
                 <label class="check"><input type="checkbox" prop:checked=move || read_only.get() on:change=move |e| read_only.set(event_target_checked(&e))/>
                     "Announcement channel — only admins can post"</label>
+            })}
+            {(c.space_id.is_some() && s.can_in(id, perm::MANAGE_ROLES)).then(|| view! {
+                <button type="button" class="btn" on:click=move |_| s.modal.set(Some(Modal::ChannelPermissions(id)))>
+                    <Icon name="lock" size=16/>" Permissions"
+                </button>
             })}
             <div class="row gap">
                 <span class="muted small">"Order:"</span>
@@ -586,7 +608,7 @@ fn Pins(channel: Id) -> impl IntoView {
                             <chat::MessageItem m=m head=true space=space/>
                             <div class="pin-actions">
                                 <button class="btn small" on:click=move |_| { close(); crate::store::jump_to(channel, id); }>"Jump"</button>
-                                <Show when=move || s.can_pin(space)>
+                                <Show when=move || s.can_pin_in(channel)>
                                     <button class="btn small" on:click=move |_| {
                                         crate::store::set_pinned(channel, id, false);
                                         pins.update(|p| if let Some(p) = p { p.retain(|m| m.id != id) });

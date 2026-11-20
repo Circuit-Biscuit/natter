@@ -285,6 +285,10 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
             "/api/spaces/{id}/members/{user_id}/roles/{role_id}",
             put(spaces::add_member_role).delete(spaces::remove_member_role),
         )
+        .route(
+            "/api/channels/{id}/permissions/{target_id}",
+            put(spaces::set_overwrite).delete(spaces::delete_overwrite),
+        )
         .route("/api/spaces/{id}/bans", get(spaces::list_bans))
         .route(
             "/api/spaces/{id}/bans/{user_id}",

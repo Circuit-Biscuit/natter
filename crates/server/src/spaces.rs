@@ -1,6 +1,6 @@
 //! Spaces, channels, DMs, invites, members and bans.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -8,8 +8,8 @@ use axum::http::StatusCode;
 use natter_proto::{
     Ban, BanReq, Channel, ChannelKind, CreateChannel, CreateDm, CreateInvite, CreateRole, CreateSpace,
     CreateThread, EPOCH_MS, Event, Id, Invite, InvitePreview, MAX_NAME_LEN, MAX_TOPIC_LEN,
-    MessageKind, Presence, ReorderRoles, RoleDef, Space, Status, UpdateChannel, UpdateMember, UpdateRole,
-    UpdateSpace, channel_slug, perm,
+    MessageKind, Overwrite, OverwriteKind, Presence, ReorderRoles, RoleDef, SetOverwrite, Space, Status,
+    UpdateChannel, UpdateMember, UpdateRole, UpdateSpace, channel_slug, perm,
 };
 
 use crate::auth::{Auth, clean, own_image_upload, release_upload};
@@ -28,6 +28,36 @@ async fn require(st: &St, space: Id, user: Id, need: u64) -> R<(u64, i64)> {
 /// `target`'s rank in `space` (404 when they aren't a member).
 async fn rank_of(st: &St, space: Id, target: Id) -> R<i64> {
     Ok(db::perms(&st.db, space, target).await?.ok_or_else(|| not_found("member"))?.1)
+}
+
+/// Which channels each member can see.
+type Sight = HashMap<Id, BTreeSet<Id>>;
+
+fn sight(space: &Space) -> Sight {
+    space
+        .members
+        .iter()
+        .map(|m| {
+            let seen = space.channels.iter().filter(|c| space.channel_permissions(m.user_id, c) != 0).map(|c| c.id).collect();
+            (m.user_id, seen)
+        })
+        .collect()
+}
+
+async fn sight_now(st: &St, space: Id) -> R<Sight> {
+    Ok(sight(&db::space(&st.db, space).await?))
+}
+
+/// After a permission change: everyone whose set of visible channels changed gets the space again as they now
+/// see it (the app replaces it), so private channels appear and disappear at once.
+async fn resync(st: &St, space: Id, before: &Sight) -> R<()> {
+    let full = db::space(&st.db, space).await?;
+    for (user, now) in sight(&full) {
+        if before.get(&user) != Some(&now) {
+            st.hub.send(&[user], &Event::SpaceCreate(db::visible_to(full.clone(), user)));
+        }
+    }
+    Ok(())
 }
 
 /// Tell the space its roles changed.
@@ -75,11 +105,12 @@ pub async fn create_space(
     let (sid, now, me) = (st.id(), now_ms(), auth.user);
     let (text_cat, voice_cat, general, lounge, admin) = (st.id(), st.id(), st.id(), st.id(), st.id());
     let mut tx = st.db.begin().await?;
-    sqlx::query("INSERT INTO spaces (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)")
+    sqlx::query("INSERT INTO spaces (id, name, owner_id, created_at, everyone_permissions) VALUES (?, ?, ?, ?, ?)")
         .bind(sid)
         .bind(&name)
         .bind(me)
         .bind(now)
+        .bind(perm::EVERYONE_DEFAULT as i64)
         .execute(&mut *tx)
         .await?;
     sqlx::query(
@@ -118,7 +149,7 @@ pub async fn create_space(
             .await?;
     }
     tx.commit().await?;
-    let space = db::space_with_users(&st.db, sid).await?;
+    let space = db::space_with_users(&st.db, sid, me).await?;
     st.hub.send(&[me], &Event::SpaceCreate(space.clone()));
     Ok(Json(space))
 }
@@ -137,6 +168,7 @@ pub async fn update_space(
     }
     if let Some(everyone) = req.everyone_permissions {
         require(&st, id, me, perm::MANAGE_ROLES).await?;
+        let before = sight_now(&st, id).await?;
         let old = db::everyone_permissions(&st.db, id).await?;
         let new = everyone & perm::ALL;
         if (old ^ new) & !mine != 0 {
@@ -148,6 +180,7 @@ pub async fn update_space(
             .execute(&st.db)
             .await?;
         roles_changed(&st, id).await?;
+        resync(&st, id, &before).await?;
     }
     if let Some(name) = &req.name {
         let name = clean(name, MAX_NAME_LEN, "space name")?;
@@ -407,7 +440,7 @@ pub async fn join(State(st): State<St>, auth: Auth, Path(code): Path<String>) ->
 pub async fn join_space(st: &St, user: Id, code: &str) -> R<Space> {
     let space_id = check_invite(st, code).await?;
     if db::is_member(&st.db, space_id, user).await? {
-        return db::space_with_users(&st.db, space_id).await;
+        return db::space_with_users(&st.db, space_id, user).await;
     }
     let space = admit(st, user, space_id).await?;
     sqlx::query("UPDATE invites SET uses = uses + 1 WHERE code = ?")
@@ -436,11 +469,11 @@ pub async fn admit(st: &St, user: Id, space_id: Id) -> R<Space> {
         .execute(&st.db)
         .await?;
     if added.rows_affected() == 0 {
-        return db::space_with_users(&st.db, space_id).await;
+        return db::space_with_users(&st.db, space_id, user).await;
     }
     db::mark_space_read(&st.db, user, space_id).await?;
 
-    let space = db::space_with_users(&st.db, space_id).await?;
+    let space = db::space_with_users(&st.db, space_id, user).await?;
     let others: Vec<Id> = space
         .members
         .iter()
@@ -492,7 +525,7 @@ pub async fn admit(st: &St, user: Id, space_id: Id) -> R<Space> {
         let msg = messages::post_system(st, ch, user, MessageKind::MemberJoin, None, "").await?;
         db::set_read(&st.db, user, ch.id, msg.id).await?;
     }
-    db::space_with_users(&st.db, space_id).await
+    db::space_with_users(&st.db, space_id, user).await
 }
 
 // ---------------------------------------------------------------- members & bans
@@ -543,6 +576,11 @@ async fn remove_from_space(st: &St, space: Id, user: Id) -> R<()> {
     sqlx::query("DELETE FROM members WHERE space_id = ? AND user_id = ?")
         .bind(space)
         .bind(user)
+        .execute(&st.db)
+        .await?;
+    sqlx::query("DELETE FROM channel_overwrites WHERE target_id = ? AND channel_id IN (SELECT id FROM channels WHERE space_id = ?)")
+        .bind(user)
+        .bind(space)
         .execute(&st.db)
         .await?;
     sqlx::query("DELETE FROM read_states WHERE user_id = ? AND channel_id IN (SELECT id FROM channels WHERE space_id = ?)")
@@ -772,6 +810,7 @@ pub async fn update_role(
     if permissions.is_some_and(|p| (p ^ r.permissions) & !mine != 0) {
         return Err(forbidden("you can only change permissions you have yourself"));
     }
+    let before = sight_now(&st, space).await?;
     sqlx::query(
         "UPDATE roles SET name = ?, color = ?, emoji = ?, permissions = ?, hoist = ? WHERE id = ? AND space_id = ?",
     )
@@ -785,6 +824,7 @@ pub async fn update_role(
     .execute(&st.db)
     .await?;
     roles_changed(&st, space).await?;
+    resync(&st, space, &before).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -794,13 +834,19 @@ pub async fn delete_role(
     Path((space, role)): Path<(Id, Id)>,
 ) -> R<StatusCode> {
     manageable_role(&st, space, auth.user, role).await?;
+    let before = sight_now(&st, space).await?;
     // Members lose it through the foreign key; apps drop unknown role ids on RolesUpdate.
     sqlx::query("DELETE FROM roles WHERE id = ? AND space_id = ?")
         .bind(role)
         .bind(space)
         .execute(&st.db)
         .await?;
+    sqlx::query("DELETE FROM channel_overwrites WHERE target_id = ?")
+        .bind(role)
+        .execute(&st.db)
+        .await?;
     roles_changed(&st, space).await?;
+    resync(&st, space, &before).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -851,6 +897,7 @@ pub async fn add_member_role(
     if !db::is_member(&st.db, space, target).await? {
         return Err(not_found("member"));
     }
+    let before = sight_now(&st, space).await?;
     sqlx::query("INSERT OR IGNORE INTO member_roles (space_id, user_id, role_id) VALUES (?, ?, ?)")
         .bind(space)
         .bind(target)
@@ -858,6 +905,7 @@ pub async fn add_member_role(
         .execute(&st.db)
         .await?;
     member_changed(&st, space, target).await?;
+    resync(&st, space, &before).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -867,6 +915,7 @@ pub async fn remove_member_role(
     Path((space, target, role)): Path<(Id, Id, Id)>,
 ) -> R<StatusCode> {
     manageable_role(&st, space, auth.user, role).await?;
+    let before = sight_now(&st, space).await?;
     sqlx::query("DELETE FROM member_roles WHERE space_id = ? AND user_id = ? AND role_id = ?")
         .bind(space)
         .bind(target)
@@ -874,7 +923,94 @@ pub async fn remove_member_role(
         .execute(&st.db)
         .await?;
     member_changed(&st, space, target).await?;
+    resync(&st, space, &before).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------- channel permissions
+
+/// Validate one override for a channel of `space`: the target is `@everyone` (the space id), one of its roles or a
+/// member; only channel permissions; and nothing changes that `mine` doesn't include (`old` is the current one).
+fn check_overwrite(
+    space: &Space,
+    target: Id,
+    kind: Option<OverwriteKind>,
+    allow: u64,
+    deny: u64,
+    old: Option<&Overwrite>,
+    mine: u64,
+) -> R<Overwrite> {
+    let real = if target == space.id || space.roles.iter().any(|r| r.id == target) {
+        OverwriteKind::Role
+    } else if space.members.iter().any(|m| m.user_id == target) {
+        OverwriteKind::Member
+    } else {
+        return Err(not_found("role or member"));
+    };
+    if kind.is_some_and(|k| k != real) {
+        return Err(bad("that's not a role / member"));
+    }
+    let allow = allow & perm::CHANNEL;
+    let deny = deny & perm::CHANNEL & !allow;
+    let (old_allow, old_deny) = old.map_or((0, 0), |o| (o.allow, o.deny));
+    if ((allow ^ old_allow) | (deny ^ old_deny)) & !mine != 0 {
+        return Err(forbidden("you can only allow or deny permissions you have yourself"));
+    }
+    Ok(Overwrite { id: target, kind: real, allow, deny })
+}
+
+/// Set (or with allow = deny = 0, clear) a channel's override for a role, `@everyone` or a member.
+pub async fn set_overwrite(
+    State(st): State<St>,
+    auth: Auth,
+    Path((channel, target)): Path<(Id, Id)>,
+    Json(req): Json<SetOverwrite>,
+) -> R<StatusCode> {
+    let acc = db::access(&st.db, auth.user, channel).await?;
+    let Some(space) = acc.ch.space_id else {
+        return Err(bad("direct messages have no permissions to set"));
+    };
+    if acc.ch.kind == ChannelKind::Thread {
+        return Err(bad("threads follow their channel's permissions"));
+    }
+    if !acc.has(perm::MANAGE_ROLES) {
+        return Err(forbidden("that takes the Manage roles permission"));
+    }
+    let full = db::space(&st.db, space).await?;
+    let old = acc.ch.overwrites.iter().find(|o| o.id == target);
+    let o = check_overwrite(&full, target, req.kind, req.allow, req.deny, old, acc.perms)?;
+    let before = sight(&full);
+    if o.allow == 0 && o.deny == 0 {
+        sqlx::query("DELETE FROM channel_overwrites WHERE channel_id = ? AND target_id = ?")
+            .bind(channel)
+            .bind(target)
+            .execute(&st.db)
+            .await?;
+    } else {
+        sqlx::query(
+            "INSERT INTO channel_overwrites (channel_id, target_id, kind, allow, deny) VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (channel_id, target_id) DO UPDATE SET kind = excluded.kind, allow = excluded.allow, deny = excluded.deny",
+        )
+        .bind(channel)
+        .bind(target)
+        .bind(db::to_s(o.kind))
+        .bind(o.allow as i64)
+        .bind(o.deny as i64)
+        .execute(&st.db)
+        .await?;
+    }
+    let updated = db::channel(&st.db, channel).await?;
+    st.hub.send(&db::audience(&st.db, &updated).await?, &Event::ChannelUpdate(updated));
+    resync(&st, space, &before).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_overwrite(
+    st: State<St>,
+    auth: Auth,
+    path: Path<(Id, Id)>,
+) -> R<StatusCode> {
+    set_overwrite(st, auth, path, Json(SetOverwrite::default())).await
 }
 
 // ---------------------------------------------------------------- channels
@@ -922,7 +1058,12 @@ pub async fn create_channel(
     Path(space): Path<Id>,
     Json(req): Json<CreateChannel>,
 ) -> R<Json<Channel>> {
-    require(&st, space, auth.user, perm::MANAGE_CHANNELS).await?;
+    let (mine, _) = require(&st, space, auth.user, perm::MANAGE_CHANNELS).await?;
+    let full = db::space(&st.db, space).await?;
+    let mut overwrites = vec![];
+    for o in &req.overwrites {
+        overwrites.push(check_overwrite(&full, o.id, Some(o.kind), o.allow, o.deny, None, mine)?);
+    }
     if req.kind == ChannelKind::Thread {
         return Err(bad("start threads with POST /api/channels/{id}/threads"));
     }
@@ -965,11 +1106,18 @@ pub async fn create_channel(
     .bind(parent)
     .execute(&st.db)
     .await?;
+    for o in &overwrites {
+        sqlx::query("INSERT INTO channel_overwrites (channel_id, target_id, kind, allow, deny) VALUES (?, ?, ?, ?, ?)")
+            .bind(id)
+            .bind(o.id)
+            .bind(db::to_s(o.kind))
+            .bind(o.allow as i64)
+            .bind(o.deny as i64)
+            .execute(&st.db)
+            .await?;
+    }
     let ch = db::channel(&st.db, id).await?;
-    st.hub.send(
-        &db::space_members(&st.db, space).await?,
-        &Event::ChannelCreate(ch.clone()),
-    );
+    st.hub.send(&db::audience(&st.db, &ch).await?, &Event::ChannelCreate(ch.clone()));
     Ok(Json(ch))
 }
 
@@ -981,6 +1129,10 @@ pub async fn update_channel(
 ) -> R<Json<Channel>> {
     let acc = db::access(&st.db, auth.user, id).await?;
     let ch = &acc.ch;
+    let before = match (ch.space_id, req.parent_id) {
+        (Some(sp), Some(_)) => Some((sp, sight_now(&st, sp).await?)),
+        _ => None,
+    };
     match ch.kind {
         ChannelKind::Dm => return Err(bad("direct messages can't be edited")),
         ChannelKind::GroupDm => {
@@ -1068,6 +1220,9 @@ pub async fn update_channel(
         &db::audience(&st.db, &updated).await?,
         &Event::ChannelUpdate(updated.clone()),
     );
+    if let Some((sp, before)) = before {
+        resync(&st, sp, &before).await?;
+    }
     if updated.kind == ChannelKind::Thread {
         starter_update(&st, &updated).await?;
     }
@@ -1092,7 +1247,8 @@ pub async fn delete_channel(State(st): State<St>, auth: Auth, Path(id): Path<Id>
     if !allowed {
         return Err(forbidden("you can't delete that channel"));
     }
-    let members = db::space_members(&st.db, space).await?;
+    // Only those who could see it hear that it's gone.
+    let members = db::audience(&st.db, &acc.ch).await?;
     // A text channel takes its threads with it.
     let mut gone = vec![id];
     if acc.ch.kind == ChannelKind::Text {
@@ -1147,11 +1303,10 @@ async fn starter_update(st: &St, thread: &Channel) -> R<()> {
     else {
         return Ok(());
     };
+    let _ = space;
     if let Ok(m) = db::message(&st.db, parent, info.starter_id).await {
-        st.hub.send(
-            &db::space_members(&st.db, space).await?,
-            &Event::MessageUpdate(m),
-        );
+        let parent = db::channel(&st.db, parent).await?;
+        st.hub.send(&db::audience(&st.db, &parent).await?, &Event::MessageUpdate(m));
     }
     Ok(())
 }
@@ -1256,10 +1411,8 @@ pub async fn create_thread(
     };
     db::set_read(&st.db, me, id, 0).await?;
     let thread = db::channel(&st.db, id).await?;
-    st.hub.send(
-        &db::space_members(&st.db, space).await?,
-        &Event::ChannelCreate(thread.clone()),
-    );
+    let _ = space;
+    st.hub.send(&db::audience(&st.db, &thread).await?, &Event::ChannelCreate(thread.clone()));
     starter_update(&st, &thread).await?;
     Ok(Json(thread))
 }

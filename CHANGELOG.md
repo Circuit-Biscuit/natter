@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0] — 2026-11-20
+
+- **Private channels and categories:** switch "Private" on when creating a channel or category, or later in its
+  Permissions, and choose the roles and members who may see it; admins and the owner always can. A private
+  category hides every channel in it. Members who can't see a channel don't get it, its messages, its calls, its
+  threads or its search results, and they aren't in its member list; letting someone in or out updates their
+  sidebar at once.
+- **Channel permissions, like Discord's:** for @everyone, any role or any member, set each channel permission
+  (view, send, attach, react, threads, @everyone, manage messages / threads / channel, invites, connect) to
+  allow, inherit or deny. Channels get their category's settings first, then their own; threads follow their channel.
+- New **View channels** permission (on for @everyone); private channels show a lock in the sidebar.
+- Sign-in: arriving with an invite on a server that allows Natter accounts offers one straight away.
+
 ## [0.3.0] — 2026-11-20
 
 - **Roles, like Discord's:** create roles with a name, colour and emoji; switch 16 permissions on or off (manage

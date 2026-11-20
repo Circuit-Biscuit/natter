@@ -18,7 +18,8 @@ pub fn MemberList() -> impl IntoView {
         let space = c.space_id;
         let sp = space.and_then(|id| s.space(id));
         let users: Vec<Id> = match &sp {
-            Some(sp) => sp.members.iter().map(|m| m.user_id).collect(),
+            // Only who can see this channel (private channels have a shorter list).
+            Some(sp) => sp.viewers(&c),
             None => c.recipients.clone(),
         };
         let mut hoisted: Vec<(i64, String, Vec<Id>)> = vec![];

@@ -72,7 +72,7 @@ Source: `nextcloud/spreed` at commit `f240551` (Talk 26.0.0-dev, 2026-11-20): `d
 
 | Talk | Natter | Notes |
 |---|---|---|
-| Owner / moderator / user / guest | ✅ Discord-style roles with 16 permissions, @everyone defaults, hierarchy | guests ⬜, per-channel overrides ⬜ |
+| Owner / moderator / user / guest | ✅ Discord-style roles with 17 permissions, @everyone defaults, hierarchy, private channels and per-channel overrides | guests ⬜ |
 | Promote, demote, transfer ownership | ✅ | |
 | Remove, ban | ✅ kick, ban (with message cleanup) | |
 | Notification levels (always / mention / never) | 🔁 mute per channel or space; DMs and mentions notify | |

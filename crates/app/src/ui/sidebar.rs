@@ -126,8 +126,9 @@ fn ChannelRow(channel: Channel) -> impl IntoView {
             <span class="unread-pill"></span>
             <Icon name=icon size=20/>
             <span class="ellipsis name">{name}</span>
+            {move || s.is_private(id).then(|| view! { <span class="private-lock" title="Private channel"><Icon name="lock" size=12/></span> })}
             {move || (mentions() > 0).then(|| view! { <span class="badge">{mentions()}</span> })}
-            <Show when=move || s.channel(id).is_some_and(|c| c.kind != ChannelKind::Thread && s.can(c.space_id, perm::MANAGE_CHANNELS))>
+            <Show when=move || s.channel(id).is_some_and(|c| c.kind != ChannelKind::Thread) && s.can_in(id, perm::MANAGE_CHANNELS)>
                 <button class="icon-btn hover-only" title="Edit channel" on:click=move |e| {
                     e.stop_propagation();
                     s.modal.set(Some(Modal::EditChannel(id)));

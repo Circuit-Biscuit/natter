@@ -44,8 +44,8 @@ pub fn message_menu(m: &Message) -> Vec<Option<MenuItem>> {
     let (channel, id, author) = (m.channel_id, m.id, m.author_id);
     let space = s.channel(channel).and_then(|c| c.space_id);
     let mine = author == s.me_id();
-    let can_pin = s.can_pin(space);
-    let can_delete = space.is_some() && s.can(space, perm::MANAGE_MESSAGES);
+    let can_pin = s.can_pin_in(channel);
+    let can_delete = space.is_some() && s.can_in(channel, perm::MANAGE_MESSAGES);
     let pinned = m.pinned;
     let text = m.content.clone();
     let menu_pos = s.menu;
@@ -90,7 +90,8 @@ pub fn channel_menu(id: Id) -> Vec<Option<MenuItem>> {
     let muted = s.muted(id);
     let thread_owner = c.thread.as_ref().is_some_and(|t| t.owner_id == s.me_id());
     let need = if c.kind == ChannelKind::Thread { perm::MANAGE_THREADS } else { perm::MANAGE_CHANNELS };
-    let can_mod = c.space_id.is_some() && (s.can(c.space_id, need) || thread_owner);
+    let can_mod = c.space_id.is_some() && (s.can_in(id, need) || thread_owner);
+    let can_permissions = c.space_id.is_some() && c.kind != ChannelKind::Thread && s.can_in(id, perm::MANAGE_ROLES);
     let mut v = Vec::new();
     if c.kind == ChannelKind::Text && c.space_id.is_some() {
         v.push(Some(MenuItem::new("Create Thread", move || s.modal.set(Some(Modal::CreateThread { channel: id, message: None })))));
@@ -122,6 +123,9 @@ pub fn channel_menu(id: Id) -> Vec<Option<MenuItem>> {
         if c.kind != ChannelKind::Thread {
             v.push(Some(MenuItem::new(if c.kind == ChannelKind::Category { "Edit Category" } else { "Edit Channel" }, move || s.modal.set(Some(Modal::EditChannel(id))))));
         }
+    }
+    if can_permissions {
+        v.push(Some(MenuItem::new("Permissions", move || s.modal.set(Some(Modal::ChannelPermissions(id))))));
     }
     v.push(Some(MenuItem::new("Copy ID", move || util::copy_text(&id.to_string()))));
     if can_mod {

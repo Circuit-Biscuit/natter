@@ -120,7 +120,8 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Desktop app: tray, notifications, numbered badge, global keybinds, start with the computer | ✅ Windows · 🚧 macOS / Linux untested |
 | Android app: phone layout, back button, calls, notifications while open | ✅ (APK, sideload) |
 | Background push notifications on Android (app closed) | ⬜ |
-| Polls, link previews, per-channel permissions, message scheduling | ⬜ |
+| Private channels and categories, per-channel permissions (allow / inherit / deny per role or member) | ✅ |
+| Polls, link previews, message scheduling | ⬜ |
 | Simulcast (adaptive video quality for big calls), TURN / TCP fallback | ⬜ |
 | iOS app | ⬜ (the web app works in mobile browsers) |
 | Signed / notarised installers | ⬜ |

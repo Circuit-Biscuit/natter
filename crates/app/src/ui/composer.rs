@@ -131,7 +131,7 @@ fn suggestions(channel: Id, tok: &str) -> Vec<Suggestion> {
             }
             out.sort_by_key(|x| (!x.detail.starts_with(&q), s.status(x.user.unwrap_or(0)) == Status::Offline, x.label.to_lowercase()));
             out.truncate(8);
-            if s.can(c.space_id, perm::MENTION_EVERYONE) {
+            if s.can_in(c.id, perm::MENTION_EVERYONE) {
                 for (w, d) in [("everyone", "Notify everyone in this channel"), ("here", "Notify everyone online")] {
                     if w.starts_with(&q) {
                         out.push(Suggestion { insert: format!("@{w} "), label: format!("@{w}"), detail: d.into(), user: None });
@@ -262,7 +262,7 @@ pub fn Composer(channel: Id, uploads: Uploads) -> impl IntoView {
 
     let can_post = move || {
         let Some(c) = s.channel(channel) else { return false };
-        s.can(c.space_id, perm::SEND_MESSAGES) && (!c.read_only || s.can(c.space_id, perm::MANAGE_MESSAGES))
+        s.can_in(c.id, perm::SEND_MESSAGES) && (!c.read_only || s.can_in(c.id, perm::MANAGE_MESSAGES))
     };
     let placeholder = move || match s.channel(channel) {
         Some(c) if c.kind.is_dm() => format!("Message @{}", s.channel_title(&c)),

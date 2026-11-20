@@ -501,7 +501,7 @@ fn ThreadPanel(thread: Id) -> impl IntoView {
     let s = store();
     let c = move || s.channel(thread);
     let archived = move || c().and_then(|c| c.thread).is_some_and(|t| t.archived);
-    let can_manage = move || c().is_some_and(|c| s.can(c.space_id, perm::MANAGE_THREADS) || c.thread.is_some_and(|t| t.owner_id == s.me_id()));
+    let can_manage = move || c().is_some_and(|c| s.can_in(c.id, perm::MANAGE_THREADS) || c.thread.is_some_and(|t| t.owner_id == s.me_id()));
     let set_archived = move |a: bool| {
         leptos::task::spawn_local(async move {
             let body = UpdateChannel { archived: Some(a), ..Default::default() };
@@ -822,11 +822,12 @@ fn Reactions(m: Message, space: Option<Id>) -> impl IntoView {
 #[component]
 fn Toolbar(channel: Id, id: Id, mine: bool, space: Option<Id>) -> impl IntoView {
     let s = store();
-    let can_pin = s.can_pin(space);
-    let can_delete = space.is_some() && s.can(space, perm::MANAGE_MESSAGES);
+    let can_pin = s.can_pin_in(channel);
+    let can_delete = space.is_some() && s.can_in(channel, perm::MANAGE_MESSAGES);
     let quick = move || s.settings.with(|st| st.recent_emoji.iter().take(3).cloned().collect::<Vec<_>>());
     let can_thread = move || {
         s.channel(channel).is_some_and(|c| c.kind == ChannelKind::Text && c.space_id.is_some())
+            && s.can_in(channel, perm::CREATE_THREADS)
             && s.message(channel, id).is_some_and(|m| m.thread.is_none() && m.kind == MessageKind::Default)
     };
     view! {

@@ -5,8 +5,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use natter_proto::{
-    Attachment, Channel, Id, Member, Message, Reaction, ReadState, ReplyPreview, Role, RoleDef, Space,
-    ThreadInfo, ThreadPreview, User, id_time, parse_user_mentions, perm,
+    Attachment, Channel, ChannelKind, Id, Member, Message, Overwrite, Reaction, ReadState, ReplyPreview, Role,
+    RoleDef, Space, ThreadInfo, ThreadPreview, User, id_time, parse_user_mentions, perm,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -181,8 +181,32 @@ impl ChannelRow {
                 archived: self.archived,
                 message_count: self.message_count as u32,
             }),
+            overwrites: vec![],
         }
     }
+}
+
+/// Permission overrides of `channels` (all of them when `space` is given), by channel.
+async fn overwrites(db: &SqlitePool, space: Option<Id>, channel: Option<Id>) -> R<HashMap<Id, Vec<Overwrite>>> {
+    let rows: Vec<(Id, Id, String, i64, i64)> = sqlx::query_as(
+        "SELECT channel_id, target_id, kind, allow, deny FROM channel_overwrites
+         WHERE channel_id IN (SELECT id FROM channels WHERE space_id = ?1) OR channel_id = ?2
+         ORDER BY channel_id, kind DESC, target_id",
+    )
+    .bind(space)
+    .bind(channel)
+    .fetch_all(db)
+    .await?;
+    let mut out: HashMap<Id, Vec<Overwrite>> = HashMap::new();
+    for (ch, id, kind, allow, deny) in rows {
+        out.entry(ch).or_default().push(Overwrite {
+            id,
+            kind: from_s(&kind),
+            allow: allow as u64,
+            deny: deny as u64,
+        });
+    }
+    Ok(out)
 }
 
 pub async fn dm_recipients(db: &SqlitePool, channel: Id) -> R<Vec<Id>> {
@@ -205,7 +229,11 @@ pub async fn channel(db: &SqlitePool, id: Id) -> R<Channel> {
     } else {
         vec![]
     };
-    Ok(row.into_channel(recipients))
+    let mut ch = row.into_channel(recipients);
+    if ch.space_id.is_some() {
+        ch.overwrites = overwrites(db, None, Some(id)).await?.remove(&id).unwrap_or_default();
+    }
+    Ok(ch)
 }
 
 pub async fn dms_of(db: &SqlitePool, user: Id) -> R<Vec<Channel>> {
@@ -340,7 +368,15 @@ pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
     .await?
     .into_iter()
     .map(|r| r.into_channel(vec![]))
-    .collect();
+    .collect::<Vec<_>>();
+    let mut ows = overwrites(db, Some(id), None).await?;
+    let channels = channels
+        .into_iter()
+        .map(|mut c| {
+            c.overwrites = ows.remove(&c.id).unwrap_or_default();
+            c
+        })
+        .collect();
     let roles = roles(db, id).await?;
     let held: Vec<(Id, Id)> =
         sqlx::query_as("SELECT user_id, role_id FROM member_roles WHERE space_id = ?")
@@ -389,9 +425,20 @@ pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
     Ok(space)
 }
 
-/// A space with its members' profiles filled in (for `SpaceCreate` and join/create replies).
-pub async fn space_with_users(db: &SqlitePool, id: Id) -> R<Space> {
-    let mut s = space(db, id).await?;
+/// The space as `user` sees it: only the channels they may view.
+pub fn visible_to(mut s: Space, user: Id) -> Space {
+    let keep: Vec<Id> = s.channels.iter().filter(|c| s.channel_permissions(user, c) != 0).map(|c| c.id).collect();
+    s.channels.retain(|c| keep.contains(&c.id));
+    s
+}
+
+pub async fn space_for(db: &SqlitePool, id: Id, user: Id) -> R<Space> {
+    Ok(visible_to(space(db, id).await?, user))
+}
+
+/// A space as `user` sees it, with its members' profiles filled in (for `SpaceCreate` and join/create replies).
+pub async fn space_with_users(db: &SqlitePool, id: Id, user: Id) -> R<Space> {
+    let mut s = space_for(db, id, user).await?;
     let ids: Vec<Id> = s.members.iter().map(|m| m.user_id).collect();
     s.users = users(db, &ids).await?;
     Ok(s)
@@ -405,7 +452,21 @@ pub async fn spaces_of(db: &SqlitePool, user: Id) -> R<Vec<Space>> {
             .await?;
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
-        out.push(space(db, id).await?);
+        out.push(space_for(db, id, user).await?);
+    }
+    Ok(out)
+}
+
+/// Channels (not threads) in `user`'s spaces that they can't see — kept out of search.
+pub async fn hidden_channels(db: &SqlitePool, user: Id) -> R<Vec<Id>> {
+    let ids: Vec<Id> = sqlx::query_scalar("SELECT space_id FROM members WHERE user_id = ?")
+        .bind(user)
+        .fetch_all(db)
+        .await?;
+    let mut out = vec![];
+    for id in ids {
+        let s = space(db, id).await?;
+        out.extend(s.channels.iter().filter(|c| c.kind != ChannelKind::Thread && s.channel_permissions(user, c) == 0).map(|c| c.id));
     }
     Ok(out)
 }
@@ -459,17 +520,21 @@ impl Access {
 pub async fn access(db: &SqlitePool, user: Id, channel_id: Id) -> R<Access> {
     let ch = channel(db, channel_id).await?;
     let perms = match ch.space_id {
-        Some(space) => perms(db, space, user).await?.ok_or_else(|| not_found("channel"))?.0,
+        // Not a member, or a channel they can't see: both look like no channel at all.
+        Some(sp) => match space(db, sp).await?.channel_permissions(user, &ch) {
+            0 => return Err(not_found("channel")),
+            p => p,
+        },
         None if ch.recipients.contains(&user) => DM_PERMS,
         None => return Err(not_found("channel")),
     };
     Ok(Access { ch, perms })
 }
 
-/// Who receives events about a channel.
+/// Who receives events about a channel: the members who can see it, or the DM's participants.
 pub async fn audience(db: &SqlitePool, ch: &Channel) -> R<Vec<Id>> {
     match ch.space_id {
-        Some(space) => space_members(db, space).await,
+        Some(sp) => Ok(space(db, sp).await?.viewers(ch)),
         None => Ok(ch.recipients.clone()),
     }
 }

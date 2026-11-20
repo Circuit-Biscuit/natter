@@ -194,6 +194,7 @@ Everything else needs `Authorization: Bearer <token>`:
 | POST / PUT | `/api/spaces/{id}/roles` | `CreateRole` → `RoleDef` / `ReorderRoles` (all ids, highest first) → 204 |
 | PATCH / DELETE | `/api/spaces/{id}/roles/{role_id}` | `UpdateRole` → 204 / → 204 |
 | PUT / DELETE | `/api/spaces/{id}/members/{user_id}/roles/{role_id}` | give / take a role → 204 |
+| PUT / DELETE | `/api/channels/{id}/permissions/{target_id}` | `SetOverwrite` (allow / deny for a role, `@everyone` = the space id, or a member) → 204 |
 | GET | `/api/spaces/{id}/bans` | → `[Ban]` |
 | PUT / DELETE | `/api/spaces/{id}/bans/{user_id}` | `BanReq` → 204 / → 204 |
 | POST | `/api/spaces/{id}/channels` | `CreateChannel` → `Channel` |
@@ -253,3 +254,18 @@ must keep the roles at or above yours where they are. Every space starts with an
 
 Spaces from before roles were upgraded at start-up (`db::upgrade_roles`): each got the Admin role and old admins
 got it. In DMs everyone may chat, share files, react, ping the group, pin and call, but not delete others' messages.
+
+### Channel permissions and private channels
+
+Each channel carries `overwrites`: allow / deny bits for `@everyone` (target id = the space id), a role or a
+member, limited to `perm::CHANNEL`. `Space::channel_permissions` starts from the member's space permissions and
+applies, in Discord's order, `@everyone`'s override, all their roles' overrides together, then their own — first
+for the channel's category, then for the channel (threads use their parent channel). Administrators and the owner
+skip overrides. Without View channels the result is 0: the channel doesn't exist for them.
+
+The server enforces that everywhere a channel can reach a client: `db::access` answers 404, `db::audience` (who
+gets message, thread, typing, reaction, voice and channel events) is only the members who can see it, `Ready` and
+`SpaceCreate` carry only visible channels (`db::visible_to`), and search leaves out hidden channels and their
+threads. When a permission change alters which channels someone can see (an override, a role's permissions, a role
+given or taken, `@everyone`, moving a channel between categories), each affected member gets the space again as
+they now see it (`SpaceCreate`, which apps treat as replace).

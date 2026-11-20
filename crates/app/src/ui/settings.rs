@@ -1125,6 +1125,7 @@ fn RoleEditor(space: Id, role: Option<Id>, editing: RwSignal<Option<Option<Id>>>
                     <div class="row gap">
                         <select class="grow" on:change=move |e| {
                             if let Ok(u) = event_target_value(&e).parse::<Id>() { set_member(u, true); }
+                            reset_picker(&e);
                         }>
                             <option value="" selected=true>"Add a member…"</option>
                             {move || others().into_iter().map(|u| view! { <option value=u.to_string()>{s.name(u, Some(space))}</option> }).collect_view()}
@@ -1170,4 +1171,172 @@ fn RoleEditor(space: Id, role: Option<Id>, editing: RwSignal<Option<Option<Id>>>
             </Show>
         </div>
     }
+}
+
+// ---------------------------------------------------------------- channel permissions
+
+/// A channel's (or category's) permissions: make it private and pick who sees it, or set any channel permission
+/// to allow / inherit / deny for @everyone, a role or a member. Changes apply at once.
+#[component]
+pub fn ChannelPermissions(channel: Id) -> impl IntoView {
+    let s = store();
+    let Some(space) = s.channel(channel).and_then(|c| c.space_id) else {
+        return view! { <p class="muted">"Direct messages have no permissions to set."</p> }.into_any();
+    };
+    let category = s.channel(channel).is_some_and(|c| c.kind == ChannelKind::Category);
+    let sp = move || s.space(space);
+    let ch = move || s.channel(channel);
+    let selected = RwSignal::new(space);
+    let extra = RwSignal::new(Vec::<Id>::new());
+    let mine = move || s.chan_perms(channel);
+    let ow = move |target: Id| ch().and_then(|c| c.overwrites.into_iter().find(|o| o.id == target));
+    let kind_of = move |target: Id| {
+        if target == space || sp().is_some_and(|x| x.roles.iter().any(|r| r.id == target)) { OverwriteKind::Role } else { OverwriteKind::Member }
+    };
+    let label = move |target: Id| -> String {
+        if target == space {
+            "@everyone".into()
+        } else if let Some(r) = sp().and_then(|x| x.roles.into_iter().find(|r| r.id == target)) {
+            r.name
+        } else {
+            s.name(target, Some(space))
+        }
+    };
+    // Sent one after another: making it private keeps your own access first, or you'd be locked out mid-way.
+    let send = move |changes: Vec<(Id, u64, u64)>| {
+        spawn_local(async move {
+            for (target, allow, deny) in changes {
+                let body = SetOverwrite { kind: Some(kind_of(target)), allow, deny };
+                if let Err(e) = api::call::<_, ()>("PUT", &format!("/api/channels/{channel}/permissions/{target}"), &body).await {
+                    store().error(e);
+                    return;
+                }
+            }
+        });
+    };
+    let bits = move |target: Id| ow(target).map_or((0, 0), |o| (o.allow, o.deny));
+    let private = move || s.is_private(channel);
+    let set_private = move |on: bool| {
+        let (a, d) = bits(space);
+        let mut changes = vec![];
+        if on && !s.can(Some(space), perm::ADMINISTRATOR) {
+            let me = s.me_id();
+            let (ma, md) = bits(me);
+            changes.push((me, ma | perm::VIEW_CHANNEL, md & !perm::VIEW_CHANNEL));
+        }
+        changes.push((space, a & !perm::VIEW_CHANNEL, if on { d | perm::VIEW_CHANNEL } else { d & !perm::VIEW_CHANNEL }));
+        send(changes);
+    };
+    let let_in = move |target: Id, on: bool| {
+        let (a, d) = bits(target);
+        send(vec![(target, if on { a | perm::VIEW_CHANNEL } else { a & !perm::VIEW_CHANNEL }, d & !perm::VIEW_CHANNEL)]);
+    };
+    // Targets with an override, @everyone first, roles by rank, then members.
+    let targets = move || {
+        let Some(x) = sp() else { return vec![] };
+        let set: Vec<Id> = ch().map(|c| c.overwrites.iter().map(|o| o.id).collect()).unwrap_or_default();
+        let mut out = vec![space];
+        out.extend(x.roles.iter().map(|r| r.id).filter(|r| set.contains(r) || extra.with(|e| e.contains(r))));
+        out.extend(x.members.iter().map(|m| m.user_id).filter(|u| set.contains(u) || extra.with(|e| e.contains(u))));
+        out
+    };
+    let addable = move |exclude: Vec<Id>| -> Vec<(Id, String)> {
+        let Some(x) = sp() else { return vec![] };
+        let mut v: Vec<(Id, String)> = x.roles.iter().filter(|r| !exclude.contains(&r.id)).map(|r| (r.id, format!("Role: {}", r.name))).collect();
+        let mut people: Vec<(Id, String)> = x.members.iter().map(|m| m.user_id).filter(|u| !exclude.contains(u)).map(|u| (u, s.name(u, Some(space)))).collect();
+        people.sort_by_key(|(_, n)| n.to_lowercase());
+        v.extend(people);
+        v
+    };
+    let allowed_in = move || targets().into_iter().filter(|&t| t != space && bits(t).0 & perm::VIEW_CHANNEL != 0).collect::<Vec<_>>();
+    view! {
+        <div class="settings">
+            <nav class="settings-nav">
+                <div class="settings-group ellipsis">{move || ch().map(|c| if category { c.name.to_uppercase() } else { format!("#{}", c.name).to_uppercase() }).unwrap_or_default()}</div>
+                <div class="settings-group">"ROLES / MEMBERS"</div>
+                {move || targets().into_iter().map(|t| view! {
+                    <button class:active=move || selected.get() == t on:click=move |_| selected.set(t)>
+                        {if kind_of(t) == OverwriteKind::Role { view! { <Icon name="shield" size=14/> }.into_any() } else { view! { <Icon name="members" size=14/> }.into_any() }}
+                        " "{label(t)}
+                    </button>
+                }).collect_view()}
+                <select class="add-target" on:change=move |e| {
+                    if let Ok(t) = event_target_value(&e).parse::<Id>() {
+                        extra.update(|x| x.push(t));
+                        selected.set(t);
+                    }
+                    reset_picker(&e);
+                }>
+                    <option value="" selected=true>"+ Add a role or member"</option>
+                    {move || addable(targets()).into_iter().map(|(id, n)| view! { <option value=id.to_string()>{n}</option> }).collect_view()}
+                </select>
+            </nav>
+            <section class="settings-body scroll">
+                <button class="settings-close icon-btn" title="Close (Esc)" on:click=|_| store().modal.set(None)><Icon name="x"/></button>
+                <h2>"Permissions"</h2>
+                <p class="muted">{if category {
+                    "Channels in this category get these first, then their own."
+                } else {
+                    "These apply on top of what each role may do in the space."
+                }}</p>
+                {switch(if category { "Private category" } else { "Private channel" },
+                    "Only the roles and members you let in can see it. Admins and the owner always can.",
+                    private, set_private)}
+                <Show when=private>
+                    <h3>"Who can see it"</h3>
+                    <div class="role-chips">
+                        {move || allowed_in().into_iter().map(|t| view! {
+                            <span class="role-chip">
+                                {if kind_of(t) == OverwriteKind::Role { view! { <Icon name="shield" size=12/> }.into_any() } else { view! { <Icon name="members" size=12/> }.into_any() }}
+                                <span>{label(t)}</span>
+                                <button class="chip-x" title="Take away" on:click=move |_| let_in(t, false)>"×"</button>
+                            </span>
+                        }).collect_view()}
+                        {move || allowed_in().is_empty().then(|| view! { <span class="muted small">"Nobody yet, apart from admins and the owner."</span> })}
+                    </div>
+                    <select class="wide-input add-viewer" on:change=move |e| {
+                        if let Ok(t) = event_target_value(&e).parse::<Id>() { let_in(t, true); }
+                        reset_picker(&e);
+                    }>
+                        <option value="" selected=true>"Let in a role or member…"</option>
+                        {move || addable(allowed_in()).into_iter().map(|(id, n)| view! { <option value=id.to_string()>{n}</option> }).collect_view()}
+                    </select>
+                </Show>
+                <h3>{move || format!("Advanced permissions — {}", label(selected.get()))}</h3>
+                <p class="muted small">"✓ allows, ✗ denies, / leaves it to the roles."</p>
+                {perm::LIST.into_iter().filter(|(f, ..)| f & perm::CHANNEL != 0).map(|(f, name, hint, _)| {
+                    let state = move || {
+                        let (a, d) = bits(selected.get());
+                        if a & f != 0 { 1 } else if d & f != 0 { -1 } else { 0 }
+                    };
+                    let pick = move |v: i8| {
+                        let t = selected.get_untracked();
+                        let (a, d) = bits(t);
+                        let (a, d) = (a & !f, d & !f);
+                        send(vec![(t, if v == 1 { a | f } else { a }, if v == -1 { d | f } else { d })]);
+                    };
+                    let off_limits = move || f & !mine() != 0;
+                    view! {
+                        <div class="perm-row" class:off-limits=off_limits>
+                            <div class="grow">
+                                <div class="switch-label">{name}</div>
+                                <div class="muted small">{hint}</div>
+                            </div>
+                            <div class="tri">
+                                <button class="deny" title="Deny" class:active=move || state() == -1 disabled=off_limits on:click=move |_| pick(-1)><Icon name="x" size=16/></button>
+                                <button class="inherit" title="Inherit" class:active=move || state() == 0 disabled=off_limits on:click=move |_| pick(0)>"/"</button>
+                                <button class="allow" title="Allow" class:active=move || state() == 1 disabled=off_limits on:click=move |_| pick(1)><Icon name="check" size=16/></button>
+                            </div>
+                        </div>
+                    }
+                }).collect_view()}
+            </section>
+        </div>
+    }
+    .into_any()
+}
+
+/// "Add …" pickers go back to their prompt after a choice (the list under them changes).
+fn reset_picker(e: &leptos::ev::Event) {
+    event_target::<web_sys::HtmlSelectElement>(e).set_value("");
 }
