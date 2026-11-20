@@ -247,10 +247,15 @@ pub fn run() {
     let builder = builder
         // A second launch just brings the running Natter forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show(app)))
-        // Size and position only: whether the window shows is decided at startup (tray start).
+        // Size and position only: whether the window shows is decided at startup (tray start), and the frame is
+        // always ours (state saved by 0.5 and older says "decorated", which would bring the Windows title bar back).
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_state_flags(tauri_plugin_window_state::StateFlags::all() & !tauri_plugin_window_state::StateFlags::VISIBLE)
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        & !tauri_plugin_window_state::StateFlags::VISIBLE
+                        & !tauri_plugin_window_state::StateFlags::DECORATIONS,
+                )
                 .build(),
         )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

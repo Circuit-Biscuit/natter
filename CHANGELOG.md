@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-11-20
+
+- Desktop: the Windows title bar came back above Natter's own when updating from an earlier version (the saved
+  window state remembered the old frame). Only size, position and maximised are remembered now.
 - Natter is free software under the GNU AGPL v3.0 or later. The deploy guide covers servers without a Nextcloud.
 
 ## [0.6.0] — 2026-11-20
