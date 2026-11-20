@@ -299,8 +299,8 @@ fn UserPanel() -> impl IntoView {
             <div class="up-me" on:click=status_menu>
                 {move || view! { <Avatar user=me() size=32 status=true ring=true/> }}
                 <div class="up-text">
-                    <span class="ellipsis name">{move || s.me.get().map(|u| u.display_name).unwrap_or_default()}</span>
-                    <span class="ellipsis sub">{move || s.me.get().and_then(|u| u.custom_status).unwrap_or_else(|| super::status_label(s.my_status.get()).to_string())}</span>
+                    <span class="ellipsis name">{move || s.name(me(), s.nav.get().space)}</span>
+                    <span class="ellipsis sub">{move || s.status_text(me(), s.nav.get().space).unwrap_or_else(|| super::status_label(s.my_status.get()).to_string())}</span>
                 </div>
             </div>
             <button class="icon-btn" class:danger=muted title=move || if muted() { "Unmute (Ctrl+Shift+M)" } else { "Mute (Ctrl+Shift+M)" }

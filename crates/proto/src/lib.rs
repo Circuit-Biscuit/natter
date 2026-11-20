@@ -177,6 +177,9 @@ pub struct Member {
     /// Role ids (see `Space::roles`).
     #[serde(default)]
     pub roles: Vec<Id>,
+    /// Status shown in this space instead of their own (`User::custom_status`).
+    #[serde(default)]
+    pub custom_status: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -879,6 +882,9 @@ pub struct UpdateMember {
     pub role: Option<Role>,
     /// `Some("")` clears it.
     pub nickname: Option<String>,
+    /// Your status in this space (only your own); `Some("")` goes back to your usual one.
+    #[serde(default)]
+    pub custom_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1048,7 +1054,7 @@ mod tests {
         let role = |id, position, permissions, color: &str| RoleDef {
             id, name: format!("r{id}"), color: color.into(), emoji: String::new(), position, permissions, hoist: false,
         };
-        let member = |user_id, roles: Vec<Id>| Member { user_id, role: Role::Member, nickname: None, joined_at: 0, roles };
+        let member = |user_id, roles: Vec<Id>| Member { user_id, role: Role::Member, nickname: None, joined_at: 0, roles, custom_status: None };
         let space = Space {
             id: 1, name: "s".into(), icon: None, owner_id: 10, channels: vec![], users: vec![],
             members: vec![member(10, vec![]), member(11, vec![100]), member(12, vec![101, 102]), member(13, vec![])],
@@ -1073,7 +1079,7 @@ mod tests {
         };
         let ow = |id, kind, allow, deny| Overwrite { id, kind, allow, deny };
         let hide = ow(1, OverwriteKind::Role, 0, perm::VIEW_CHANNEL);
-        let member = |user_id, roles: Vec<Id>| Member { user_id, role: Role::Member, nickname: None, joined_at: 0, roles };
+        let member = |user_id, roles: Vec<Id>| Member { user_id, role: Role::Member, nickname: None, joined_at: 0, roles, custom_status: None };
         let space = Space {
             id: 1, name: "s".into(), icon: None, owner_id: 10, users: vec![],
             members: vec![member(10, vec![]), member(11, vec![100]), member(12, vec![]), member(13, vec![101])],

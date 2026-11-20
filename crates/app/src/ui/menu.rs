@@ -278,6 +278,7 @@ pub fn space_menu(id: Id) -> Vec<Option<MenuItem>> {
     let mut v = vec![
         Some(MenuItem::new("Mark As Read", move || crate::store::mark_space_read(id))),
         (p & perm::CREATE_INVITES != 0).then(|| MenuItem::new("Invite People", move || s.modal.set(Some(Modal::Invite(id))))),
+        Some(MenuItem::new("Edit Space Profile", move || s.modal.set(Some(Modal::SpaceProfile(id))))),
         Some(MenuItem::new(if muted { "Unmute Space" } else { "Mute Space" }, move || {
             s.update_settings(|st| if muted { st.muted.retain(|&x| x != id) } else { st.muted.push(id) })
         })),

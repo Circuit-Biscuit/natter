@@ -84,7 +84,7 @@ fn MemberRow(user: Id, space: Option<Id>) -> impl IntoView {
                     {move || (space.and_then(|sp| s.space(sp)).map(|sp| sp.owner_id) == Some(user)).then(|| view! { <span class="crown" title="Space owner">"👑"</span> })}
                     {move || s.user(user).is_some_and(|u| u.bot).then(|| view! { <span class="tag">"BOT"</span> })}
                 </span>
-                {move || s.user(user).and_then(|u| u.custom_status).map(|c| view! { <span class="sub ellipsis">{c}</span> })}
+                {move || s.status_text(user, space).map(|c| view! { <span class="sub ellipsis">{c}</span> })}
             </div>
             {move || s.voice.with(|v| v.get(&user).map(|v| v.channel_id)).map(|_| view! { <span class="in-call" title="In a call"><Icon name="speaker" size=14/></span> })}
         </div>
@@ -140,7 +140,7 @@ fn Profile(user: Id, x: i32, y: i32) -> impl IntoView {
                     {move || u().filter(|u| u.admin).map(|_| view! { <span class="tag">"SERVER ADMIN"</span> })}
                     {move || u().filter(|u| u.bot).map(|_| view! { <span class="tag">"BOT"</span> })}
                 </div>
-                {move || u().and_then(|u| u.custom_status).map(|c| view! { <div class="profile-status">{c}</div> })}
+                {move || s.status_text(user, space).map(|c| view! { <div class="profile-status">{c}</div> })}
                 <div class="profile-section">
                     <div class="profile-label">"Status"</div>
                     <div>{move || status_label(s.status(user))}</div>

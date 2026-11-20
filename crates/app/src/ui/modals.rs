@@ -34,6 +34,7 @@ pub fn ModalHost() -> impl IntoView {
                 Modal::CreateThread { channel, message } => view! { <CreateThreadDialog channel=channel message=message/> }.into_any(),
                 Modal::Threads(c) => view! { <ThreadBrowser channel=c/> }.into_any(),
                 Modal::ChannelPermissions(c) => view! { <settings::ChannelPermissions channel=c/> }.into_any(),
+                Modal::SpaceProfile(sp) => view! { <SpaceProfile space=sp/> }.into_any(),
                 Modal::WordGame(sp) => view! { <super::word::WordGame space=sp/> }.into_any(),
                 Modal::Confirm { title, body, ok, action } => view! { <Confirm title=title body=body ok=ok action=action/> }.into_any(),
             };
@@ -50,6 +51,50 @@ pub fn ModalHost() -> impl IntoView {
 
 fn close() {
     store().modal.set(None);
+}
+
+/// Your nickname and status in one space; blank keeps your usual ones.
+#[component]
+fn SpaceProfile(space: Id) -> impl IntoView {
+    let s = store();
+    let me = s.me_id();
+    let mine = s.member(space, me);
+    let nick = RwSignal::new(mine.as_ref().and_then(|m| m.nickname.clone()).unwrap_or_default());
+    let status = RwSignal::new(mine.and_then(|m| m.custom_status).unwrap_or_default());
+    let user = s.me.get_untracked();
+    let first = NodeRef::<leptos::html::Input>::new();
+    Effect::new(move |_| {
+        if let Some(el) = first.get() {
+            let _ = el.focus();
+        }
+    });
+    let save = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        let body = UpdateMember { nickname: Some(nick.get_untracked()), custom_status: Some(status.get_untracked()), ..Default::default() };
+        spawn_local(async move {
+            match api::call::<_, ()>("PATCH", &format!("/api/spaces/{space}/members/{me}"), &body).await {
+                Ok(()) => {
+                    close();
+                    store().toast("Space profile saved.", false);
+                }
+                Err(e) => store().error(e),
+            }
+        });
+    };
+    view! {
+        <h2>"Space profile"</h2>
+        <p class="modal-text">{format!("How you show up in {} only. Leave a field empty to use your usual one.", s.space(space).map(|sp| sp.name).unwrap_or_default())}</p>
+        <form class="form" on:submit=save>
+            <label>"Nickname"<input maxlength="32" node_ref=first placeholder=user.as_ref().map(|u| u.display_name.clone()).unwrap_or_default()
+                prop:value=move || nick.get() on:input=move |e| nick.set(event_target_value(&e))/></label>
+            <label>"Status"<input maxlength="128" placeholder=user.and_then(|u| u.custom_status).unwrap_or_else(|| "No status".into())
+                prop:value=move || status.get() on:input=move |e| status.set(event_target_value(&e))/></label>
+            <div class="modal-foot">
+                <button type="button" class="btn link" on:click=|_| close()>"Cancel"</button>
+                <button class="btn primary" type="submit">"Save"</button>
+            </div>
+        </form>
+    }
 }
 
 #[component]

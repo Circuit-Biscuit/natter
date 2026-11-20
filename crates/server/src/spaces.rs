@@ -74,7 +74,7 @@ async fn roles_changed(st: &St, space: Id) -> R<()> {
     Ok(())
 }
 
-/// Tell the space about one member's new roles / nickname.
+/// Tell the space about one member's new roles / nickname / status.
 async fn member_changed(st: &St, space: Id, user: Id) -> R<()> {
     let s = db::space(&st.db, space).await?;
     if let Some(member) = s.members.into_iter().find(|m| m.user_id == user) {
@@ -572,6 +572,22 @@ pub async fn update_member(
         };
         sqlx::query("UPDATE members SET nickname = ? WHERE space_id = ? AND user_id = ?")
             .bind(nick)
+            .bind(space)
+            .bind(target)
+            .execute(&st.db)
+            .await?;
+    }
+    if let Some(status) = &req.custom_status {
+        if target != auth.user {
+            return Err(forbidden("only they can set their status"));
+        }
+        let status = if status.trim().is_empty() {
+            None
+        } else {
+            Some(clean(status, 128, "status")?)
+        };
+        sqlx::query("UPDATE members SET custom_status = ? WHERE space_id = ? AND user_id = ?")
+            .bind(status)
             .bind(space)
             .bind(target)
             .execute(&st.db)

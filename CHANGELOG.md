@@ -9,6 +9,9 @@
   Overview); at 09:00 the **Daily Word bot** posts yesterday's results there, @mentioning everyone who played.
 - Stats (played, win %, streaks, guess distribution), who has played today, and week / month / all-time standings.
 - App accounts such as the bot show a **BOT** tag.
+- **Space profiles:** "Edit Space Profile" in a space's menu sets the name and status you show in that space only
+  (empty = your usual one). Shown in messages, the member list, profiles and your panel at the bottom left. Older
+  apps still show the nickname; they show your usual status.
 
 - **Camera bitrate cap:** cameras send at most 1 Mbit/s in calls (about half the browser default), set by the server
   (`NATTER_CAMERA_KBPS`, 0 = off) through the SDP it hands the apps — no app update needed. Screen shares are unchanged.

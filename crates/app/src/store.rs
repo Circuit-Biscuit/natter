@@ -178,6 +178,8 @@ pub enum Modal {
     CreateThread { channel: Id, message: Option<Id> },
     Threads(Id),
     ChannelPermissions(Id),
+    /// Your nickname and status in one space.
+    SpaceProfile(Id),
     /// Daily Word, played from a space (results post there) or a DM.
     WordGame(Option<Id>),
     Confirm { title: String, body: String, ok: String, action: Action },
@@ -469,6 +471,14 @@ impl Store {
             return n;
         }
         self.user(user).map(|u| u.display_name).unwrap_or_else(|| "Unknown user".into())
+    }
+
+    /// Their status line in the space, else their own.
+    pub fn status_text(&self, user: Id, space: Option<Id>) -> Option<String> {
+        space
+            .and_then(|s| self.member(s, user))
+            .and_then(|m| m.custom_status)
+            .or_else(|| self.user(user).and_then(|u| u.custom_status))
     }
 
     pub fn status(&self, user: Id) -> Status {

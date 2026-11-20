@@ -192,7 +192,7 @@ Everything else needs `Authorization: Bearer <token>`:
 | PATCH / DELETE | `/api/spaces/{id}` | `UpdateSpace` → 204 / → 204 |
 | GET / POST | `/api/spaces/{id}/invites` | → `[Invite]` / `CreateInvite` → `Invite` |
 | POST / DELETE | `/api/invites/{code}` | join → `Space` / revoke → 204 |
-| PATCH / DELETE | `/api/spaces/{id}/members/{user_id}` | `UpdateMember` (nickname) → 204 / leave (yourself) or kick → 204 |
+| PATCH / DELETE | `/api/spaces/{id}/members/{user_id}` | `UpdateMember` (nickname: yours, or below you with Manage nicknames; `custom_status`: only your own, shown in that space instead of your usual one) → 204 / leave (yourself) or kick → 204 |
 | POST / PUT | `/api/spaces/{id}/roles` | `CreateRole` → `RoleDef` / `ReorderRoles` (all ids, highest first) → 204 |
 | PATCH / DELETE | `/api/spaces/{id}/roles/{role_id}` | `UpdateRole` → 204 / → 204 |
 | PUT / DELETE | `/api/spaces/{id}/members/{user_id}/roles/{role_id}` | give / take a role → 204 |

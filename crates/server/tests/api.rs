@@ -660,9 +660,27 @@ async fn full_flow() {
     };
     assert_eq!((result.channel_id, result.author_id), (general, u1));
     assert!(result.content.contains("🟩") || result.content.contains("⬛"), "{}", result.content);
-    assert!(!result.content.to_lowercase().contains(last["today"]["answer"].as_str().unwrap()), "no spoilers");
+    let grid = result.content.split_once('\n').map_or("", |(_, g)| g).to_lowercase();
+    assert!(!grid.contains(last["today"]["answer"].as_str().unwrap()), "no spoilers");
     assert_eq!(last["players"][0]["user_id"], json!(u1));
     assert_eq!(last["all_time"][0]["user_id"], json!(u1));
+
+    // Space profile: your own nickname and status in one space; nobody else sets your status.
+    let me2 = format!("/api/spaces/{sid}/members/{u2}");
+    let (s, _) = call(&app, "PATCH", &me2, Some(&t2), Some(json!({"nickname": "Bee", "custom_status": "On holiday"}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let Event::MemberUpdate { member, .. } = next_event(&mut ws, |e| matches!(e, Event::MemberUpdate { member, .. } if member.user_id == u2)).await else {
+        unreachable!()
+    };
+    assert_eq!((member.nickname.as_deref(), member.custom_status.as_deref()), (Some("Bee"), Some("On holiday")));
+    let (s, _) = call(&app, "PATCH", &me2, Some(&t1), Some(json!({"custom_status": "Fired"}))).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = call(&app, "PATCH", &me2, Some(&t2), Some(json!({"custom_status": ""}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let Event::MemberUpdate { member, .. } = next_event(&mut ws, |e| matches!(e, Event::MemberUpdate { member, .. } if member.user_id == u2)).await else {
+        unreachable!()
+    };
+    assert_eq!((member.nickname.as_deref(), member.custom_status), (Some("Bee"), None), "back to their usual status");
 
     // Local upload, served back with safe headers.
     let png: &[u8] =

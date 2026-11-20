@@ -387,18 +387,19 @@ pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
             .bind(id)
             .fetch_all(db)
             .await?;
-    let members = sqlx::query_as::<_, (Id, Option<String>, i64)>(
-        "SELECT user_id, nickname, joined_at FROM members WHERE space_id = ? ORDER BY joined_at, user_id",
+    let members = sqlx::query_as::<_, (Id, Option<String>, i64, Option<String>)>(
+        "SELECT user_id, nickname, joined_at, custom_status FROM members WHERE space_id = ? ORDER BY joined_at, user_id",
     )
     .bind(id)
     .fetch_all(db)
     .await?
     .into_iter()
-    .map(|(user_id, nickname, joined_at)| Member {
+    .map(|(user_id, nickname, joined_at, custom_status)| Member {
         user_id,
         role: Role::Member,
         nickname,
         joined_at,
+        custom_status,
         roles: held.iter().filter(|(u, _)| *u == user_id).map(|&(_, r)| r).collect(),
     })
     .collect();

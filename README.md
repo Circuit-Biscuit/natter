@@ -125,6 +125,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Threads: from any message or the channel, side panel, sidebar, auto-archive, archived list | ✅ |
 | Unread markers, mention counts, read sync across devices | ✅ |
 | Presence, idle, DND, invisible, custom status, typing | ✅ |
+| Space profiles: your own nickname and status per space | ✅ |
 | Invites (expiry, max uses), kick, ban | ✅ |
 | Roles: colours, icons, 16 permissions, @everyone defaults, drag to reorder, hierarchy, one-click admin | ✅ |
 | Voice & video calls via SFU, screen share, push to talk | ✅ |
