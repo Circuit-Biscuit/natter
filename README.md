@@ -199,6 +199,9 @@ powershell -ExecutionPolicy Bypass -File scripts\bump.ps1 0.2.0
 the Windows installer, the macOS universal `.dmg`, the Linux AppImage and `.deb`, and the Linux server bundle, and
 publishes them as release `v0.2.0`. Pushes that don't change the version are built and tested by **CI**.
 
+The Android APK is signed with a key that never goes to GitHub, so it's built locally (command above) and attached to
+the draft while the workflow runs: `gh release upload v0.2.0 Natter_0.2.0.apk` — it then lands in the checksums too.
+
 First-time setup of the repository is a single command: `scripts\publish.ps1` (creates the private repository under
 the organization and pushes).
 

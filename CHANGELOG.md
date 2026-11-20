@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0] — 2026-11-20
 
 - **Android app** (Tauri, same Rust UI): APK for Android 7+, microphone/camera/notification permissions, keyboard-aware layout.
 - **Phone layout** (app and mobile web): one screen at a time — channels, chat, then threads, members and search on
