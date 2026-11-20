@@ -162,7 +162,8 @@ pub async fn join(
         user: me,
         room: ch,
         rtc: Box::new(rtc),
-        kinds,
+        kinds: kinds.clone(),
+        camera_kbps: st.cfg.camera_kbps,
     });
     broadcast(&st, ch, &Event::VoiceStateUpdate(state)).await?;
 
@@ -175,7 +176,7 @@ pub async fn join(
             .insert(ch, (msg.id, now_ms()));
     }
     Ok(Json(VoiceAnswer {
-        sdp: answer.to_sdp_string(),
+        sdp: crate::sfu::cap_camera(&answer.to_sdp_string(), &kinds, st.cfg.camera_kbps),
     }))
 }
 

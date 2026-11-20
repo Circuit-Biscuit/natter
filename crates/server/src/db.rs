@@ -63,7 +63,7 @@ macro_rules! user_select {
     ($tail:literal) => {
         concat!(
             "SELECT u.id, u.username, u.display_name, u.about, u.custom_status, u.admin, u.created_at, ",
-            "up.token AS av_token, up.filename AS av_name ",
+            "up.token AS av_token, up.filename AS av_name, up.url AS av_url ",
             "FROM users u LEFT JOIN uploads up ON up.id = u.avatar_id ",
             $tail
         )
@@ -81,6 +81,8 @@ struct UserRow {
     created_at: i64,
     av_token: Option<String>,
     av_name: Option<String>,
+    /// Set when the picture was stored in the uploader's Nextcloud (before icons stayed on the server).
+    av_url: Option<String>,
 }
 
 impl From<UserRow> for User {
@@ -89,7 +91,7 @@ impl From<UserRow> for User {
             id: r.id,
             username: r.username,
             display_name: r.display_name,
-            avatar: r.av_token.zip(r.av_name).map(|(t, n)| file_url(&t, &n)),
+            avatar: r.av_url.or_else(|| r.av_token.zip(r.av_name).map(|(t, n)| file_url(&t, &n))),
             about: r.about,
             custom_status: r.custom_status,
             admin: r.admin,
@@ -351,8 +353,8 @@ pub async fn upgrade_roles(db: &SqlitePool, mut next_id: impl FnMut() -> Id) -> 
 }
 
 pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
-    let (name, owner_id, everyone, token, filename): (String, Id, i64, Option<String>, Option<String>) = sqlx::query_as(
-        "SELECT s.name, s.owner_id, s.everyone_permissions, up.token, up.filename FROM spaces s
+    let (name, owner_id, everyone, token, filename, icon_url): (String, Id, i64, Option<String>, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT s.name, s.owner_id, s.everyone_permissions, up.token, up.filename, up.url FROM spaces s
          LEFT JOIN uploads up ON up.id = s.icon_id WHERE s.id = ?",
     )
     .bind(id)
@@ -401,7 +403,8 @@ pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
     let mut space = Space {
         id,
         name,
-        icon: token.zip(filename).map(|(t, n)| file_url(&t, &n)),
+        // A Nextcloud-stored icon (uploaded before icons stayed on the server) has no local file.
+        icon: icon_url.or_else(|| token.zip(filename).map(|(t, n)| file_url(&t, &n))),
         owner_id,
         channels,
         members,

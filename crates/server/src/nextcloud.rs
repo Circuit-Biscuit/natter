@@ -635,6 +635,9 @@ pub async fn store_upload(
     body: &[u8],
 ) -> Option<Stored> {
     let nc = st.nc.as_ref()?;
+    // Only message attachments go to Nextcloud. Avatars and space icons (uploaded without a channel) stay on this
+    // server: small, shown everywhere, and not tied to one person's Nextcloud folder or share links.
+    channel?;
     let creds = session_creds(st, auth.session).await.ok()??;
     let sub = match channel {
         Some(c) => match db::access(&st.db, auth.user, c).await {

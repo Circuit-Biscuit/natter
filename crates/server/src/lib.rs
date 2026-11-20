@@ -39,6 +39,8 @@ pub struct Config {
     pub registration: Registration,
     pub max_upload: u64,
     pub media_port: u16,
+    /// Most a camera may send in a call, kbit/s (`NATTER_CAMERA_KBPS`, 0 = no cap).
+    pub camera_kbps: u32,
     pub public_ip: Option<IpAddr>,
     pub web_dir: Option<PathBuf>,
     pub nextcloud_url: Option<String>,
@@ -74,6 +76,11 @@ impl Config {
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(50000),
+            // ponytail: ~half the browser default (2.5 Mbit/s at 720p); simulcast if big calls ever need more.
+            camera_kbps: var("NATTER_CAMERA_KBPS")
+                .map(|v| v.parse())
+                .transpose()?
+                .unwrap_or(1000),
             public_ip: var("NATTER_PUBLIC_IP").map(|v| v.parse()).transpose()?,
             web_dir: var("NATTER_WEB_DIR").map(PathBuf::from),
             nextcloud_url: var("NATTER_NEXTCLOUD_URL"),

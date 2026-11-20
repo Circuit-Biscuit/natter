@@ -30,6 +30,7 @@
 | `NATTER_REGISTRATION` | `invite` | `open` · `invite` (a valid invite code is needed) · `closed`. The first account can always be created and becomes admin. |
 | `NATTER_MAX_UPLOAD_MB` | `100` | Upload size limit |
 | `NATTER_MEDIA_PORT` | `50000` | UDP port for all call media |
+| `NATTER_CAMERA_KBPS` | `1000` | Most a camera sends in a call, kbit/s (`b=AS`/`b=TIAS` in the SDP the server hands out); `0` = no cap |
 | `NATTER_PUBLIC_IP` | auto (outbound interface) | IP announced to call clients; set it to the public IP on a server |
 | `NATTER_WEB_DIR` | unset | Serve the built app (`crates/app/dist`) at `/` |
 | `NATTER_NEXTCLOUD_URL` | unset | Nextcloud to sign in with and store files in, e.g. `https://cloud.example.com` |

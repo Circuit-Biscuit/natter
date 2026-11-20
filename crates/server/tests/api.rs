@@ -149,6 +149,7 @@ async fn full_flow() {
         registration: Registration::Invite,
         max_upload: 10 * 1024 * 1024,
         media_port: 0,
+        camera_kbps: 1000,
         public_ip: Some("127.0.0.1".parse().unwrap()),
         web_dir: None,
         nextcloud_url: Some(nc_base.clone()),
@@ -746,11 +747,24 @@ async fn full_flow() {
     );
     let t3 = nca["token"].as_str().unwrap().to_string();
 
-    // Its uploads go to Nextcloud and come back as a public link; deleting the message removes the share.
+    // Avatars and space icons (uploaded without a channel) stay on the server, even for Nextcloud sessions.
+    let req = Request::post("/api/uploads")
+        .header("authorization", format!("Bearer {t3}"))
+        .header("content-type", "image/png")
+        .header("x-filename", "me.png")
+        .body(Body::from(png.clone()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let local: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(local["url"].as_str().unwrap().starts_with("/files/"), "{local}");
+    assert!(local["link"].is_null());
+
+    // Its attachments go to Nextcloud and come back as a public link; deleting the message removes the share.
     let req = Request::post("/api/uploads")
         .header("authorization", format!("Bearer {t3}"))
         .header("content-type", "image/png")
         .header("x-filename", "dot%20one.png")
+        .header("x-channel-id", general.to_string())
         .body(Body::from(png))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();

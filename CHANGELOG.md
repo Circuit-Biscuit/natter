@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- **Camera bitrate cap:** cameras send at most 1 Mbit/s in calls (about half the browser default), set by the server
+  (`NATTER_CAMERA_KBPS`, 0 = off) through the SDP it hands the apps — no app update needed. Screen shares are unchanged.
+- **Space icons and avatars uploaded while signed in with Nextcloud** showed as broken images: they were stored in
+  the uploader's Nextcloud but looked for on the server. Existing ones now load from their Nextcloud link; new ones
+  stay on the server.
 - Server: a page with "&" just before non-English text no longer stops the link-preview catch-up (fixed live).
 
 ## [0.5.0] — 2026-11-20

@@ -28,6 +28,8 @@ pub enum SfuCmd {
         room: Id,
         rtc: Box<Rtc>,
         kinds: HashMap<Mid, TrackKind>,
+        /// Cap on what this app sends from its camera, in kbit/s (0 = none).
+        camera_kbps: u32,
     },
     Leave {
         client: u64,
@@ -66,8 +68,9 @@ pub fn run(
                     room,
                     rtc,
                     kinds,
+                    camera_kbps,
                 }) => {
-                    let mut c = Client::new(client, user, room, *rtc, kinds);
+                    let mut c = Client::new(client, user, room, *rtc, kinds, camera_kbps);
                     for track in clients
                         .iter()
                         .filter(|o| o.room == room)
@@ -187,6 +190,8 @@ struct Client {
     rtc: Rtc,
     /// What the app said each of its m-lines carries.
     kinds: HashMap<Mid, TrackKind>,
+    /// Camera cap written into every SDP we hand this app (0 = none).
+    camera_kbps: u32,
     pending: Option<SdpPendingOffer>,
     cid: Option<ChannelId>,
     tracks_in: Vec<TrackInEntry>,
@@ -234,13 +239,14 @@ impl TrackOut {
 }
 
 impl Client {
-    fn new(id: u64, user: Id, room: Id, rtc: Rtc, kinds: HashMap<Mid, TrackKind>) -> Client {
+    fn new(id: u64, user: Id, room: Id, rtc: Rtc, kinds: HashMap<Mid, TrackKind>, camera_kbps: u32) -> Client {
         Client {
             id,
             user,
             room,
             rtc,
             kinds,
+            camera_kbps,
             pending: None,
             cid: None,
             tracks_in: vec![],
@@ -413,7 +419,8 @@ impl Client {
         let Some(mut channel) = self.cid.and_then(|id| self.rtc.channel(id)) else {
             return false;
         };
-        let json = serde_json::to_string(&offer).expect("offers serialize");
+        let sdp = cap_camera(&offer.to_sdp_string(), &self.kinds, self.camera_kbps);
+        let json = serde_json::json!({ "type": "offer", "sdp": sdp }).to_string();
         if channel.write(false, json.as_bytes()).is_err() {
             self.rtc.disconnect();
             return false;
@@ -448,7 +455,8 @@ impl Client {
                 _ => {}
             }
         }
-        let json = serde_json::to_string(&answer).expect("answers serialize");
+        let sdp = cap_camera(&answer.to_sdp_string(), &self.kinds, self.camera_kbps);
+        let json = serde_json::json!({ "type": "answer", "sdp": sdp }).to_string();
         let sent = self
             .cid
             .and_then(|id| self.rtc.channel(id))
@@ -542,5 +550,66 @@ impl Propagated {
             | Propagated::KeyframeRequest(c, _, _, _) => Some(*c),
             _ => None,
         }
+    }
+}
+
+/// Cap the app's camera: a `b=AS` (and `b=TIAS`) line in its camera's m-section of SDP we hand it. Browsers keep
+/// what they send under the remote description's bandwidth line, so this needs no change in the apps.
+pub fn cap_camera(sdp: &str, kinds: &HashMap<Mid, TrackKind>, kbps: u32) -> String {
+    if kbps == 0 {
+        return sdp.to_string();
+    }
+    let cams: Vec<String> = kinds.iter().filter(|(_, k)| **k == TrackKind::Cam).map(|(m, _)| m.to_string()).collect();
+    let mut out: Vec<String> = vec![];
+    // Split into the session part and one block per m= line.
+    let mut sections: Vec<Vec<&str>> = vec![vec![]];
+    for line in sdp.lines() {
+        if line.starts_with("m=") {
+            sections.push(vec![]);
+        }
+        sections.last_mut().expect("one section").push(line);
+    }
+    for section in sections {
+        let is_cam = section.first().is_some_and(|l| l.starts_with("m=video"))
+            && section.iter().any(|l| l.strip_prefix("a=mid:").is_some_and(|m| cams.iter().any(|c| c == m.trim())));
+        if !is_cam {
+            out.extend(section.iter().map(|l| l.to_string()));
+            continue;
+        }
+        // SDP order is m=, i=, c=, b=, then a=: the bandwidth lines go after c= (or after m= without one).
+        let lines: Vec<&str> = section.into_iter().filter(|l| !l.starts_with("b=")).collect();
+        let at = lines.iter().position(|l| l.starts_with("c=")).unwrap_or(0) + 1;
+        for (i, l) in lines.iter().enumerate() {
+            out.push(l.to_string());
+            if i + 1 == at {
+                out.push(format!("b=AS:{kbps}"));
+                out.push(format!("b=TIAS:{}", u64::from(kbps) * 1000));
+            }
+        }
+    }
+    let mut sdp = out.join("\r\n");
+    sdp.push_str("\r\n");
+    sdp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn caps_only_the_camera() {
+        let sdp = "v=0\r\no=- 1 2 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n\
+            m=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=mid:0\r\n\
+            m=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\nb=AS:5000\r\na=mid:1\r\na=sendrecv\r\n\
+            m=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\na=mid:2\r\n";
+        let kinds: HashMap<Mid, TrackKind> =
+            [(Mid::from("0"), TrackKind::Mic), (Mid::from("1"), TrackKind::Cam), (Mid::from("2"), TrackKind::Screen)].into();
+        let out = cap_camera(sdp, &kinds, 1000);
+        let cam = out.split("m=video").nth(1).unwrap();
+        let screen = out.split("m=video").nth(2).unwrap();
+        assert!(cam.contains("c=IN IP4 0.0.0.0\r\nb=AS:1000\r\nb=TIAS:1000000\r\na=mid:1"), "{cam}");
+        assert!(!cam.contains("b=AS:5000"), "the old limit goes");
+        assert!(!screen.contains("b=") && !out.split("m=audio").nth(1).unwrap().split("m=video").next().unwrap().contains("b="));
+        assert_eq!(cap_camera(sdp, &kinds, 0), sdp, "0 = no cap");
     }
 }
