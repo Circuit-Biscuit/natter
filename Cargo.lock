@@ -3562,7 +3562,7 @@ dependencies = [
 
 [[package]]
 name = "natter-app"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "console_error_panic_hook",
  "emojis",
@@ -3579,7 +3579,7 @@ dependencies = [
 
 [[package]]
 name = "natter-desktop"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3595,7 +3595,7 @@ dependencies = [
 
 [[package]]
 name = "natter-proto"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3603,7 +3603,7 @@ dependencies = [
 
 [[package]]
 name = "natter-server"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "argon2",
