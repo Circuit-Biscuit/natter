@@ -66,6 +66,8 @@ pub fn App() -> impl IntoView {
         icon
     });
 
+    // The desktop window has no native frame; we draw a slim title bar instead.
+    let framed = desktop::is_desktop();
     view! {
         // One class string: a `class:` toggle next to a changing `class=` is wiped whenever the string changes
         // (a synced colour theme dropped "mobile" and phones got the desktop layout).
@@ -73,9 +75,11 @@ pub fn App() -> impl IntoView {
                 let mut c = s.settings.with(app_classes);
                 if s.settings.with(|st| st.compact) { c += " compact"; }
                 if s.mobile.get() { c += " mobile"; }
+                if framed { c += " framed"; }
                 c
             }
             style=move || s.settings.with(app_style)>
+            {framed.then(|| view! { <TitleBar/> })}
             {move || {
                 if !signed_in.get() {
                     view! { <login::Login on_done=Callback::new(move |_| signed_in.set(true))/> }.into_any()
@@ -86,6 +90,25 @@ pub fn App() -> impl IntoView {
                 }
             }}
             <Toasts/>
+        </div>
+    }
+}
+
+/// Drag to move, double-click to maximise; minimise / maximise / close on the right.
+#[component]
+fn TitleBar() -> impl IntoView {
+    view! {
+        <div class="titlebar" data-tauri-drag-region="">
+            <span class="titlebar-name" data-tauri-drag-region=""><icons::Logo size=14/>"Natter"</span>
+            <button class="titlebar-btn" title="Minimise" on:click=|_| desktop::window_action("min")>
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor"/></svg>
+            </button>
+            <button class="titlebar-btn" title="Maximise" on:click=|_| desktop::window_action("max")>
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M.5.5h9v9h-9z" fill="none" stroke="currentColor"/></svg>
+            </button>
+            <button class="titlebar-btn close" title="Close" on:click=|_| desktop::window_action("close")>
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0 0 10" stroke="currentColor"/></svg>
+            </button>
         </div>
     }
 }

@@ -436,6 +436,13 @@ export function tauriListen(event, cb) {
   if (isTauri()) window.__TAURI__.event.listen(event, (e) => cb(JSON.stringify(e.payload)));
 }
 
+// Our own title bar (the window has no native frame): "min", "max" (toggle) or "close" (tray rules apply).
+export function windowAction(action) {
+  const w = isTauri() && window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow();
+  if (!w) return;
+  (action === "min" ? w.minimize() : action === "max" ? w.toggleMaximize() : w.close()).catch((e) => console.warn("natter window:", e));
+}
+
 export function isAndroid() {
   return /Android/i.test(navigator.userAgent);
 }

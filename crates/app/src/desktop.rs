@@ -23,6 +23,9 @@ extern "C" {
     async fn js_app_icon(icon: &str);
     #[wasm_bindgen(js_name = appIconUrl)]
     pub fn app_icon_url(icon: &str) -> String;
+    /// "min", "max" (toggle) or "close", for our own title bar.
+    #[wasm_bindgen(js_name = windowAction)]
+    pub fn window_action(action: &str);
 }
 
 /// The desktop app (Windows, macOS, Linux) — not the browser, not Android.

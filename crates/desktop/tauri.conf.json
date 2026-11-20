@@ -21,6 +21,7 @@
         "minWidth": 940,
         "minHeight": 560,
         "center": true,
+        "decorations": false,
         "dragDropEnabled": false,
         "visible": false,
         "additionalBrowserArgs": "--disable-features=msWebOoUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
