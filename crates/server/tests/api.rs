@@ -252,6 +252,11 @@ async fn full_flow() {
     assert_eq!(ready.spaces.len(), 1);
     assert!(ready.users.iter().any(|u| u.id == u1));
     assert!(!ready.nextcloud);
+    // A Natter account on a server next to a Nextcloud can't browse or share Nextcloud files.
+    let (s, _) = call(&app, "GET", "/api/nextcloud/files?path=/", Some(&t2), None).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = call(&app, "POST", "/api/nextcloud/share", Some(&t2), Some(json!({"path": "/Natter/x.txt"}))).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
 
     // A mention, sent twice with the same nonce, lands once and pings once.
     let msg = json!({"content": format!("hi <@{u2}>"), "nonce": "n1"});
