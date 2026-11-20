@@ -46,28 +46,27 @@ pub fn App() -> impl IntoView {
     });
     global_handlers();
 
-    // Taskbar badge = unread mentions.
+    desktop::apply_prefs();
+    // Unread badge on the taskbar / tray / tab icon.
     Effect::new(move |_| {
         if s.ready.get() {
-            desktop::set_badge(s.total_mentions());
+            let (unread, n) = s.totals();
+            let (on, icon) = s.settings.with(|st| (st.badge, st.app_icon.clone()));
+            desktop::set_badge(&icon, if on { n } else { 0 }, on && unread);
         }
     });
-
-    let theme = move || {
-        let t = s.settings.with(|st| st.theme.clone());
-        let light = t == "light"
-            || (t == "system"
-                && util::window()
-                    .match_media("(prefers-color-scheme: light)")
-                    .ok()
-                    .flatten()
-                    .is_some_and(|m| m.matches()));
-        if light { "app light" } else { "app dark" }
-    };
+    // Window icon variant (the default one is built in, so only send it once it's been changed).
+    Effect::new(move |prev: Option<String>| {
+        let icon = s.settings.with(|st| st.app_icon.clone());
+        if prev.as_ref().map_or(icon != "classic", |p| *p != icon) {
+            desktop::set_app_icon(&icon);
+        }
+        icon
+    });
 
     view! {
-        <div class=theme class:compact=move || s.settings.with(|st| st.compact) class:mobile=move || s.mobile.get()
-            style:font-size=move || format!("{}px", s.settings.with(|st| st.font_size))>
+        <div class=move || s.settings.with(app_classes) class:compact=move || s.settings.with(|st| st.compact) class:mobile=move || s.mobile.get()
+            style=move || s.settings.with(app_style)>
             {move || {
                 if !signed_in.get() {
                     view! { <login::Login on_done=Callback::new(move |_| signed_in.set(true))/> }.into_any()
@@ -263,6 +262,47 @@ fn typing_target(e: &web_sys::KeyboardEvent) -> bool {
 }
 
 /// Keyboard shortcuts, focus tracking, idle detection, push-to-talk inside the window.
+/// Theme classes on the app root: base (light / dark / darker / midnight), colour theme, accessibility.
+fn app_classes(st: &crate::store::Settings) -> String {
+    let mut c = String::from("app");
+    if let Some(g) = settings::gradient(&st.gradient) {
+        c += if g.light { " light grad grad-" } else { " dark grad grad-" };
+        c += g.id;
+    } else {
+        c += match st.theme.as_str() {
+            "light" => " light",
+            "darker" => " dark darker",
+            "midnight" => " dark midnight",
+            "system" if prefers_light() => " light",
+            _ => " dark",
+        };
+    }
+    if st.reduce_motion {
+        c += " reduce-motion";
+    }
+    if st.underline_links {
+        c += " underline-links";
+    }
+    c
+}
+
+fn prefers_light() -> bool {
+    util::window().match_media("(prefers-color-scheme: light)").ok().flatten().is_some_and(|m| m.matches())
+}
+
+/// Inline tokens on the app root: text size, message group spacing, accent colour, saturation.
+fn app_style(st: &crate::store::Settings) -> String {
+    let mut v = format!("font-size:{}px;--group-gap:{}px;", st.font_size, st.group_spacing);
+    let a = &st.accent;
+    if a.len() == 7 && a.starts_with('#') && a[1..].chars().all(|c| c.is_ascii_hexdigit()) {
+        v += &format!("--accent:{a};--accent-2:color-mix(in srgb,{a} 82%,#000);");
+    }
+    if st.saturation < 100 {
+        v += &format!("filter:saturate({}%);", st.saturation);
+    }
+    v
+}
+
 fn global_handlers() {
     let s = store();
     let _ = window_event_listener(ev::keydown, move |e| {
@@ -276,6 +316,16 @@ fn global_handlers() {
             voice::ptt(true);
             e.prevent_default();
             return;
+        }
+        // Custom keybinds; the desktop app runs them globally instead (a second run here would undo a toggle).
+        if !desktop::is_desktop() && !e.repeat() {
+            if let Some(b) = desktop::combo(&e).and_then(|c| prefs.keybinds.into_iter().find(|b| b.keys == c)) {
+                if !(typing_target(&e) && !ctrl && !e.alt_key()) {
+                    e.prevent_default();
+                    desktop::run_keybind(&b.action, true);
+                    return;
+                }
+            }
         }
         if !s.ready.get_untracked() {
             return;

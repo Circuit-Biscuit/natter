@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+- **Notifications that get noticed:** a red number (mentions and DMs) or red dot (anything else unread) on the
+  taskbar and tray icon and on the browser tab; our own notification sound, also for the test notification (the
+  pop-ups themselves are silent so nothing doubles up); choose between four sounds; notify for all messages (new
+  default) or only DMs and mentions; flash the taskbar or not.
+- **Appearance:** light, dark, darker and midnight themes or follow the computer; 14 colour themes (gradients);
+  nine accent colours; ten app icons (taskbar, tray, tab); cozy / compact, space between message groups, font
+  scaling, zoom (desktop).
+- **Accessibility:** saturation, reduce motion, always underline links.
+- **Keybinds:** add your own (mute, deafen, camera, screen share, leave call, show / hide Natter); global in the
+  desktop app. Push to talk now also works right after start-up, not only after visiting Settings.
+- **System (desktop):** open Natter when the computer starts, start minimized to the tray, choose whether the close
+  button minimizes to the tray.
+
 ## [0.2.0] — 2026-11-20
 
 - **Android app** (Tauri, same Rust UI): APK for Android 7+, microphone/camera/notification permissions, keyboard-aware layout.

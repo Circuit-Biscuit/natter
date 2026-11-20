@@ -345,14 +345,14 @@ export async function voiceSetDevices(input, output, noise) {
 
 // ------------------------------------------------------------------ sounds (synthesized, no assets)
 
-function tone(freqs, dur = 0.12, gap = 0.08, vol = 0.12) {
+function tone(freqs, dur = 0.12, gap = 0.08, vol = 0.12, type = "sine") {
   try {
     const ctx = ensureAudioContext();
     let t = ctx.currentTime + 0.01;
     for (const f of freqs) {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
-      o.type = "sine";
+      o.type = type;
       o.frequency.value = f;
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(vol, t + 0.01);
@@ -365,8 +365,34 @@ function tone(freqs, dur = 0.12, gap = 0.08, vol = 0.12) {
   } catch (_) {}
 }
 
+function sweep(f0, f1, dur, vol) {
+  try {
+    const ctx = ensureAudioContext();
+    const t = ctx.currentTime + 0.01;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ctx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  } catch (_) {}
+}
+
+// Audio starts suspended until the first click or key press (browser autoplay rules); wake it then, so the
+// first notification sound isn't swallowed. The desktop app also lifts the rule for its webview.
+for (const ev of ["pointerdown", "keydown"]) {
+  addEventListener(ev, () => { try { ensureAudioContext(); } catch (_) {} }, { once: true, capture: true });
+}
+
 const SOUNDS = {
-  message: () => tone([880, 1320], 0.14, 0.07, 0.08),
+  "message-chime": () => tone([880, 1320], 0.14, 0.07, 0.08),
+  "message-pop": () => sweep(520, 1100, 0.09, 0.14),
+  "message-soft": () => tone([523, 659], 0.22, 0.1, 0.07, "triangle"),
+  "message-ping": () => tone([1568], 0.25, 0, 0.06),
   join: () => tone([523, 784], 0.16, 0.09),
   leave: () => tone([784, 523], 0.16, 0.09),
   mute: () => tone([440], 0.08, 0, 0.08),
@@ -408,4 +434,139 @@ export async function tauriInvoke(cmd, argsJson) {
 
 export function tauriListen(event, cb) {
   if (isTauri()) window.__TAURI__.event.listen(event, (e) => cb(JSON.stringify(e.payload)));
+}
+
+export function isAndroid() {
+  return /Android/i.test(navigator.userAgent);
+}
+
+// ------------------------------------------------------------------ app icon + unread badge
+// Drawn here because a canvas has fonts: the tray and taskbar badges carry a real number.
+
+// Gradient stops (3) and the bubble colour per icon variant; names match `APP_ICONS` in settings.rs.
+const APP_ICONS = {
+  classic: ["#6c76f0", "#4b56d2", "#3540a8", "#ffffff"],
+  midnight: ["#3a3c44", "#1b1c20", "#000000", "#ffffff"],
+  snow: ["#ffffff", "#eef0f4", "#d5d9e0", "#4b56d2"],
+  sunset: ["#ffb35c", "#f0617a", "#8e3fa8", "#ffffff"],
+  ocean: ["#5ee0d0", "#2b8cff", "#1f3fa8", "#ffffff"],
+  forest: ["#8be09b", "#2f9e5b", "#17543a", "#ffffff"],
+  candy: ["#ffa3d7", "#c86cf0", "#6c5ce7", "#ffffff"],
+  gold: ["#ffe08a", "#f0a030", "#a8541a", "#ffffff"],
+  crimson: ["#ff7a7a", "#da373c", "#7a161b", "#ffffff"],
+  mint: ["#d6fbe9", "#86e0c4", "#3fb39a", "#0f3d33"],
+};
+
+// The logo's speech bubble with the voice wave cut out (same path as assets/logo.svg).
+const BUBBLE =
+  "M216,112 H296 A120,120 0 0 1 296,352 H216 A120,120 0 0 1 175,344.8 C160,362 142,382 126,395 Q108,409 111,388 " +
+  "C113,362 117,334 124.1,309.1 A120,120 0 0 1 216,112 Z M154,232 a14,14 0 0 1 28,0 v0 a14,14 0 0 1 -28,0 Z " +
+  "M198,204 a14,14 0 0 1 28,0 v56 a14,14 0 0 1 -28,0 Z M242,170 a14,14 0 0 1 28,0 v124 a14,14 0 0 1 -28,0 Z " +
+  "M286,196 a14,14 0 0 1 28,0 v72 a14,14 0 0 1 -28,0 Z M330,220 a14,14 0 0 1 28,0 v24 a14,14 0 0 1 -28,0 Z";
+
+export function appIconUrl(name) {
+  const [a, b, c, fg] = APP_ICONS[name] || APP_ICONS.classic;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><defs>` +
+    `<linearGradient id="bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">` +
+    `<stop offset="0" stop-color="${a}"/><stop offset=".55" stop-color="${b}"/><stop offset="1" stop-color="${c}"/></linearGradient>` +
+    `<radialGradient id="glow" cx="150" cy="96" r="300" gradientUnits="userSpaceOnUse">` +
+    `<stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>` +
+    `<filter id="lift" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".28"/></filter></defs>` +
+    `<rect width="512" height="512" rx="116" fill="url(#bg)"/><rect width="512" height="512" rx="116" fill="url(#glow)"/>` +
+    `<path filter="url(#lift)" fill="${fg}" fill-rule="evenodd" d="${BUBBLE}"/></svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+const iconImages = new Map();
+function iconImage(name) {
+  if (!iconImages.has(name)) {
+    const img = new Image();
+    img.src = appIconUrl(name);
+    iconImages.set(name, img.decode().then(() => img));
+  }
+  return iconImages.get(name);
+}
+
+// Red disc at (cx, cy), with the count in it (9+ past nine) or plain when count is 0.
+function badge(g, cx, cy, r, count) {
+  g.beginPath();
+  g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.fillStyle = "#e5383d";
+  g.fill();
+  if (count > 0) {
+    const text = count > 9 ? "9+" : String(count);
+    g.fillStyle = "#fff";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = `700 ${Math.round(r * (text.length > 1 ? 1.2 : 1.5))}px "Segoe UI", Inter, system-ui, sans-serif`;
+    g.fillText(text, cx, cy + r * 0.08);
+  }
+}
+
+async function renderIcon(name, size, count, dot) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  g.drawImage(await iconImage(name), 0, 0, size, size);
+  if (count > 0 || dot) {
+    const r = size * (count > 0 ? 0.3 : 0.2);
+    // Cut a ring around the badge so it reads on any icon colour.
+    g.save();
+    g.globalCompositeOperation = "destination-out";
+    g.beginPath();
+    g.arc(size - r, size - r, r + size * 0.06, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+    badge(g, size - r, size - r, r, count);
+  }
+  return c;
+}
+
+// The Windows taskbar overlay: just the badge, full size (Windows shrinks it onto the icon's corner).
+function overlay(count) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 32;
+  badge(c.getContext("2d"), 16, 16, count > 0 ? 16 : 10, count);
+  return c;
+}
+
+const pixels = (c) => Array.from(c.getContext("2d").getImageData(0, 0, c.width, c.height).data);
+
+function setFavicon(url) {
+  let l = document.querySelector('link[rel~="icon"]');
+  if (!l) {
+    l = document.createElement("link");
+    l.rel = "icon";
+    document.head.append(l);
+  }
+  l.href = url;
+}
+
+// Unread badge: on the tray icon and taskbar (desktop app), or on the tab icon (browser).
+// `count` = mentions + unread DMs; `dot` = something else is unread.
+export async function showBadge(name, count, dot) {
+  try {
+    if (isTauri()) {
+      const tray = await renderIcon(name, 32, count, dot);
+      const over = count > 0 || dot ? { rgba: pixels(overlay(count)), size: 32 } : null;
+      await window.__TAURI__.core.invoke("set_badge", { count, tray: { rgba: pixels(tray), size: 32 }, overlay: over });
+    } else {
+      setFavicon((await renderIcon(name, 64, count, dot)).toDataURL());
+    }
+  } catch (e) {
+    console.warn("natter badge:", e);
+  }
+}
+
+// Window / taskbar icon in the desktop app.
+export async function showAppIcon(name) {
+  try {
+    if (isTauri()) {
+      const c = await renderIcon(name, 128, 0, false);
+      await window.__TAURI__.core.invoke("set_app_icon", { icon: { rgba: pixels(c), size: 128 } });
+    }
+  } catch (e) {
+    console.warn("natter icon:", e);
+  }
 }

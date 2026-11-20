@@ -84,8 +84,10 @@ calls stay on Natter's own server, which is what keeps them fast.
 On phones Natter switches to one screen at a time, like Discord's app: spaces and channels, then the chat, with
 threads, members and search on top. Android's back button steps back through them; long-press a message for its menu.
 
-Also: drafts kept per channel, close-to-tray, unread badge on the taskbar, notification sounds, dark / light / system
-themes, compact mode, adjustable text size, devices list with remote sign-out, and right-click menus everywhere.
+Also: drafts kept per channel; an unread badge with a real number on the taskbar, tray and browser tab; a choice of
+notification sounds; light, dark, darker and midnight themes plus 14 colour themes, accent colours and app icons;
+compact mode, text size, zoom, reduced motion; your own global keybinds; start with the computer, close to the tray;
+devices list with remote sign-out; and right-click menus everywhere.
 
 ## Natter and Nextcloud Talk
 
@@ -114,7 +116,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Invites (expiry, max uses), roles (owner / admin / member), kick, ban | ✅ |
 | Voice & video calls via SFU, screen share, push to talk | ✅ |
 | Sign in with Nextcloud, files in Nextcloud, share from Nextcloud | ✅ |
-| Desktop app: tray, notifications, badge, global push to talk | ✅ Windows · 🚧 macOS / Linux untested |
+| Desktop app: tray, notifications, numbered badge, global keybinds, start with the computer | ✅ Windows · 🚧 macOS / Linux untested |
 | Android app: phone layout, back button, calls, notifications while open | ✅ (APK, sideload) |
 | Background push notifications on Android (app closed) | ⬜ |
 | Polls, link previews, custom roles, message scheduling | ⬜ |
@@ -182,7 +184,7 @@ cd crates/desktop && cargo tauri android build --apk --target aarch64 --target a
 | Calls | `crates/server/src/sfu.rs` | SFU on [str0m](https://github.com/algesten/str0m): one UDP socket, rooms, renegotiation, keyframe routing |
 | App | `crates/app` | the whole UI in Rust with [Leptos](https://leptos.dev), compiled to WebAssembly by trunk |
 | Media glue | `crates/app/glue.js` | the only JavaScript: WebRTC, synthesized sounds, desktop bridge |
-| Desktop & Android | `crates/desktop` | [Tauri 2](https://tauri.app) shell: tray, notifications, badge, global push-to-talk, installers; the same crate builds the Android app (`gen/android`) |
+| Desktop & Android | `crates/desktop` | [Tauri 2](https://tauri.app) shell: tray, notifications, numbered badge, global keybinds, autostart, installers; the same crate builds the Android app (`gen/android`) |
 
 Design notes, the full API and the gateway protocol: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

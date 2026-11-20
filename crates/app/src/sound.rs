@@ -1,5 +1,6 @@
 //! UI sounds, synthesized in `glue.js` (no audio files to ship).
 
+use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "/glue.js")]
@@ -21,19 +22,28 @@ pub enum Sound {
     Disconnect,
 }
 
+/// Message sounds to pick from in Settings › Notifications: (id, label).
+pub const MESSAGE_SOUNDS: [(&str, &str); 4] = [("chime", "Chime"), ("pop", "Pop"), ("soft", "Soft"), ("ping", "Ping")];
+
 pub fn play(s: Sound, enabled: bool) {
     if !enabled {
         return;
     }
-    js_play(match s {
-        Sound::Message => "message",
+    let name = match s {
+        Sound::Message => return preview_message(&crate::store::store().settings.with_untracked(|st| st.message_sound.clone())),
         Sound::Join => "join",
         Sound::Leave => "leave",
         Sound::Mute => "mute",
         Sound::Unmute => "unmute",
         Sound::Connect => "connect",
         Sound::Disconnect => "disconnect",
-    });
+    };
+    js_play(name);
+}
+
+/// A message sound by id (also the Settings preview).
+pub fn preview_message(name: &str) {
+    js_play(&format!("message-{name}"));
 }
 
 pub fn ring(on: bool) {

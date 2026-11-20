@@ -23,12 +23,31 @@ use crate::{api, util};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// "dark", "light" or "system".
+    /// "dark", "darker", "midnight", "light" or "system".
     pub theme: String,
+    /// Colour theme (a gradient from `ui::settings::GRADIENTS`); empty = none. It brings its own light/dark base.
+    pub gradient: String,
+    /// Accent colour as `#rrggbb`; empty = the default blurple.
+    pub accent: String,
+    /// App icon variant (taskbar, tray, browser tab); see `APP_ICONS` in glue.js.
+    pub app_icon: String,
     pub compact: bool,
     pub font_size: u8,
+    /// Space between message groups, in px.
+    pub group_spacing: u8,
+    /// Accessibility: colour saturation in %, reduced motion, underlined links.
+    pub saturation: u8,
+    pub reduce_motion: bool,
+    pub underline_links: bool,
     pub notifications: bool,
+    /// Notify (and play a sound) for every message, not only DMs and mentions.
+    pub notify_all: bool,
     pub sounds: bool,
+    /// Which message sound: "chime", "pop", "soft" or "ping".
+    pub message_sound: String,
+    /// Unread badge on the taskbar / dock / tray icon, and flashing the taskbar on a notification.
+    pub badge: bool,
+    pub flash: bool,
     /// Muted spaces and channels: no unread marks, no notifications.
     pub muted: Vec<Id>,
     /// Collapsed categories.
@@ -42,10 +61,22 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             theme: "dark".into(),
+            gradient: String::new(),
+            accent: String::new(),
+            app_icon: "classic".into(),
             compact: false,
             font_size: 16,
+            group_spacing: 16,
+            saturation: 100,
+            reduce_motion: false,
+            underline_links: false,
             notifications: true,
+            // ponytail: small teams want every message; per-space levels when spaces get big.
+            notify_all: true,
             sounds: true,
+            message_sound: "chime".into(),
+            badge: true,
+            flash: true,
             muted: vec![],
             collapsed: vec![],
             show_members: true,
@@ -54,7 +85,7 @@ impl Default for Settings {
     }
 }
 
-/// Per-device voice preferences (never synced: devices differ per machine).
+/// Per-device preferences (never synced: devices, keys and windows differ per machine).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VoicePrefs {
@@ -66,6 +97,22 @@ pub struct VoicePrefs {
     /// `KeyboardEvent.code`, e.g. "Backquote".
     pub ptt_key: String,
     pub noise_suppression: bool,
+    /// Custom keybinds (global in the desktop app).
+    pub keybinds: Vec<Keybind>,
+    /// Desktop: the close button hides Natter to the tray instead of quitting.
+    pub close_to_tray: bool,
+    /// Desktop: when started with the computer, stay in the tray.
+    pub start_minimized: bool,
+    /// Desktop: page zoom in %.
+    pub zoom: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Keybind {
+    /// See `ui::settings::KEYBIND_ACTIONS`.
+    pub action: String,
+    /// "Ctrl+Shift+KeyM" — modifiers, then a `KeyboardEvent.code`; empty until recorded.
+    pub keys: String,
 }
 
 impl Default for VoicePrefs {
@@ -77,6 +124,10 @@ impl Default for VoicePrefs {
             push_to_talk: false,
             ptt_key: "Backquote".into(),
             noise_suppression: true,
+            keybinds: vec![],
+            close_to_tray: true,
+            start_minimized: false,
+            zoom: 100,
         }
     }
 }
@@ -455,10 +506,17 @@ impl Store {
         v
     }
 
-    pub fn total_mentions(&self) -> u32 {
-        let dms: u32 = self.unread_dms().iter().map(|(_, n)| n).sum();
-        let spaces: u32 = self.spaces.with(|s| s.iter().map(|s| s.id).collect::<Vec<_>>()).iter().map(|&s| self.space_badge(s).1).sum();
-        dms + spaces
+    /// (anything unread, mentions + unread DMs) across everything — the taskbar / tray badge.
+    pub fn totals(&self) -> (bool, u32) {
+        let dms = self.unread_dms();
+        let mut unread = !dms.is_empty();
+        let mut n: u32 = dms.iter().map(|(_, n)| n).sum();
+        for sp in self.spaces.with(|s| s.iter().map(|s| s.id).collect::<Vec<_>>()) {
+            let (u, m) = self.space_badge(sp);
+            unread |= u;
+            n += m;
+        }
+        (unread, n)
     }
 
     pub fn typing_in(&self, channel: Id) -> Vec<Id> {
@@ -1320,14 +1378,14 @@ fn on_message(m: Message, from_gateway: bool) {
     if !from_gateway {
         return;
     }
-    // Notify: DMs and mentions, unless muted, DND, or you're looking right at it.
+    // Notify: DMs and mentions (or every message, by setting), unless muted, DND, or you're looking right at it.
     let c = s.channel(channel);
     let is_dm = c.as_ref().is_some_and(|c| c.kind.is_dm());
     let mentioned = m.mentions.contains(&me) || m.mention_everyone;
     let muted = s.muted(channel) || in_space.is_some_and(|sp| s.muted(sp));
     let looking = viewing && s.focused.get_untracked();
-    if (is_dm || mentioned) && !looking && !(muted && !mentioned) && s.my_status.get_untracked() != Status::Dnd {
-        let st = s.settings.get_untracked();
+    let st = s.settings.get_untracked();
+    if (is_dm || mentioned || st.notify_all) && !looking && !(muted && !mentioned) && s.my_status.get_untracked() != Status::Dnd {
         crate::sound::play(crate::sound::Sound::Message, st.sounds);
         if st.notifications {
             let author = s.name(m.author_id, in_space);
