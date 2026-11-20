@@ -129,6 +129,7 @@ fn open_url(app: AppHandle, url: String) {
 }
 
 #[derive(Deserialize)]
+#[cfg_attr(mobile, allow(dead_code))]
 struct Bind {
     action: String,
     /// "Ctrl+Shift+KeyM": modifiers, then a DOM `KeyboardEvent.code`.
