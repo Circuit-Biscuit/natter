@@ -32,7 +32,7 @@ pub fn notify(title: &str, body: &str, channel: Option<Id>) {
     }
     let opts = NotificationOptions::new();
     opts.set_body(body);
-    opts.set_icon("/logo.svg");
+    opts.set_icon("logo.svg");
     if let Ok(n) = Notification::new_with_options(title, &opts) {
         let onclick = Closure::<dyn FnMut()>::new(move || {
             let _ = util::window().focus();

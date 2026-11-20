@@ -22,13 +22,23 @@ fn device_name() -> String {
     format!("{app} on {os}")
 }
 
-fn finish(auth: AuthResp, on_done: Callback<()>) {
+/// Signed in: remember it, accept a pending invite (Nextcloud sign-ins skip the sign-up form), go online.
+fn finish(auth: AuthResp, on_done: Callback<()>, invite: String) {
     util::storage_set("natter.token", &auth.token);
     util::storage_set("natter.server", &api::server());
     api::set_token(Some(auth.token));
-    gateway::connect();
     desktop::request_notification_permission();
-    on_done.run(());
+    spawn_local(async move {
+        if !invite.is_empty() {
+            if let Ok(sp) = api::call::<_, Space>("POST", &format!("/api/invites/{}", api::enc(&invite)), &serde_json::json!({})).await {
+                util::storage_set("natter.space", &sp.id.to_string());
+            }
+            let base = format!("{}/", api::default_server());
+            let _ = util::window().history().map(|h| h.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&base)));
+        }
+        gateway::connect();
+        on_done.run(());
+    });
 }
 
 /// "https://chat.example.com/invite/AbC123" or just "AbC123".
@@ -39,7 +49,7 @@ fn invite_code(s: &str) -> String {
 #[component]
 pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let in_app = desktop::is_tauri();
-    let server = RwSignal::new(util::storage_get("natter.server").unwrap_or_default());
+    let server = RwSignal::new(util::storage_get("natter.server").unwrap_or_else(api::default_server));
     let editing_server = RwSignal::new(in_app && server.get_untracked().is_empty());
     let info = RwSignal::new(None::<ServerInfo>);
     let info_error = RwSignal::new(None::<String>);
@@ -55,7 +65,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
 
     // Accept an invite link from the address bar (web: /invite/CODE).
     let path = util::window().location().pathname().unwrap_or_default();
-    if let Some(code) = path.strip_prefix("/invite/") {
+    if let Some(code) = path.split("/invite/").nth(1).filter(|c| !c.is_empty()) {
         invite.set(code.to_string());
         mode_register.set(true);
     }
@@ -114,12 +124,9 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
             busy.set(false);
             match r {
                 Ok(auth) => {
-                    finish(auth, on_done);
-                    // Joining through an invite link drops you into that space.
-                    let code = invite_code(&invite.get_untracked());
-                    if register && !code.is_empty() {
-                        let _ = util::window().history().map(|h| h.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some("/")));
-                    }
+                    // Sign-up already used the invite; a sign-in still has to accept it.
+                    let code = if register { String::new() } else { invite_code(&invite.get_untracked()) };
+                    finish(auth, on_done, code);
                 }
                 Err(e) => error.set(Some(e.message)),
             }
@@ -146,7 +153,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                         match api::call::<_, Option<AuthResp>>("POST", "/api/auth/nextcloud/poll", &body).await {
                             Ok(Some(auth)) => {
                                 nc_waiting.set(None);
-                                finish(auth, on_done);
+                                finish(auth, on_done, invite_code(&invite.get_untracked()));
                                 return;
                             }
                             Ok(None) => {}

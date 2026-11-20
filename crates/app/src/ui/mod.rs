@@ -28,7 +28,7 @@ pub fn App() -> impl IntoView {
     voice::tracks_version();
     emoji::init();
     composer::external();
-    api::set_server(&util::storage_get("natter.server").unwrap_or_default());
+    api::set_server(&util::storage_get("natter.server").unwrap_or_else(api::default_server));
     let token = util::storage_get("natter.token");
     api::set_token(token.clone());
     voice::init();

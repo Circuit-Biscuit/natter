@@ -178,6 +178,11 @@ pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<J
         Some(code) => Some(spaces::check_invite(&st, code).await?),
         None => None,
     };
+    // With Nextcloud on and sign-ups closed, even the first (admin) account must come through Nextcloud,
+    // so nobody can claim a fresh public server before its owner signs in.
+    if st.cfg.registration == Registration::Closed && st.nc.is_some() {
+        return Err(forbidden("this server signs people in with Nextcloud only"));
+    }
     if user_count(&st).await? > 0 {
         match st.cfg.registration {
             Registration::Closed => {

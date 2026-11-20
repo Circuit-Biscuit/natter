@@ -17,6 +17,19 @@ pub fn set_server(base: &str) {
     CONF.with(|c| c.borrow_mut().0 = base.trim().trim_end_matches('/').to_string());
 }
 
+/// Where the web app was served from (works under a sub-path like `/natter/`); empty in the desktop app,
+/// which asks for a server address instead.
+pub fn default_server() -> String {
+    if crate::desktop::is_tauri() {
+        return String::new();
+    }
+    crate::util::window()
+        .document()
+        .and_then(|d| d.base_uri().ok().flatten())
+        .map(|b| b.trim_end_matches('/').to_string())
+        .unwrap_or_default()
+}
+
 pub fn server() -> String {
     CONF.with(|c| c.borrow().0.clone())
 }
