@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.1] — 2026-11-20
+
+- Phones: with a colour theme the app fell back to the desktop layout (channel list and chat side by side) once
+  your synced settings arrived. One screen at a time again.
+
 ## [0.4.0] — 2026-11-20
 
 - **Private channels and categories:** switch "Private" on when creating a channel or category, or later in its

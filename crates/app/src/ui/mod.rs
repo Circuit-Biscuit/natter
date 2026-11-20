@@ -65,7 +65,14 @@ pub fn App() -> impl IntoView {
     });
 
     view! {
-        <div class=move || s.settings.with(app_classes) class:compact=move || s.settings.with(|st| st.compact) class:mobile=move || s.mobile.get()
+        // One class string: a `class:` toggle next to a changing `class=` is wiped whenever the string changes
+        // (a synced colour theme dropped "mobile" and phones got the desktop layout).
+        <div class=move || {
+                let mut c = s.settings.with(app_classes);
+                if s.settings.with(|st| st.compact) { c += " compact"; }
+                if s.mobile.get() { c += " mobile"; }
+                c
+            }
             style=move || s.settings.with(app_style)>
             {move || {
                 if !signed_in.get() {
