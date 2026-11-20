@@ -43,6 +43,12 @@ pub fn MemberList() -> impl IntoView {
     };
     view! {
         <aside class="members scroll">
+            <Show when=move || s.mobile.get()>
+                <header class="chat-head">
+                    <button class="icon-btn back" title="Back" on:click=|_| crate::store::go_back()><Icon name="arrow-left"/></button>
+                    <span class="title">"Members"</span>
+                </header>
+            </Show>
             <For each=groups key=|(l, v, _)| (l.clone(), v.clone()) let:g>
                 {
                     let (label, users, space) = g;

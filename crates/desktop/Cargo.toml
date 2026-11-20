@@ -5,12 +5,20 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# A library too, because Tauri's Android/iOS builds load the app as a shared library.
+[lib]
+name = "natter_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [dependencies]
 serde_json = "1.0.154"
 tauri = { version = "2.12.7", features = ["tray-icon"] }
-tauri-plugin-global-shortcut = "2.4.1"
 tauri-plugin-notification = "2.8.1"
 tauri-plugin-opener = "2.7.3"
+
+# Desktop-only: global push-to-talk, one running instance, remembered window size.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2.4.1"
 tauri-plugin-single-instance = "2.5.5"
 tauri-plugin-window-state = "2.5.0"
 

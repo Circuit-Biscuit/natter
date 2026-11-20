@@ -7,7 +7,7 @@ let pc = null;
 let dc = null;
 let handler = null;
 let me = 0;
-let opts = { muted: false, deafened: false, input: "", output: "", ptt: false, noise: true };
+let opts = { muted: false, deafened: false, input: "", output: "", camera: "", ptt: false, noise: true };
 let pttDown = false;
 const local = { mic: null, cam: null, screen: null, screenAudio: null };
 const senders = {};
@@ -232,15 +232,50 @@ export async function voiceSetCamera(on) {
     local.cam.stop();
     local.cam = null;
   }
-  if (on) {
-    const s = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-    });
-    local.cam = s.getVideoTracks()[0];
-  }
+  if (on) local.cam = await openCamera();
   await senders.cam.sender.replaceTrack(local.cam);
   emit({ type: "tracks" });
   return !!local.cam;
+}
+
+function cameraConstraints(id) {
+  return { deviceId: id ? { exact: id } : undefined, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+}
+
+// The chosen camera, or the default one if it was unplugged.
+async function openCamera() {
+  try {
+    return (await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(opts.camera) })).getVideoTracks()[0];
+  } catch (e) {
+    if (!opts.camera) throw e;
+    return (await navigator.mediaDevices.getUserMedia({ video: cameraConstraints("") })).getVideoTracks()[0];
+  }
+}
+
+// Pick another camera; if it's on in a call, swap it in place (no renegotiation).
+export async function voiceSetCameraDevice(id) {
+  if (id === opts.camera) return;
+  opts.camera = id;
+  if (pc && local.cam) {
+    const old = local.cam;
+    local.cam = await openCamera();
+    await senders.cam.sender.replaceTrack(local.cam);
+    old.stop();
+    emit({ type: "tracks" });
+  }
+}
+
+// Settings preview, independent of any call.
+let preview = null;
+export async function cameraPreview(el, id) {
+  cameraPreviewStop();
+  preview = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(id) });
+  el.srcObject = preview;
+}
+
+export function cameraPreviewStop() {
+  if (preview) preview.getTracks().forEach((t) => t.stop());
+  preview = null;
 }
 
 export async function voiceSetScreen(on) {
@@ -285,7 +320,7 @@ export function voiceHas(key) {
 export async function voiceDevices() {
   try {
     const list = await navigator.mediaDevices.enumerateDevices();
-    return JSON.stringify(list.filter((d) => d.kind !== "videoinput").map((d) => ({ kind: d.kind, id: d.deviceId, label: d.label || d.kind })));
+    return JSON.stringify(list.map((d) => ({ kind: d.kind, id: d.deviceId, label: d.label || d.kind })));
   } catch (_) {
     return "[]";
   }

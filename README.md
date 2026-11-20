@@ -6,12 +6,12 @@
 
 **Team chat, voice and video — fast like Discord, at home on your own Nextcloud.**
 
-A self-hosted chat server and desktop app, built in Rust for Windows, macOS and Linux.
+A self-hosted chat server with apps for Windows, macOS, Linux and Android — built in Rust.
 
 [![Rust](https://img.shields.io/badge/pure-Rust-b7410e?logo=rust&logoColor=white)](#how-its-built)
 [![Nextcloud](https://img.shields.io/badge/works%20with-Nextcloud-0082c9?logo=nextcloud&logoColor=white)](#made-for-nextcloud)
 [![Calls](https://img.shields.io/badge/calls-WebRTC%20SFU-4b56d2)](#voice-and-video-that-scale)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20macOS%20·%20Linux%20·%20Web-444)](#downloads)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20macOS%20·%20Linux%20·%20Android%20·%20Web-444)](#downloads)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#feature-status)
 
 <img src="docs/screenshot-chat.png" width="100%" alt="Natter: space rail, channel list, a conversation with mentions, replies and reactions, and the member list">
@@ -81,6 +81,9 @@ calls stay on Natter's own server, which is what keeps them fast.
 | **Ctrl + Shift + M / D** | Mute / deafen |
 | **`@silent` …** | Send without notifying anyone |
 
+On phones Natter switches to one screen at a time, like Discord's app: spaces and channels, then the chat, with
+threads, members and search on top. Android's back button steps back through them; long-press a message for its menu.
+
 Also: drafts kept per channel, close-to-tray, unread badge on the taskbar, notification sounds, dark / light / system
 themes, compact mode, adjustable text size, devices list with remote sign-out, and right-click menus everywhere.
 
@@ -112,9 +115,11 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Voice & video calls via SFU, screen share, push to talk | ✅ |
 | Sign in with Nextcloud, files in Nextcloud, share from Nextcloud | ✅ |
 | Desktop app: tray, notifications, badge, global push to talk | ✅ Windows · 🚧 macOS / Linux untested |
+| Android app: phone layout, back button, calls, notifications while open | ✅ (APK, sideload) |
+| Background push notifications on Android (app closed) | ⬜ |
 | Polls, link previews, custom roles, message scheduling | ⬜ |
 | Simulcast (adaptive video quality for big calls), TURN / TCP fallback | ⬜ |
-| Mobile apps | ⬜ (the web app works in mobile browsers) |
+| iOS app | ⬜ (the web app works in mobile browsers) |
 | Signed / notarised installers | ⬜ |
 
 ✅ done · 🚧 in progress · ⬜ not yet
@@ -128,6 +133,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | **Windows** | `Natter_<version>_x64-setup.exe` | One click, no admin rights. Not code-signed yet: SmartScreen › **More info › Run anyway**. |
 | **macOS** (Apple Silicon + Intel) | `Natter_<version>_universal.dmg` | Drag to Applications. Not notarised yet: right-click › **Open** the first time. macOS 11+. |
 | **Linux** | `Natter_<version>_amd64.AppImage` / `.deb` | `chmod +x` the AppImage and run it. |
+| **Android** 7+ | `Natter_<version>.apk` | Allow "install unknown apps" for your browser once, then open the APK. |
 | **Server** | `natter-server-<version>-linux-x86_64.tar.gz` | Static binary plus the web app. |
 
 On first start the app asks for your server's address (for example `https://chat.example.com`).
@@ -164,6 +170,7 @@ Useful commands:
 ```sh
 cargo test -p natter-proto -p natter-server -p natter-app   # protocol, Markdown, full server test (HTTP, gateway, SFU join, fake Nextcloud)
 cd crates/desktop && cargo tauri build        # installers for this platform
+cd crates/desktop && cargo tauri android build --apk --target aarch64 --target armv7   # Android APK (needs the Android SDK + NDK)
 ```
 
 ## How it's built
@@ -175,7 +182,7 @@ cd crates/desktop && cargo tauri build        # installers for this platform
 | Calls | `crates/server/src/sfu.rs` | SFU on [str0m](https://github.com/algesten/str0m): one UDP socket, rooms, renegotiation, keyframe routing |
 | App | `crates/app` | the whole UI in Rust with [Leptos](https://leptos.dev), compiled to WebAssembly by trunk |
 | Media glue | `crates/app/glue.js` | the only JavaScript: WebRTC, synthesized sounds, desktop bridge |
-| Desktop | `crates/desktop` | [Tauri 2](https://tauri.app) shell: tray, notifications, badge, global push-to-talk, installers |
+| Desktop & Android | `crates/desktop` | [Tauri 2](https://tauri.app) shell: tray, notifications, badge, global push-to-talk, installers; the same crate builds the Android app (`gen/android`) |
 
 Design notes, the full API and the gateway protocol: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

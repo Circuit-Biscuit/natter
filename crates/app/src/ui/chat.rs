@@ -133,7 +133,12 @@ fn ChannelHeader(channel: Id, show_chat: Option<RwSignal<bool>>) -> impl IntoVie
         }
         spawn_local(async move {
             match api::get::<SearchResult>(&url).await {
-                Ok(r) => s.search.set(Some((q, r))),
+                Ok(r) => {
+                    if s.search.with_untracked(|x| x.is_none()) {
+                        crate::store::push_layer();
+                    }
+                    s.search.set(Some((q, r)));
+                }
                 Err(e) => s.error(e),
             }
         });
@@ -146,6 +151,9 @@ fn ChannelHeader(channel: Id, show_chat: Option<RwSignal<bool>>) -> impl IntoVie
     };
     view! {
         <header class="chat-head">
+            <Show when=move || s.mobile.get()>
+                <button class="icon-btn back" title="Back" on:click=|_| crate::store::go_back()><Icon name="arrow-left"/></button>
+            </Show>
             {move || view! { <Icon name=icon()/> }}
             <span class="title ellipsis">{move || c().map(|c| s.channel_title(&c)).unwrap_or_default()}</span>
             {move || c().and_then(|c| s.dm_partner(&c)).map(|u| view! { <super::StatusDot user=u/> })}
@@ -173,7 +181,12 @@ fn ChannelHeader(channel: Id, show_chat: Option<RwSignal<bool>>) -> impl IntoVie
             <button class="icon-btn" title="Pinned messages (Ctrl+P)" on:click=move |_| s.modal.set(Some(Modal::Pins(channel)))><Icon name="pin"/></button>
             <Show when=move || c().is_some_and(|c| c.space_id.is_some() || c.kind == ChannelKind::GroupDm)>
                 <button class="icon-btn" class:on=move || s.settings.with(|st| st.show_members) title="Member list"
-                    on:click=move |_| s.update_settings(|st| st.show_members = !st.show_members)><Icon name="members"/></button>
+                    on:click=move |_| if s.mobile.get_untracked() {
+                        crate::store::push_layer();
+                        s.pane.set(crate::store::Pane::Members);
+                    } else {
+                        s.update_settings(|st| st.show_members = !st.show_members)
+                    }><Icon name="members"/></button>
             </Show>
             <div class="search-box">
                 <input id="search-input" placeholder="Search" prop:value=move || query.get()
@@ -290,6 +303,14 @@ pub fn ChatPane(channel: Id) -> impl IntoView {
             last_height.set_value(el.scroll_height());
         });
         first
+    });
+
+    // A phone switching to this screen: it was hidden while messages arrived, so land on the newest.
+    Effect::new(move |_| {
+        s.pane.track();
+        if at_bottom.get_untracked() {
+            request_animation_frame(scroll_to_bottom);
+        }
     });
 
     // Read what you see: at the bottom of a focused window means read.
@@ -507,7 +528,7 @@ fn ThreadPanel(thread: Id) -> impl IntoView {
                         on:click=move |_| set_archived(!archived())><Icon name="archive"/></button>
                 </Show>
                 <button class="icon-btn" title="More" on:click=move |e| s.open_menu(&e, menu::channel_menu(thread))><Icon name="more"/></button>
-                <button class="icon-btn" title="Close thread" on:click=move |_| s.thread.set(None)><Icon name="x"/></button>
+                <button class="icon-btn" title="Close thread" on:click=move |_| if s.mobile.get_untracked() { crate::store::go_back() } else { s.thread.set(None) }><Icon name="x"/></button>
             </header>
             <Show when=archived>
                 <div class="banner archived">"This thread is archived. Sending a message brings it back."</div>
@@ -853,7 +874,7 @@ fn SearchPanel() -> impl IntoView {
         <aside class="search-panel">
             <header>
                 <span>{move || s.search.get().map(|(q, r)| format!("{} result{} for “{}”", r.total, if r.total == 1 { "" } else { "s" }, q)).unwrap_or_default()}</span>
-                <button class="icon-btn" title="Close" on:click=move |_| s.search.set(None)><Icon name="x" size=18/></button>
+                <button class="icon-btn" title="Close" on:click=move |_| if s.mobile.get_untracked() { crate::store::go_back() } else { s.search.set(None) }><Icon name="x" size=18/></button>
             </header>
             <div class="scroll search-results">
                 {move || s.search.get().map(|(_, r)| r.messages.into_iter().map(|m| {

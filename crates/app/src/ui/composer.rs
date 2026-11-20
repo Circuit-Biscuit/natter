@@ -78,6 +78,11 @@ pub fn external() -> RwSignal<Vec<Attachment>> {
 pub fn autosize(t: &web_sys::HtmlTextAreaElement) {
     let el: &web_sys::HtmlElement = t;
     let style = el.style();
+    // Hidden (a phone showing another screen): nothing to measure yet.
+    if el.offset_parent().is_none() {
+        let _ = style.remove_property("height");
+        return;
+    }
     let _ = style.set_property("height", "auto");
     let max = util::window().inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(800.0) * 0.5;
     let h = (t.scroll_height() as f64).min(max);
@@ -266,6 +271,7 @@ pub fn Composer(channel: Id, uploads: Uploads) -> impl IntoView {
     };
 
     Effect::new(move |_| {
+        s.pane.track(); // re-measure when a phone switches to this screen
         if let Some(t) = el.get() {
             autosize(&t);
             if s.modal.with_untracked(|m| m.is_none()) {
@@ -380,7 +386,8 @@ pub fn Composer(channel: Id, uploads: Uploads) -> impl IntoView {
                 e.prevent_default();
                 accept(sel.get_untracked());
             }
-            "Enter" if !e.shift_key() => {
+            // On phones Enter is a new line and the send button sends (as in Discord's app).
+            "Enter" if !e.shift_key() && !s.mobile.get_untracked() => {
                 e.prevent_default();
                 send();
             }
@@ -553,6 +560,9 @@ pub fn Composer(channel: Id, uploads: Uploads) -> impl IntoView {
                                 let _ = t.focus();
                             });
                         }><Icon name="smile" size=22/></button>
+                        <Show when=move || s.mobile.get()>
+                            <button class="icon-btn send" title="Send" on:mousedown=|e| e.prevent_default() on:click=move |_| send()><Icon name="send" size=20/></button>
+                        </Show>
                         <input type="file" multiple=true class="hidden" node_ref=file_input on:change=move |e| {
                             let input: web_sys::HtmlInputElement = event_target(&e);
                             if let Some(files) = input.files() { add_files(uploads, channel, files); }

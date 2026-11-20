@@ -2,6 +2,5 @@ target/
 target-*/
 natter-data/
 crates/app/dist/
-crates/desktop/gen/
 *.db
 *.db-*

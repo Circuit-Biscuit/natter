@@ -17,7 +17,7 @@ use leptos::ev;
 use leptos::prelude::*;
 use natter_proto::{ChannelKind, Id, Status};
 
-use crate::store::{Conn, Modal, Store, store};
+use crate::store::{Conn, Modal, Pane, Store, store};
 use crate::{api, desktop, gateway, util, voice};
 use icons::Icon;
 
@@ -66,7 +66,7 @@ pub fn App() -> impl IntoView {
     };
 
     view! {
-        <div class=theme class:compact=move || s.settings.with(|st| st.compact)
+        <div class=theme class:compact=move || s.settings.with(|st| st.compact) class:mobile=move || s.mobile.get()
             style:font-size=move || format!("{}px", s.settings.with(|st| st.font_size))>
             {move || {
                 if !signed_in.get() {
@@ -104,10 +104,25 @@ fn Shell() -> impl IntoView {
     let s = store();
     let show_members = move || {
         let Some(c) = s.nav.get().channel.and_then(|c| s.channel(c)) else { return false };
-        s.settings.with(|st| st.show_members) && s.search.with(|r| r.is_none()) && s.thread.with(|t| t.is_none()) && (c.space_id.is_some() || c.kind == ChannelKind::GroupDm) && c.kind != ChannelKind::Voice
+        let has_members = (c.space_id.is_some() || c.kind == ChannelKind::GroupDm) && c.kind != ChannelKind::Voice;
+        if s.mobile.get() {
+            return has_members && s.pane.get() == Pane::Members;
+        }
+        s.settings.with(|st| st.show_members) && s.search.with(|r| r.is_none()) && s.thread.with(|t| t.is_none()) && has_members
+    };
+    // Phones show one column at a time; CSS hides the others so they keep their scroll position.
+    let pane = move || {
+        if !s.mobile.get() {
+            return "all";
+        }
+        match s.pane.get() {
+            Pane::Nav => "nav",
+            Pane::Chat => "chat",
+            Pane::Members => "members",
+        }
     };
     view! {
-        <div class="shell" on:click=move |_| {
+        <div class="shell" data-pane=pane on:click=move |_| {
             s.menu.set(None);
             s.popout.set(None);
         }>
@@ -340,6 +355,13 @@ fn global_handlers() {
         s.shift.set(false);
     });
     let _ = window_event_listener(ev::online, |_| gateway::reconnect_now());
+    let _ = window_event_listener(ev::resize, move |_| {
+        let narrow = crate::store::window_is_narrow();
+        if narrow != s.mobile.get_untracked() {
+            s.mobile.set(narrow);
+        }
+    });
+    let _ = window_event_listener(ev::popstate, |_| crate::store::pop_layer());
     // Leaving the page (closing the browser tab) ends the call cleanly.
     let _ = window_event_listener(ev::beforeunload, |_| voice::hang_up_local());
 }

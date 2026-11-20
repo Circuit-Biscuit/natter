@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+- **Android app** (Tauri, same Rust UI): APK for Android 7+, microphone/camera/notification permissions, keyboard-aware layout.
+- **Phone layout** (app and mobile web): one screen at a time — channels, chat, then threads, members and search on
+  top; back arrow and Android back button step back; send button; long-press menus; safe-area padding.
+- **Camera selection** in Settings › Voice & video, with a live preview; switching mid-call swaps the camera instantly.
+- Web app can live under a sub-path (e.g. `/natter/`); Nextcloud sign-in accepts invite links; with Nextcloud on and
+  sign-ups closed, no local accounts at all.
+
 ## [0.1.0] — 2026-11-20
 
 First version.

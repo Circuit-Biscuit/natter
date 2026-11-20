@@ -60,6 +60,8 @@ impl Default for Settings {
 pub struct VoicePrefs {
     pub input: String,
     pub output: String,
+    /// Camera `deviceId`; empty = the system default.
+    pub camera: String,
     pub push_to_talk: bool,
     /// `KeyboardEvent.code`, e.g. "Backquote".
     pub ptt_key: String,
@@ -71,6 +73,7 @@ impl Default for VoicePrefs {
         VoicePrefs {
             input: String::new(),
             output: String::new(),
+            camera: String::new(),
             push_to_talk: false,
             ptt_key: "Backquote".into(),
             noise_suppression: true,
@@ -216,6 +219,59 @@ pub struct Store {
     pub focused: RwSignal<bool>,
     /// Thread open in the side panel.
     pub thread: RwSignal<Option<Id>>,
+    /// Narrow screen (phone): one column at a time.
+    pub mobile: RwSignal<bool>,
+    /// Which column a phone shows.
+    pub pane: RwSignal<Pane>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pane {
+    /// Spaces and channel list.
+    Nav,
+    Chat,
+    Members,
+}
+
+/// Phones show one column; anything narrower than this counts as a phone.
+pub const MOBILE_MAX_WIDTH: f64 = 760.0;
+
+pub fn window_is_narrow() -> bool {
+    util::window().inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(1200.0) < MOBILE_MAX_WIDTH
+}
+
+/// On a phone every screen you open (chat, thread, members, search) is a history entry, so Android's back
+/// button and the in-app back arrow close them one at a time.
+pub fn push_layer() {
+    if store().mobile.get_untracked() {
+        if let Ok(h) = util::window().history() {
+            let _ = h.push_state_with_url(&wasm_bindgen::JsValue::NULL, "", None);
+        }
+    }
+}
+
+/// The in-app back arrow (phones).
+pub fn go_back() {
+    if let Ok(h) = util::window().history() {
+        let _ = h.back();
+    }
+}
+
+/// Undo the top-most phone layer (called on `popstate`).
+pub fn pop_layer() {
+    let s = store();
+    if !s.mobile.get_untracked() {
+        return;
+    }
+    if s.thread.get_untracked().is_some() {
+        s.thread.set(None);
+    } else if s.pane.get_untracked() == Pane::Members {
+        s.pane.set(Pane::Chat);
+    } else if s.search.with_untracked(|r| r.is_some()) {
+        s.search.set(None);
+    } else if s.pane.get_untracked() == Pane::Chat {
+        s.pane.set(Pane::Nav);
+    }
 }
 
 static STORE: OnceLock<Store> = OnceLock::new();
@@ -261,6 +317,8 @@ impl Store {
             search: RwSignal::new(None),
             focused: RwSignal::new(true),
             thread: RwSignal::new(None),
+            mobile: RwSignal::new(window_is_narrow()),
+            pane: RwSignal::new(Pane::Nav),
         };
         let _ = STORE.set(s);
         s
@@ -513,12 +571,24 @@ pub fn open_channel(channel: Id) {
                 open_channel(parent);
             }
             s.search.set(None);
+            // From a phone's channel list: chat underneath, thread on top (back closes them in turn).
+            if s.mobile.get_untracked() && s.pane.get_untracked() == Pane::Nav {
+                push_layer();
+                s.pane.set(Pane::Chat);
+            }
+            if s.thread.get_untracked() != Some(channel) {
+                push_layer();
+            }
             s.thread.set(Some(channel));
             load_channel(channel);
             return;
         }
     }
     s.thread.set(None);
+    if s.mobile.get_untracked() && s.pane.get_untracked() == Pane::Nav {
+        push_layer();
+        s.pane.set(Pane::Chat);
+    }
     s.nav.set(Nav { space: c.space_id, channel: Some(channel) });
     s.reply_to.set(None);
     s.editing.set(None);

@@ -38,6 +38,12 @@ extern "C" {
     async fn js_devices() -> JsValue;
     #[wasm_bindgen(js_name = voiceSetDevices)]
     async fn js_set_devices(input: &str, output: &str, noise: bool);
+    #[wasm_bindgen(js_name = voiceSetCameraDevice, catch)]
+    async fn js_set_camera_device(id: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(js_name = cameraPreview, catch)]
+    pub async fn camera_preview(el: &web_sys::HtmlVideoElement, id: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(js_name = cameraPreviewStop)]
+    pub fn camera_preview_stop();
 }
 
 #[derive(Deserialize)]
@@ -97,7 +103,7 @@ fn opts_json() -> String {
     let p = s.prefs.get_untracked();
     let c = s.call.get_untracked();
     serde_json::json!({
-        "muted": c.muted, "deafened": c.deafened, "input": p.input, "output": p.output,
+        "muted": c.muted, "deafened": c.deafened, "input": p.input, "output": p.output, "camera": p.camera,
         "ptt": p.push_to_talk, "noise": p.noise_suppression,
     })
     .to_string()
@@ -301,8 +307,14 @@ pub async fn devices() -> Vec<Device> {
 }
 
 pub fn apply_devices() {
-    let p = store().prefs.get_untracked();
-    spawn_local(async move { js_set_devices(&p.input, &p.output, p.noise_suppression).await });
+    let s = store();
+    let p = s.prefs.get_untracked();
+    spawn_local(async move {
+        js_set_devices(&p.input, &p.output, p.noise_suppression).await;
+        if js_set_camera_device(&p.camera).await.is_err() {
+            s.toast("Couldn't switch to that camera. Is another app using it?", true);
+        }
+    });
 }
 
 /// Start a call in a DM: join it and ring the others.

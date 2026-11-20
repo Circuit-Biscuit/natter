@@ -9,7 +9,11 @@ use crate::{api, desktop, gateway, util};
 
 fn device_name() -> String {
     let ua = util::window().navigator().user_agent().unwrap_or_default();
-    let os = if ua.contains("Windows") {
+    let os = if ua.contains("Android") {
+        "Android"
+    } else if ua.contains("iPhone") || ua.contains("iPad") {
+        "iOS"
+    } else if ua.contains("Windows") {
         "Windows"
     } else if ua.contains("Mac") {
         "macOS"
@@ -18,7 +22,11 @@ fn device_name() -> String {
     } else {
         "Unknown OS"
     };
-    let app = if desktop::is_tauri() { "Natter Desktop" } else { "Natter Web" };
+    let app = match (desktop::is_tauri(), ua.contains("Android")) {
+        (true, true) => "Natter for Android",
+        (true, false) => "Natter Desktop",
+        _ => "Natter Web",
+    };
     format!("{app} on {os}")
 }
 

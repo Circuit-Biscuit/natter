@@ -228,6 +228,31 @@ fn VoiceTab() -> impl IntoView {
         desktop::set_ptt_key(p.push_to_talk.then_some(p.ptt_key.as_str()));
     };
     let recording = RwSignal::new(false);
+    let previewing = RwSignal::new(false);
+    let preview_el = NodeRef::<leptos::html::Video>::new();
+    let start_preview = move || {
+        previewing.set(true);
+        // The <video> mounts on the next frame.
+        request_animation_frame(move || {
+            let Some(el) = preview_el.get_untracked() else { return };
+            let id = prefs.with_untracked(|p| p.camera.clone());
+            spawn_local(async move {
+                match voice::camera_preview(&el, &id).await {
+                    // Permission granted: real device names are available now.
+                    Ok(_) => devices.set(voice::devices().await),
+                    Err(_) => {
+                        previewing.set(false);
+                        store().toast("Couldn't open the camera. Is it in use or blocked?", true);
+                    }
+                }
+            });
+        });
+    };
+    let stop_preview = move || {
+        voice::camera_preview_stop();
+        previewing.set(false);
+    };
+    on_cleanup(voice::camera_preview_stop);
     let opts = move |kind: &'static str, current: String| {
         let list: Vec<voice::Device> = devices.get().into_iter().filter(|d| d.kind == kind).collect();
         let mut out = vec![view! { <option value="" selected=current.is_empty()>"Default"</option> }.into_any()];
@@ -251,7 +276,25 @@ fn VoiceTab() -> impl IntoView {
                 </select>
             </label>
         </div>
-        <p class="muted small">"Device names appear after you've allowed microphone access once (join a call)."</p>
+        <p class="muted small">"Device names appear once you've allowed microphone or camera access (join a call, or test the camera below)."</p>
+        <h3>"Camera"</h3>
+        <div class="row gap camera-row">
+            <label class="grow">"Device"
+                <select on:change=move |e| {
+                    let v = event_target_value(&e);
+                    set(Box::new(move |p| p.camera = v));
+                    if previewing.get_untracked() { start_preview(); }
+                }>
+                    {move || opts("videoinput", prefs.with(|p| p.camera.clone()))}
+                </select>
+            </label>
+            <button class="btn" on:click=move |_| if previewing.get_untracked() { stop_preview() } else { start_preview() }>
+                {move || if previewing.get() { "Stop preview" } else { "Test camera" }}
+            </button>
+        </div>
+        <Show when=move || previewing.get()>
+            <video class="camera-preview" node_ref=preview_el autoplay=true playsinline=true prop:muted=true></video>
+        </Show>
         <h3>"Input mode"</h3>
         <label class="check"><input type="radio" name="mode" prop:checked=move || !prefs.with(|p| p.push_to_talk)
             on:change=move |_| set(Box::new(|p| p.push_to_talk = false))/>"Voice activity"</label>
