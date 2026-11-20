@@ -10,7 +10,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use natter_proto::{
-    Event, Id, MessageKind, Millis, VoiceAnswer, VoiceJoin, VoiceState, VoiceUpdate,
+    Event, Id, MessageKind, Millis, VoiceAnswer, VoiceJoin, VoiceState, VoiceUpdate, perm,
 };
 use str0m::change::SdpOffer;
 use str0m::media::Mid;
@@ -19,7 +19,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
 use crate::auth::Auth;
 use crate::sfu::{SfuCmd, SfuEvent};
-use crate::{Config, R, St, bad, db, internal, messages, not_found, now_ms};
+use crate::{Config, R, St, bad, db, forbidden, internal, messages, not_found, now_ms};
 
 struct Entry {
     state: VoiceState,
@@ -113,6 +113,9 @@ pub async fn join(
     let acc = db::access(&st.db, me, ch).await?;
     if !acc.ch.kind.has_voice() {
         return Err(bad("that channel has no calls"));
+    }
+    if !acc.has(perm::CONNECT) {
+        return Err(forbidden("you don't have permission to join calls here"));
     }
     if req.tracks.len() > 8 || req.tracks.keys().any(|m| m.is_empty() || m.len() > 16) {
         return Err(bad("bad track list"));

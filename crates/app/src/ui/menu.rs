@@ -44,7 +44,8 @@ pub fn message_menu(m: &Message) -> Vec<Option<MenuItem>> {
     let (channel, id, author) = (m.channel_id, m.id, m.author_id);
     let space = s.channel(channel).and_then(|c| c.space_id);
     let mine = author == s.me_id();
-    let can_mod = s.is_mod(space);
+    let can_pin = s.can_pin(space);
+    let can_delete = space.is_some() && s.can(space, perm::MANAGE_MESSAGES);
     let pinned = m.pinned;
     let text = m.content.clone();
     let menu_pos = s.menu;
@@ -69,14 +70,14 @@ pub fn message_menu(m: &Message) -> Vec<Option<MenuItem>> {
     if let Some(t) = m.thread.as_ref().map(|t| t.id) {
         v.push(Some(MenuItem::new("Open Thread", move || crate::store::open_channel(t))));
     }
-    if can_mod {
+    if can_pin {
         v.push(Some(MenuItem::new(if pinned { "Unpin Message" } else { "Pin Message" }, move || crate::store::set_pinned(channel, id, !pinned))));
     }
     v.push(None);
     v.push(Some(MenuItem::new("Copy Text", move || util::copy_text(&text))));
     v.push(Some(MenuItem::new("Mark Unread", move || crate::store::mark_unread(channel, id))));
     v.push(Some(MenuItem::new("Copy Message ID", move || util::copy_text(&id.to_string()))));
-    if mine || can_mod {
+    if mine || can_delete {
         v.push(None);
         v.push(Some(MenuItem::new("Delete Message", move || crate::store::delete_with_confirm(channel, id)).danger()));
     }
@@ -88,7 +89,8 @@ pub fn channel_menu(id: Id) -> Vec<Option<MenuItem>> {
     let Some(c) = s.channel(id) else { return vec![] };
     let muted = s.muted(id);
     let thread_owner = c.thread.as_ref().is_some_and(|t| t.owner_id == s.me_id());
-    let can_mod = c.space_id.is_some() && (s.is_mod(c.space_id) || thread_owner);
+    let need = if c.kind == ChannelKind::Thread { perm::MANAGE_THREADS } else { perm::MANAGE_CHANNELS };
+    let can_mod = c.space_id.is_some() && (s.can(c.space_id, need) || thread_owner);
     let mut v = Vec::new();
     if c.kind == ChannelKind::Text && c.space_id.is_some() {
         v.push(Some(MenuItem::new("Create Thread", move || s.modal.set(Some(Modal::CreateThread { channel: id, message: None })))));
@@ -108,7 +110,7 @@ pub fn channel_menu(id: Id) -> Vec<Option<MenuItem>> {
             voice::call_dm(id);
         })));
     }
-    if let Some(sp) = c.space_id {
+    if let Some(sp) = c.space_id.filter(|&sp| s.can(Some(sp), perm::CREATE_INVITES)) {
         v.push(Some(MenuItem::new("Invite People", move || s.modal.set(Some(Modal::Invite(sp))))));
     }
     v.push(None);
@@ -188,31 +190,49 @@ pub fn user_menu(user: Id, space: Option<Id>) -> Vec<Option<MenuItem>> {
     v.push(Some(MenuItem::new("Copy Username", move || util::copy_text(&username2))));
     v.push(Some(MenuItem::new("Copy User ID", move || util::copy_text(&user.to_string()))));
     if let Some(sp) = space {
-        let my_role = s.my_role(sp);
-        let their_role = s.member(sp, user).map(|m| m.role);
-        let outranks = match (my_role, their_role) {
-            (Some(Role::Owner), Some(r)) => r != Role::Owner,
-            (Some(Role::Admin), Some(Role::Member)) => true,
-            _ => false,
-        };
-        if user != me && their_role.is_some() {
-            if my_role == Some(Role::Owner) {
-                let is_admin = their_role == Some(Role::Admin);
+        let member = s.member(sp, user);
+        let outranks = s.outranks(sp, user);
+        if user != me && member.is_some() {
+            // Making someone admin = giving them a role with Administrator (every space starts with "Admin").
+            let space_info = s.space(sp);
+            let my_rank = s.rank(sp, me);
+            let admin_roles: Vec<RoleDef> = space_info.map(|x| x.roles).unwrap_or_default().into_iter()
+                .filter(|r| r.permissions & perm::ADMINISTRATOR != 0 && r.position < my_rank).collect();
+            if s.can(Some(sp), perm::MANAGE_ROLES) && s.can(Some(sp), perm::ADMINISTRATOR) && !admin_roles.is_empty() {
+                let held: Vec<Id> = admin_roles.iter().map(|r| r.id).filter(|r| member.as_ref().is_some_and(|m| m.roles.contains(r))).collect();
+                let first = admin_roles[0].id;
                 v.push(None);
-                v.push(Some(MenuItem::new(if is_admin { "Remove Admin" } else { "Make Admin" }, move || {
-                    let role = if is_admin { Role::Member } else { Role::Admin };
+                v.push(Some(MenuItem::new(if held.is_empty() { "Make Admin" } else { "Remove Admin" }, move || {
+                    let held = held.clone();
                     spawn_local(async move {
-                        let body = UpdateMember { role: Some(role), nickname: None };
-                        if let Err(e) = api::call::<_, ()>("PATCH", &format!("/api/spaces/{sp}/members/{user}"), &body).await {
+                        let r = if held.is_empty() {
+                            api::act("PUT", &format!("/api/spaces/{sp}/members/{user}/roles/{first}")).await
+                        } else {
+                            let mut r = Ok(());
+                            for role in held {
+                                r = r.and(api::act("DELETE", &format!("/api/spaces/{sp}/members/{user}/roles/{role}")).await);
+                            }
+                            r
+                        };
+                        if let Err(e) = r {
                             store().error(e);
                         }
                     });
                 })));
             }
-            if outranks {
+            if s.can(Some(sp), perm::MANAGE_ROLES) {
+                v.push(Some(MenuItem::new("Manage Roles", move || {
+                    let (x, y) = store().menu.with_untracked(|m| m.as_ref().map(|m| (m.x, m.y)).unwrap_or((400, 300)));
+                    store().popout.set(Some(crate::store::Popout { user, x, y }));
+                })));
+            }
+            let can_kick = outranks && s.can(Some(sp), perm::KICK_MEMBERS);
+            let can_ban = outranks && s.can(Some(sp), perm::BAN_MEMBERS);
+            if can_kick || can_ban {
                 let name = s.name(user, Some(sp));
                 let name2 = name.clone();
                 v.push(None);
+                if can_kick {
                 v.push(Some(MenuItem::new(format!("Kick {name}"), move || {
                     let n = name.clone();
                     store().confirm(&format!("Kick {n}"), "They can come back with a new invite.", "Kick", move || {
@@ -223,6 +243,8 @@ pub fn user_menu(user: Id, space: Option<Id>) -> Vec<Option<MenuItem>> {
                         });
                     });
                 }).danger()));
+                }
+                if can_ban {
                 v.push(Some(MenuItem::new(format!("Ban {name2}"), move || {
                     let n = name2.clone();
                     store().confirm(&format!("Ban {n}"), "They are removed and can't rejoin. Their messages from the last hour are deleted.", "Ban", move || {
@@ -234,6 +256,7 @@ pub fn user_menu(user: Id, space: Option<Id>) -> Vec<Option<MenuItem>> {
                         });
                     });
                 }).danger()));
+                }
             }
         }
     }
@@ -244,18 +267,24 @@ pub fn space_menu(id: Id) -> Vec<Option<MenuItem>> {
     let s = store();
     let Some(sp) = s.space(id) else { return vec![] };
     let muted = s.muted(id);
-    let can_mod = s.is_mod(Some(id));
+    let p = s.perms(Some(id));
+    let can_settings = p & (perm::MANAGE_SPACE | perm::MANAGE_ROLES | perm::BAN_MEMBERS | perm::KICK_MEMBERS) != 0;
+    let can_channels = p & perm::MANAGE_CHANNELS != 0;
     let owner = sp.owner_id == s.me_id();
     let mut v = vec![
         Some(MenuItem::new("Mark As Read", move || crate::store::mark_space_read(id))),
-        Some(MenuItem::new("Invite People", move || s.modal.set(Some(Modal::Invite(id))))),
+        (p & perm::CREATE_INVITES != 0).then(|| MenuItem::new("Invite People", move || s.modal.set(Some(Modal::Invite(id))))),
         Some(MenuItem::new(if muted { "Unmute Space" } else { "Mute Space" }, move || {
             s.update_settings(|st| if muted { st.muted.retain(|&x| x != id) } else { st.muted.push(id) })
         })),
     ];
-    if can_mod {
+    if can_settings || can_channels {
         v.push(None);
+    }
+    if can_settings {
         v.push(Some(MenuItem::new("Space Settings", move || s.modal.set(Some(Modal::SpaceSettings(id))))));
+    }
+    if can_channels {
         v.push(Some(MenuItem::new("Create Channel", move || s.modal.set(Some(Modal::CreateChannel { space: id, kind: ChannelKind::Text, parent: None })))));
         v.push(Some(MenuItem::new("Create Category", move || s.modal.set(Some(Modal::CreateChannel { space: id, kind: ChannelKind::Category, parent: None })))));
     }

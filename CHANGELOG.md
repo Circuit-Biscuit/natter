@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- **Roles, like Discord's:** create roles with a name, colour and emoji; switch 16 permissions on or off (manage
+  space, roles, channels, nicknames, messages, threads; kick, ban, invite; send, attach, react, start threads,
+  mention @everyone; join calls; Administrator); set what @everyone may do; drag to reorder; show a role's members as
+  their own group in the member list; names take the colour of their highest role. People with Manage roles can only
+  touch roles below their own and can't hand out permissions they don't have.
+- **Make anyone admin:** every space has an Admin role; "Make Admin" / "Remove Admin" in a member's menu, and roles
+  can be added or removed right from a profile. Existing admins were moved onto the Admin role automatically.
 - **Notifications that get noticed:** a red number (mentions and DMs) or red dot (anything else unread) on the
   taskbar and tray icon and on the browser tab; our own notification sound, also for the test notification (the
   pop-ups themselves are silent so nothing doubles up); choose between four sounds; notify for all messages (new

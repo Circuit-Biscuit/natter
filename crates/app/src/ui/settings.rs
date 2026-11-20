@@ -671,14 +671,18 @@ fn DevicesTab() -> impl IntoView {
 #[component]
 pub fn SpaceSettings(space: Id) -> impl IntoView {
     let s = store();
-    let tab = RwSignal::new("overview");
+    let can = move |p: u64| s.can(Some(space), p);
+    let tab = RwSignal::new(if can(perm::MANAGE_SPACE) { "overview" } else if can(perm::MANAGE_ROLES) { "roles" } else { "members" });
     let owner = move || s.space(space).is_some_and(|sp| sp.owner_id == s.me_id());
     view! {
         <div class="settings">
             <nav class="settings-nav">
                 <div class="settings-group ellipsis">{move || s.space(space).map(|sp| sp.name.to_uppercase()).unwrap_or_default()}</div>
-                {[("overview", "Overview"), ("members", "Members"), ("invites", "Invites"), ("bans", "Bans")].into_iter().map(|(id, label)| view! {
-                    <button class:active=move || tab.get() == id on:click=move |_| tab.set(id)>{label}</button>
+                {[("overview", "Overview", perm::MANAGE_SPACE), ("roles", "Roles", perm::MANAGE_ROLES), ("members", "Members", 0),
+                  ("invites", "Invites", 0), ("bans", "Bans", perm::BAN_MEMBERS)].into_iter().map(|(id, label, need)| view! {
+                    <Show when=move || can(need)>
+                        <button class:active=move || tab.get() == id on:click=move |_| tab.set(id)>{label}</button>
+                    </Show>
                 }).collect_view()}
                 <Show when=owner>
                     <div class="settings-sep"></div>
@@ -696,6 +700,7 @@ pub fn SpaceSettings(space: Id) -> impl IntoView {
                 <button class="settings-close icon-btn" title="Close (Esc)" on:click=|_| store().modal.set(None)><Icon name="x"/></button>
                 {move || match tab.get() {
                     "members" => view! { <SpaceMembers space=space/> }.into_any(),
+                    "roles" => view! { <SpaceRoles space=space/> }.into_any(),
                     "invites" => view! { <SpaceInvites space=space/> }.into_any(),
                     "bans" => view! { <SpaceBans space=space/> }.into_any(),
                     _ => view! { <SpaceOverview space=space/> }.into_any(),
@@ -754,14 +759,14 @@ fn SpaceMembers(space: Id) -> impl IntoView {
         let query = q.get().to_lowercase();
         let mut v: Vec<Member> = s.space(space).map(|sp| sp.members).unwrap_or_default();
         v.retain(|m| s.name(m.user_id, Some(space)).to_lowercase().contains(&query) || s.user(m.user_id).is_some_and(|u| u.username.contains(&query)));
-        v.sort_by_key(|m| (m.role, s.name(m.user_id, Some(space)).to_lowercase()));
+        v.sort_by_key(|m| (std::cmp::Reverse(s.rank(space, m.user_id)), s.name(m.user_id, Some(space)).to_lowercase()));
         v
     };
     view! {
         <h2>{move || format!("Members — {}", s.space(space).map(|sp| sp.members.len()).unwrap_or(0))}</h2>
         <input class="wide-input" placeholder="Search members" prop:value=move || q.get() on:input=move |e| q.set(event_target_value(&e))/>
         <div class="member-table">
-            <For each=members key=|m| (m.user_id, m.role, m.nickname.clone()) let:m>
+            <For each=members key=|m| (m.user_id, m.nickname.clone()) let:m>
                 {
                     let u = m.user_id;
                     view! {
@@ -771,7 +776,8 @@ fn SpaceMembers(space: Id) -> impl IntoView {
                                 <div>{move || s.name(u, Some(space))}</div>
                                 <div class="muted small">{move || s.user(u).map(|x| x.username).unwrap_or_default()}{format!(" · joined {}", util::day_label(m.joined_at))}</div>
                             </div>
-                            <span class="role-chip">{match m.role { Role::Owner => "Owner", Role::Admin => "Admin", Role::Member => "Member" }}</span>
+                            {move || (s.space(space).map(|sp| sp.owner_id) == Some(u)).then(|| view! { <span class="role-chip owner-chip">"👑 Owner"</span> })}
+                            <super::members::RoleChips space=space user=u/>
                             <button class="icon-btn" title="Actions" on:click=move |e| s.open_menu(&e, super::menu::user_menu(u, Some(space)))><Icon name="more"/></button>
                         </div>
                     }
@@ -862,5 +868,306 @@ fn SpaceBans(space: Id) -> impl IntoView {
                 }
             }).collect_view().into_any()
         })}
+    }
+}
+
+// ---------------------------------------------------------------- roles
+
+/// Swatches for role colours.
+const ROLE_COLORS: [&str; 20] = [
+    "#1abc9c", "#2ecc71", "#3498db", "#9b59b6", "#e91e63", "#f1c40f", "#e67e22", "#e74c3c", "#95a5a6", "#607d8b",
+    "#11806a", "#1f8b4c", "#206694", "#71368a", "#ad1457", "#c27c0e", "#a84300", "#992d22", "#979c9f", "#546e7a",
+];
+
+/// Quick picks for a role's icon (any emoji can be typed).
+const ROLE_EMOJI: [&str; 14] = ["🛡️", "👑", "⭐", "🔧", "🛠️", "🎨", "💡", "🎮", "🎬", "📅", "🧪", "🎵", "📣", "🤝"];
+
+/// The Roles tab: @everyone, then the roles highest first, drag to reorder; a role opens its editor.
+#[component]
+fn SpaceRoles(space: Id) -> impl IntoView {
+    let s = store();
+    // None: the list; Some(None): @everyone; Some(Some(id)): that role.
+    let editing = RwSignal::new(None::<Option<Id>>);
+    let q = RwSignal::new(String::new());
+    let dragging = RwSignal::new(None::<Id>);
+    let roles = move || s.space(space).map(|sp| sp.roles).unwrap_or_default();
+    let members_with = move |role: Id| s.space(space).map_or(0, |sp| sp.members.iter().filter(|m| m.roles.contains(&role)).count());
+    let my_rank = move || s.rank(space, s.me_id());
+    let can_manage = move || s.can(Some(space), perm::MANAGE_ROLES);
+    let create = move |_| {
+        spawn_local(async move {
+            let body = CreateRole { name: "new role".into(), ..Default::default() };
+            match api::call::<_, RoleDef>("POST", &format!("/api/spaces/{space}/roles"), &body).await {
+                Ok(r) => editing.set(Some(Some(r.id))),
+                Err(e) => store().error(e),
+            }
+        });
+    };
+    // Dropping a role on another takes that one's place.
+    let drop_on = move |target: Id| {
+        let Some(src) = dragging.get_untracked() else { return };
+        dragging.set(None);
+        let mut ids: Vec<Id> = roles().iter().map(|r| r.id).collect();
+        let (Some(from), Some(to)) = (ids.iter().position(|&x| x == src), ids.iter().position(|&x| x == target)) else { return };
+        if from == to {
+            return;
+        }
+        let id = ids.remove(from);
+        ids.insert(to, id);
+        spawn_local(async move {
+            if let Err(e) = api::call::<_, ()>("PUT", &format!("/api/spaces/{space}/roles"), &ReorderRoles { ids }).await {
+                store().error(e);
+            }
+        });
+    };
+    let delete = move |r: RoleDef| {
+        let id = r.id;
+        s.confirm(&format!("Delete '{}'", r.name), "Everyone who has it loses it. This can't be undone.", "Delete role", move || {
+            spawn_local(async move {
+                if let Err(e) = api::act("DELETE", &format!("/api/spaces/{space}/roles/{id}")).await {
+                    store().error(e);
+                }
+            });
+        });
+    };
+    view! {
+        {move || match editing.get() {
+            Some(role) => view! { <RoleEditor space=space role=role editing=editing/> }.into_any(),
+            None => view! {
+                <h2>"Roles"</h2>
+                <p class="muted">"Use roles to group your space's members and decide what they may do."</p>
+                <button class="default-perms" on:click=move |_| editing.set(Some(None))>
+                    <Icon name="members"/>
+                    <div class="grow">
+                        <div class="switch-label">"Default permissions"</div>
+                        <div class="muted small">"@everyone · applies to all members"</div>
+                    </div>
+                    <span class="chev-right"><Icon name="chevron" size=18/></span>
+                </button>
+                <div class="row gap roles-tools">
+                    <input class="wide-input grow" placeholder="Search roles" prop:value=move || q.get() on:input=move |e| q.set(event_target_value(&e))/>
+                    <Show when=can_manage><button class="btn primary" on:click=create>"Create role"</button></Show>
+                </div>
+                <p class="muted small">"Members use the colour of the highest role they have on this list. Drag roles to reorder them."</p>
+                <div class="roles-table">
+                    <div class="roles-head">
+                        <span class="grow">{move || format!("Roles — {}", roles().len())}</span>
+                        <span class="roles-count">"Members"</span>
+                        <span class="roles-actions"></span>
+                    </div>
+                    {move || {
+                        let query = q.get().to_lowercase();
+                        roles().into_iter().filter(|r| r.name.to_lowercase().contains(&query)).map(|r| {
+                            let id = r.id;
+                            let locked = !can_manage() || r.position >= my_rank();
+                            let r2 = r.clone();
+                            view! {
+                                <div class="role-row" class:dragging=move || dragging.get() == Some(id) draggable=if locked { "false" } else { "true" }
+                                    on:dragstart=move |_| dragging.set(Some(id))
+                                    on:dragend=move |_| dragging.set(None)
+                                    on:dragover=move |e| if dragging.get_untracked().is_some() && !locked { e.prevent_default() }
+                                    on:drop=move |e| { e.prevent_default(); drop_on(id) }
+                                    on:click=move |_| editing.set(Some(Some(id)))>
+                                    <span class="role-grip" class:hidden=locked><Icon name="grip" size=16/></span>
+                                    <span class="role-shield" style:color=super::members::role_swatch(&r.color)>
+                                        {if r.emoji.is_empty() { view! { <Icon name="shield" size=18/> }.into_any() } else { view! { <span>{r.emoji.clone()}</span> }.into_any() }}
+                                    </span>
+                                    <span class="grow ellipsis role-name">{r.name.clone()}
+                                        {locked.then(|| view! { <span class="role-lock" title="Above your highest role"><Icon name="lock" size=14/></span> })}
+                                    </span>
+                                    <span class="roles-count">{members_with(id)}" "<Icon name="members" size=14/></span>
+                                    <span class="roles-actions">
+                                        <button class="icon-btn" title=if locked { "View" } else { "Edit" } on:click=move |e| { e.stop_propagation(); editing.set(Some(Some(id))) }>
+                                            <Icon name=if locked { "search" } else { "edit" } size=16/>
+                                        </button>
+                                        {(!locked).then(|| {
+                                            let r3 = r2.clone();
+                                            view! {
+                                                <button class="icon-btn danger" title="Delete role" on:click=move |e| { e.stop_propagation(); delete(r3.clone()) }>
+                                                    <Icon name="trash" size=16/>
+                                                </button>
+                                            }
+                                        })}
+                                    </span>
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
+            }.into_any(),
+        }}
+    }
+}
+
+/// Edit one role (display, permissions, members) or the @everyone permissions. Changes wait for Save.
+#[component]
+fn RoleEditor(space: Id, role: Option<Id>, editing: RwSignal<Option<Option<Id>>>) -> impl IntoView {
+    let s = store();
+    let current = move || role.and_then(|id| s.space(space).and_then(|sp| sp.roles.into_iter().find(|r| r.id == id)));
+    let everyone = move || s.space(space).map_or(0, |sp| sp.everyone_permissions);
+    let tab = RwSignal::new(if role.is_some() { "display" } else { "permissions" });
+    let name = RwSignal::new(String::new());
+    let color = RwSignal::new(String::new());
+    let emoji = RwSignal::new(String::new());
+    let hoist = RwSignal::new(false);
+    let perms = RwSignal::new(0u64);
+    let reset = move || {
+        match current() {
+            Some(r) => {
+                name.set(r.name);
+                color.set(r.color);
+                emoji.set(r.emoji);
+                hoist.set(r.hoist);
+                perms.set(r.permissions);
+            }
+            None => perms.set(everyone()),
+        }
+    };
+    reset();
+    // The role was deleted (by someone else): back to the list.
+    Effect::new(move |_| {
+        if role.is_some() && current().is_none() {
+            editing.set(None);
+        }
+    });
+    let locked = move || !s.can(Some(space), perm::MANAGE_ROLES) || current().is_some_and(|r| r.position >= s.rank(space, s.me_id()));
+    let mine = move || s.perms(Some(space));
+    let dirty = move || match current() {
+        Some(r) => r.name != name.get() || r.color != color.get() || r.emoji != emoji.get() || r.hoist != hoist.get() || r.permissions != perms.get(),
+        None => role.is_none() && everyone() != perms.get(),
+    };
+    let saving = RwSignal::new(false);
+    let save = move |_| {
+        saving.set(true);
+        spawn_local(async move {
+            let r = match role {
+                Some(id) => {
+                    let body = UpdateRole {
+                        name: Some(name.get_untracked()),
+                        color: Some(color.get_untracked()),
+                        emoji: Some(emoji.get_untracked()),
+                        permissions: Some(perms.get_untracked()),
+                        hoist: Some(hoist.get_untracked()),
+                    };
+                    api::call::<_, ()>("PATCH", &format!("/api/spaces/{space}/roles/{id}"), &body).await
+                }
+                None => {
+                    let body = UpdateSpace { everyone_permissions: Some(perms.get_untracked()), ..Default::default() };
+                    api::call::<_, ()>("PATCH", &format!("/api/spaces/{space}"), &body).await
+                }
+            };
+            saving.set(false);
+            match r {
+                Ok(()) => store().toast("Saved.", false),
+                Err(e) => store().error(e),
+            }
+        });
+    };
+    let holders = move || {
+        let Some(id) = role else { return vec![] };
+        s.space(space).map(|sp| sp.members.into_iter().filter(|m| m.roles.contains(&id)).map(|m| m.user_id).collect()).unwrap_or_default()
+    };
+    let others = move || {
+        let Some(id) = role else { return vec![] };
+        let mut v: Vec<Id> = s.space(space).map(|sp| sp.members.into_iter().filter(|m| !m.roles.contains(&id)).map(|m| m.user_id).collect()).unwrap_or_default();
+        v.sort_by_key(|&u| s.name(u, Some(space)).to_lowercase());
+        v
+    };
+    let set_member = move |user: Id, add: bool| {
+        let Some(id) = role else { return };
+        spawn_local(async move {
+            let path = format!("/api/spaces/{space}/members/{user}/roles/{id}");
+            if let Err(e) = api::act(if add { "PUT" } else { "DELETE" }, &path).await {
+                store().error(e);
+            }
+        });
+    };
+    let tab_btn = move |id: &'static str, label: String| view! {
+        <button class:active=move || tab.get() == id on:click=move |_| tab.set(id)>{label}</button>
+    };
+    view! {
+        <div class="role-editor">
+            <button class="btn link back-link" on:click=move |_| editing.set(None)><Icon name="arrow-left" size=16/>" Roles"</button>
+            <h2>{move || match role {
+                None => "@everyone".to_string(),
+                Some(_) => format!("Edit role — {}", name.get()),
+            }}</h2>
+            {move || locked().then(|| view! { <p class="muted small"><Icon name="lock" size=14/>" You can look, but this role sits at or above your own highest role."</p> })}
+            <div class="tabs editor-tabs">
+                {role.is_some().then(|| tab_btn("display", "Display".into()))}
+                {tab_btn("permissions", "Permissions".into())}
+                {role.is_some().then(|| view! { <button class:active=move || tab.get() == "members" on:click=move |_| tab.set("members")>{move || format!("Manage members ({})", holders().len())}</button> })}
+            </div>
+            <fieldset class="plain" disabled=locked>
+            {move || match tab.get() {
+                "display" => view! {
+                    <label>"Role name"<input class="wide-input" maxlength="100" prop:value=move || name.get() on:input=move |e| name.set(event_target_value(&e))/></label>
+                    <h3>"Role colour"</h3>
+                    <p class="muted small">"Members use the colour of their highest role."</p>
+                    <div class="tile-row">
+                        <button class="accent-dot no-colour" title="No colour" class:active=move || color.get().is_empty() on:click=move |_| color.set(String::new())></button>
+                        {ROLE_COLORS.into_iter().map(|c| view! {
+                            <button class="accent-dot" title=c style:background=c class:active=move || color.get() == c on:click=move |_| color.set(c.into())></button>
+                        }).collect_view()}
+                        <input type="color" class="colour-input" title="Any colour" prop:value=move || super::members::role_swatch(&color.get())
+                            on:input=move |e| color.set(event_target_value(&e))/>
+                    </div>
+                    <h3>"Role icon"</h3>
+                    <div class="tile-row">
+                        <input class="wide-input emoji-input" maxlength="8" placeholder="none" prop:value=move || emoji.get() on:input=move |e| emoji.set(event_target_value(&e))/>
+                        {ROLE_EMOJI.into_iter().map(|e| view! {
+                            <button class="emoji-pick" class:active=move || emoji.get() == e on:click=move |_| emoji.set(if emoji.get_untracked() == e { String::new() } else { e.into() })>{e}</button>
+                        }).collect_view()}
+                    </div>
+                    {switch("Display members separately", "Show members with this role in their own group in the member list.", move || hoist.get(), move |on| hoist.set(on))}
+                }.into_any(),
+                "members" => view! {
+                    <div class="row gap">
+                        <select class="grow" on:change=move |e| {
+                            if let Ok(u) = event_target_value(&e).parse::<Id>() { set_member(u, true); }
+                        }>
+                            <option value="" selected=true>"Add a member…"</option>
+                            {move || others().into_iter().map(|u| view! { <option value=u.to_string()>{s.name(u, Some(space))}</option> }).collect_view()}
+                        </select>
+                    </div>
+                    {move || holders().into_iter().map(|u| view! {
+                        <div class="member-line">
+                            <Avatar user=u size=32/>
+                            <div class="grow">{move || s.name(u, Some(space))}</div>
+                            <button class="icon-btn" title="Remove from role" on:click=move |_| set_member(u, false)><Icon name="x" size=16/></button>
+                        </div>
+                    }).collect_view()}
+                    {move || holders().is_empty().then(|| view! { <p class="muted">"Nobody has this role yet."</p> })}
+                }.into_any(),
+                _ => {
+                    let groups = ["General", "Membership", "Text", "Voice", "Advanced"];
+                    view! {
+                        {role.is_none().then(|| view! { <p class="muted small">"What every member may do. Roles add to this; they never take anything away."</p> })}
+                        {groups.into_iter().map(|g| view! {
+                            <h3>{g}</h3>
+                            {perm::LIST.into_iter().filter(|(.., group)| *group == g).filter(|(f, ..)| role.is_some() || *f != perm::ADMINISTRATOR).map(|(f, label, hint, _)| view! {
+                                <label class="switch-row" class:off-limits=move || f & !mine() != 0>
+                                    <div class="grow">
+                                        <div class="switch-label">{label}</div>
+                                        <div class="muted small">{hint}</div>
+                                    </div>
+                                    <input type="checkbox" class="switch" prop:checked=move || perms.get() & f != 0
+                                        disabled=move || f & !mine() != 0
+                                        on:change=move |e| { let on = event_target_checked(&e); perms.update(|p| if on { *p |= f } else { *p &= !f }); }/>
+                                </label>
+                            }).collect_view()}
+                        }).collect_view()}
+                    }.into_any()
+                }
+            }}
+            </fieldset>
+            <Show when=move || dirty() && tab.get() != "members">
+                <div class="save-bar">
+                    <span class="grow">"Careful — you have unsaved changes!"</span>
+                    <button class="btn link" on:click=move |_| reset()>"Reset"</button>
+                    <button class="btn primary" disabled=move || saving.get() on:click=save>"Save changes"</button>
+                </div>
+            </Show>
+        </div>
     }
 }

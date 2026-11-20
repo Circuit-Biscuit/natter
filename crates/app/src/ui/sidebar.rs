@@ -1,7 +1,7 @@
 //! Second column: the space's channels (or your DMs), the call panel and your user panel.
 
 use leptos::prelude::*;
-use natter_proto::{Channel, ChannelKind, Id, Status, VoiceState};
+use natter_proto::{Channel, ChannelKind, Id, Status, VoiceState, perm};
 
 use super::icons::Icon;
 use super::{Avatar, menu};
@@ -51,7 +51,7 @@ pub fn Sidebar() -> impl IntoView {
 fn SpaceChannels(space: Id) -> impl IntoView {
     let s = store();
     let name = move || s.space(space).map(|sp| sp.name).unwrap_or_default();
-    let is_mod = move || s.is_mod(Some(space));
+    let is_mod = move || s.can(Some(space), perm::MANAGE_CHANNELS);
     let rows = move || ordered_channels(&s.space(space).map(|sp| sp.channels).unwrap_or_default());
     let collapsed = move |cat: Id| s.settings.with(|st| st.collapsed.contains(&cat));
     view! {
@@ -127,7 +127,7 @@ fn ChannelRow(channel: Channel) -> impl IntoView {
             <Icon name=icon size=20/>
             <span class="ellipsis name">{name}</span>
             {move || (mentions() > 0).then(|| view! { <span class="badge">{mentions()}</span> })}
-            <Show when=move || s.is_mod(s.channel(id).and_then(|c| c.space_id))>
+            <Show when=move || s.channel(id).is_some_and(|c| c.kind != ChannelKind::Thread && s.can(c.space_id, perm::MANAGE_CHANNELS))>
                 <button class="icon-btn hover-only" title="Edit channel" on:click=move |e| {
                     e.stop_propagation();
                     s.modal.set(Some(Modal::EditChannel(id)));

@@ -229,6 +229,9 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         login_fails: Mutex::default(),
         send_budget: Mutex::default(),
     });
+    db::upgrade_roles(&st.db, || st.id())
+        .await
+        .map_err(|e| anyhow::anyhow!("upgrading roles: {}", e.msg))?;
     tokio::spawn(voice::watch_sfu(st.clone(), sfu_events));
     tokio::spawn(messages::gc_uploads(st.clone()));
     tokio::spawn(spaces::archive_idle_threads(st.clone()));
@@ -272,6 +275,15 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .route(
             "/api/spaces/{id}/members/{user_id}",
             patch(spaces::update_member).delete(spaces::remove_member),
+        )
+        .route("/api/spaces/{id}/roles", post(spaces::create_role).put(spaces::reorder_roles))
+        .route(
+            "/api/spaces/{id}/roles/{role_id}",
+            patch(spaces::update_role).delete(spaces::delete_role),
+        )
+        .route(
+            "/api/spaces/{id}/members/{user_id}/roles/{role_id}",
+            put(spaces::add_member_role).delete(spaces::remove_member_role),
         )
         .route("/api/spaces/{id}/bans", get(spaces::list_bans))
         .route(

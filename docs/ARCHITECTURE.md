@@ -190,7 +190,10 @@ Everything else needs `Authorization: Bearer <token>`:
 | PATCH / DELETE | `/api/spaces/{id}` | `UpdateSpace` → 204 / → 204 |
 | GET / POST | `/api/spaces/{id}/invites` | → `[Invite]` / `CreateInvite` → `Invite` |
 | POST / DELETE | `/api/invites/{code}` | join → `Space` / revoke → 204 |
-| PATCH / DELETE | `/api/spaces/{id}/members/{user_id}` | `UpdateMember` → 204 / leave (yourself) or kick → 204 |
+| PATCH / DELETE | `/api/spaces/{id}/members/{user_id}` | `UpdateMember` (nickname) → 204 / leave (yourself) or kick → 204 |
+| POST / PUT | `/api/spaces/{id}/roles` | `CreateRole` → `RoleDef` / `ReorderRoles` (all ids, highest first) → 204 |
+| PATCH / DELETE | `/api/spaces/{id}/roles/{role_id}` | `UpdateRole` → 204 / → 204 |
+| PUT / DELETE | `/api/spaces/{id}/members/{user_id}/roles/{role_id}` | give / take a role → 204 |
 | GET | `/api/spaces/{id}/bans` | → `[Ban]` |
 | PUT / DELETE | `/api/spaces/{id}/bans/{user_id}` | `BanReq` → 204 / → 204 |
 | POST | `/api/spaces/{id}/channels` | `CreateChannel` → `Channel` |
@@ -233,3 +236,20 @@ Leptos 0.8, client-side rendered, built by `trunk` into `crates/app/dist`.
 Tauri 2. The window loads the app's `dist`. Native extras exposed as commands/events: OS notifications, taskbar flash and
 badge, tray icon with "show / quit", close-to-tray, single instance, global push-to-talk key (pressed/released events), and
 remembered window size. The webview provides WebRTC (WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux).
+
+## Roles and permissions
+
+Discord-style. A space has `everyone_permissions` (`@everyone`) and any number of roles (`RoleDef`: name, colour,
+emoji, position, permission bits, hoist). A member may do what `@everyone` may plus what each of their roles may
+(`perm::effective`); Administrator, and owning the space, means everything. The bits live in `natter_proto::perm`
+with names and descriptions for settings screens, and the same `Space::permissions` / `Space::rank` run on the
+server (as two small queries in `db::perms`) and in the app (to show only what you may use).
+
+Hierarchy: you manage roles below your own highest role (`rank`), never grant permissions you lack, and kick, ban
+or rename only members ranked below you; the owner outranks everyone. New roles start at the bottom; reordering
+must keep the roles at or above yours where they are. Every space starts with an "Admin" role (Administrator);
+"Make admin" in the member menu gives it. Changes go out as `RolesUpdate` (the whole list) and `MemberUpdate`.
+`Member.role` (owner / admin / member) is still filled in for apps from before roles.
+
+Spaces from before roles were upgraded at start-up (`db::upgrade_roles`): each got the Admin role and old admins
+got it. In DMs everyone may chat, share files, react, ping the group, pin and call, but not delete others' messages.

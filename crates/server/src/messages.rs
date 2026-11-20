@@ -10,7 +10,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
 use natter_proto::{
     Ack, Attachment, Channel, EditMessage, Event, Id, MAX_ATTACHMENTS, MAX_MESSAGE_LEN, Message,
-    MessageKind, ReadState, SearchQuery, SearchResult, SendMessage, Status, parse_user_mentions,
+    MessageKind, ReadState, SearchQuery, SearchResult, SendMessage, Status, parse_user_mentions, perm,
 };
 use serde::Deserialize;
 use tower::ServiceExt;
@@ -196,7 +196,14 @@ pub async fn send(
     let me = auth.user;
     let acc = messaging_access(&st, me, ch).await?;
     if !acc.can_post() {
-        return Err(forbidden("only owners and admins can post here"));
+        return Err(forbidden(if acc.has(perm::SEND_MESSAGES) {
+            "only members with Manage messages can post here"
+        } else {
+            "you don't have permission to send messages here"
+        }));
+    }
+    if !req.attachments.is_empty() && !acc.has(perm::ATTACH_FILES) {
+        return Err(forbidden("you don't have permission to attach files here"));
     }
     let mut files = req.attachments.clone();
     files.sort_unstable();
@@ -245,7 +252,7 @@ pub async fn send(
     let in_channel: HashSet<Id> = audience.iter().copied().collect();
     let everyone = content.contains("@everyone");
     let here = content.contains("@here");
-    let mention_everyone = (everyone || here) && acc.can_moderate_chat();
+    let mention_everyone = (everyone || here) && acc.has(perm::MENTION_EVERYONE);
     let mut pinged: Vec<Id> = vec![];
     if !req.silent {
         pinged = parse_user_mentions(&content)
@@ -384,7 +391,7 @@ pub async fn delete(
             .fetch_optional(&st.db)
             .await?
             .ok_or_else(|| not_found("message"))?;
-    if author != auth.user && !acc.is_mod() {
+    if author != auth.user && !acc.has(perm::MANAGE_MESSAGES) {
         return Err(forbidden("you can only delete your own messages"));
     }
     purge(&st, &acc.ch, &[mid]).await?;
@@ -425,6 +432,9 @@ pub async fn react(
 ) -> R<StatusCode> {
     check_emoji(&emoji)?;
     let acc = messaging_access(&st, auth.user, ch).await?;
+    if !acc.has(perm::ADD_REACTIONS) {
+        return Err(forbidden("you don't have permission to add reactions here"));
+    }
     message_in(&st, ch, mid).await?;
     let (distinct, has): (i64, bool) = sqlx::query_as(
         "SELECT COUNT(DISTINCT emoji), COALESCE(MAX(emoji = ?), 0) FROM reactions WHERE message_id = ?",
@@ -496,8 +506,8 @@ pub async fn pins(State(st): State<St>, auth: Auth, Path(ch): Path<Id>) -> R<Jso
 
 async fn set_pinned(st: &St, auth: &Auth, ch: Id, mid: Id, pin: bool) -> R<StatusCode> {
     let acc = messaging_access(st, auth.user, ch).await?;
-    if !acc.can_moderate_chat() {
-        return Err(forbidden("only owners and admins can pin messages"));
+    if !acc.can_pin() {
+        return Err(forbidden("pinning takes the Manage messages permission"));
     }
     let msg = db::message(&st.db, ch, mid).await?;
     if msg.kind != MessageKind::Default {

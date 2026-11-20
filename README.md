@@ -113,13 +113,14 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Threads: from any message or the channel, side panel, sidebar, auto-archive, archived list | ✅ |
 | Unread markers, mention counts, read sync across devices | ✅ |
 | Presence, idle, DND, invisible, custom status, typing | ✅ |
-| Invites (expiry, max uses), roles (owner / admin / member), kick, ban | ✅ |
+| Invites (expiry, max uses), kick, ban | ✅ |
+| Roles: colours, icons, 16 permissions, @everyone defaults, drag to reorder, hierarchy, one-click admin | ✅ |
 | Voice & video calls via SFU, screen share, push to talk | ✅ |
 | Sign in with Nextcloud, files in Nextcloud, share from Nextcloud | ✅ |
 | Desktop app: tray, notifications, numbered badge, global keybinds, start with the computer | ✅ Windows · 🚧 macOS / Linux untested |
 | Android app: phone layout, back button, calls, notifications while open | ✅ (APK, sideload) |
 | Background push notifications on Android (app closed) | ⬜ |
-| Polls, link previews, custom roles, message scheduling | ⬜ |
+| Polls, link previews, per-channel permissions, message scheduling | ⬜ |
 | Simulcast (adaptive video quality for big calls), TURN / TCP fallback | ⬜ |
 | iOS app | ⬜ (the web app works in mobile browsers) |
 | Signed / notarised installers | ⬜ |

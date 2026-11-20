@@ -5,8 +5,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use natter_proto::{
-    Attachment, Channel, Id, Member, Message, Reaction, ReadState, ReplyPreview, Role, Space,
-    ThreadInfo, ThreadPreview, User, id_time, parse_user_mentions,
+    Attachment, Channel, Id, Member, Message, Reaction, ReadState, ReplyPreview, Role, RoleDef, Space,
+    ThreadInfo, ThreadPreview, User, id_time, parse_user_mentions, perm,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -223,10 +223,109 @@ pub async fn dms_of(db: &SqlitePool, user: Id) -> R<Vec<Channel>> {
     Ok(out)
 }
 
+pub async fn roles(db: &SqlitePool, space: Id) -> R<Vec<RoleDef>> {
+    let rows: Vec<(Id, String, String, String, i64, i64, bool)> = sqlx::query_as(
+        "SELECT id, name, color, emoji, position, permissions, hoist FROM roles WHERE space_id = ?
+         ORDER BY position DESC, id",
+    )
+    .bind(space)
+    .fetch_all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, name, color, emoji, position, permissions, hoist)| RoleDef {
+            id,
+            name,
+            color,
+            emoji,
+            position,
+            permissions: permissions as u64,
+            hoist,
+        })
+        .collect())
+}
+
+pub async fn everyone_permissions(db: &SqlitePool, space: Id) -> R<u64> {
+    let p: i64 = sqlx::query_scalar("SELECT everyone_permissions FROM spaces WHERE id = ?")
+        .bind(space)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| not_found("space"))?;
+    Ok(p as u64)
+}
+
+/// What `user` may do in `space` and the position of their highest role (owner: `i64::MAX`), or `None` when
+/// they aren't a member.
+pub async fn perms(db: &SqlitePool, space: Id, user: Id) -> R<Option<(u64, i64)>> {
+    let row: Option<(Id, i64)> = sqlx::query_as(
+        "SELECT s.owner_id, s.everyone_permissions FROM spaces s JOIN members m ON m.space_id = s.id
+         WHERE s.id = ? AND m.user_id = ?",
+    )
+    .bind(space)
+    .bind(user)
+    .fetch_optional(db)
+    .await?;
+    let Some((owner, everyone)) = row else { return Ok(None) };
+    let held: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT r.permissions, r.position FROM member_roles mr JOIN roles r ON r.id = mr.role_id
+         WHERE mr.space_id = ? AND mr.user_id = ?",
+    )
+    .bind(space)
+    .bind(user)
+    .fetch_all(db)
+    .await?;
+    let p = perm::effective(owner == user, everyone as u64, held.iter().map(|&(p, _)| p as u64));
+    let rank = if owner == user { i64::MAX } else { held.iter().map(|&(_, pos)| pos).max().unwrap_or(0) };
+    Ok(Some((p, rank)))
+}
+
+/// Your permissions and rank in a space, or 404 when you aren't a member (so spaces can't be probed).
+pub async fn my_perms(db: &SqlitePool, space: Id, user: Id) -> R<(u64, i64)> {
+    perms(db, space, user).await?.ok_or_else(|| not_found("space"))
+}
+
+/// Turn the old owner / admin / member scheme into roles: every space gets an "Admin" role (Administrator) if
+/// it has none, and old admins get it. Runs at start-up; does nothing once done.
+pub async fn upgrade_roles(db: &SqlitePool, mut next_id: impl FnMut() -> Id) -> R<()> {
+    let spaces: Vec<(Id, i64)> = sqlx::query_as(
+        "SELECT id, created_at FROM spaces WHERE id NOT IN (SELECT space_id FROM roles)",
+    )
+    .fetch_all(db)
+    .await?;
+    for (space, created) in spaces {
+        let role = next_id();
+        let mut tx = db.begin().await?;
+        sqlx::query(
+            "INSERT INTO roles (id, space_id, name, color, position, permissions, hoist, created_at)
+             VALUES (?, ?, 'Admin', '#e5484d', 1, ?, 1, ?)",
+        )
+        .bind(role)
+        .bind(space)
+        .bind(perm::ADMINISTRATOR as i64)
+        .bind(created)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO member_roles (space_id, user_id, role_id)
+             SELECT space_id, user_id, ? FROM members WHERE space_id = ? AND role = 'admin'",
+        )
+        .bind(role)
+        .bind(space)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE members SET role = 'member' WHERE space_id = ? AND role = 'admin'")
+            .bind(space)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+    }
+    Ok(())
+}
+
 pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
-    let (name, owner_id, token, filename): (String, Id, Option<String>, Option<String>) = sqlx::query_as(
-        "SELECT s.name, s.owner_id, up.token, up.filename FROM spaces s LEFT JOIN uploads up ON up.id = s.icon_id
-         WHERE s.id = ?",
+    let (name, owner_id, everyone, token, filename): (String, Id, i64, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT s.name, s.owner_id, s.everyone_permissions, up.token, up.filename FROM spaces s
+         LEFT JOIN uploads up ON up.id = s.icon_id WHERE s.id = ?",
     )
     .bind(id)
     .fetch_optional(db)
@@ -242,16 +341,28 @@ pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
     .into_iter()
     .map(|r| r.into_channel(vec![]))
     .collect();
-    let members = sqlx::query_as::<_, (Id, String, Option<String>, i64)>(
-        "SELECT user_id, role, nickname, joined_at FROM members WHERE space_id = ? ORDER BY joined_at, user_id",
+    let roles = roles(db, id).await?;
+    let held: Vec<(Id, Id)> =
+        sqlx::query_as("SELECT user_id, role_id FROM member_roles WHERE space_id = ?")
+            .bind(id)
+            .fetch_all(db)
+            .await?;
+    let members = sqlx::query_as::<_, (Id, Option<String>, i64)>(
+        "SELECT user_id, nickname, joined_at FROM members WHERE space_id = ? ORDER BY joined_at, user_id",
     )
     .bind(id)
     .fetch_all(db)
     .await?
     .into_iter()
-    .map(|(user_id, role, nickname, joined_at)| Member { user_id, role: from_s(&role), nickname, joined_at })
+    .map(|(user_id, nickname, joined_at)| Member {
+        user_id,
+        role: Role::Member,
+        nickname,
+        joined_at,
+        roles: held.iter().filter(|(u, _)| *u == user_id).map(|&(_, r)| r).collect(),
+    })
     .collect();
-    Ok(Space {
+    let mut space = Space {
         id,
         name,
         icon: token.zip(filename).map(|(t, n)| file_url(&t, &n)),
@@ -259,7 +370,23 @@ pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
         channels,
         members,
         users: vec![],
-    })
+        roles,
+        everyone_permissions: everyone as u64,
+    };
+    // The old three-level role, for apps from before roles.
+    let legacy: Vec<Role> = space
+        .members
+        .iter()
+        .map(|m| match space.permissions(m.user_id) {
+            _ if m.user_id == owner_id => Role::Owner,
+            p if p & perm::ADMINISTRATOR != 0 => Role::Admin,
+            _ => Role::Member,
+        })
+        .collect();
+    for (m, r) in space.members.iter_mut().zip(legacy) {
+        m.role = r;
+    }
+    Ok(space)
 }
 
 /// A space with its members' profiles filled in (for `SpaceCreate` and join/create replies).
@@ -283,21 +410,13 @@ pub async fn spaces_of(db: &SqlitePool, user: Id) -> R<Vec<Space>> {
     Ok(out)
 }
 
-pub async fn role(db: &SqlitePool, space: Id, user: Id) -> R<Option<Role>> {
-    let r: Option<String> =
-        sqlx::query_scalar("SELECT role FROM members WHERE space_id = ? AND user_id = ?")
-            .bind(space)
-            .bind(user)
-            .fetch_optional(db)
-            .await?;
-    Ok(r.map(|r| from_s(&r)))
-}
-
-/// Your role in a space, or 404 when you are not a member (so spaces can't be probed).
-pub async fn member_role(db: &SqlitePool, space: Id, user: Id) -> R<Role> {
-    role(db, space, user)
+pub async fn is_member(db: &SqlitePool, space: Id, user: Id) -> R<bool> {
+    Ok(sqlx::query_scalar::<_, i64>("SELECT 1 FROM members WHERE space_id = ? AND user_id = ?")
+        .bind(space)
+        .bind(user)
+        .fetch_optional(db)
         .await?
-        .ok_or_else(|| not_found("space"))
+        .is_some())
 }
 
 pub async fn space_members(db: &SqlitePool, space: Id) -> R<Vec<Id>> {
@@ -312,39 +431,39 @@ pub async fn space_members(db: &SqlitePool, space: Id) -> R<Vec<Id>> {
 /// What a user may do in a channel they can see.
 pub struct Access {
     pub ch: Channel,
-    /// `None` in DMs.
-    pub role: Option<Role>,
+    /// Their space permissions; in DMs, the chat ones (no deleting each other's messages).
+    pub perms: u64,
 }
+
+/// Everyone in a DM may chat, share files, react, ping the group and call.
+const DM_PERMS: u64 = perm::SEND_MESSAGES | perm::ATTACH_FILES | perm::ADD_REACTIONS | perm::MENTION_EVERYONE | perm::CONNECT;
 
 impl Access {
     pub fn dm(&self) -> bool {
-        self.role.is_none()
+        self.ch.space_id.is_none()
     }
-    pub fn is_mod(&self) -> bool {
-        self.role.is_some_and(Role::is_mod)
+    pub fn has(&self, p: u64) -> bool {
+        self.perms & p == p
     }
-    /// Pin, and ping @everyone: mods in spaces, anyone in DMs.
-    pub fn can_moderate_chat(&self) -> bool {
-        self.dm() || self.is_mod()
+    /// Pinning: anyone in DMs, Manage messages in spaces.
+    pub fn can_pin(&self) -> bool {
+        self.dm() || self.has(perm::MANAGE_MESSAGES)
     }
+    /// Announcement channels take Manage messages to post in.
     pub fn can_post(&self) -> bool {
-        self.dm() || !self.ch.read_only || self.is_mod()
+        self.has(perm::SEND_MESSAGES) && (!self.ch.read_only || self.has(perm::MANAGE_MESSAGES))
     }
 }
 
 /// The channel as `user` may see it, or 404.
 pub async fn access(db: &SqlitePool, user: Id, channel_id: Id) -> R<Access> {
     let ch = channel(db, channel_id).await?;
-    let role = match ch.space_id {
-        Some(space) => Some(
-            role(db, space, user)
-                .await?
-                .ok_or_else(|| not_found("channel"))?,
-        ),
-        None if ch.recipients.contains(&user) => None,
+    let perms = match ch.space_id {
+        Some(space) => perms(db, space, user).await?.ok_or_else(|| not_found("channel"))?.0,
+        None if ch.recipients.contains(&user) => DM_PERMS,
         None => return Err(not_found("channel")),
     };
-    Ok(Access { ch, role })
+    Ok(Access { ch, perms })
 }
 
 /// Who receives events about a channel.

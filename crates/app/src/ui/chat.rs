@@ -501,7 +501,7 @@ fn ThreadPanel(thread: Id) -> impl IntoView {
     let s = store();
     let c = move || s.channel(thread);
     let archived = move || c().and_then(|c| c.thread).is_some_and(|t| t.archived);
-    let can_manage = move || c().is_some_and(|c| s.is_mod(c.space_id) || c.thread.is_some_and(|t| t.owner_id == s.me_id()));
+    let can_manage = move || c().is_some_and(|c| s.can(c.space_id, perm::MANAGE_THREADS) || c.thread.is_some_and(|t| t.owner_id == s.me_id()));
     let set_archived = move |a: bool| {
         leptos::task::spawn_local(async move {
             let body = UpdateChannel { archived: Some(a), ..Default::default() };
@@ -566,11 +566,8 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
     }
 
     let author_name = move || s.name(author, space);
-    let role_class = move || match space.and_then(|sp| s.member(sp, author)).map(|m| m.role) {
-        Some(Role::Owner) => "author owner",
-        Some(Role::Admin) => "author admin",
-        _ => "author",
-    };
+    // Members show the colour of their highest coloured role.
+    let author_color = move || s.role_color(space, author);
     let content = m.content.clone();
     let jumbo = util::only_emoji(&content) && m.reply.is_none();
     let edited_at = m.edited_at;
@@ -591,7 +588,7 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
             <div class="msg-body">
                 {head.then(|| view! {
                     <div class="msg-head">
-                        <span class=role_class on:click=move |e| s.open_profile(&e, author)>{author_name}</span>
+                        <span class="author" style:color=author_color on:click=move |e| s.open_profile(&e, author)>{author_name}</span>
                         <span class="msg-time" title=util::long_time(created)>{util::timestamp(created)}</span>
                     </div>
                 })}
@@ -825,7 +822,8 @@ fn Reactions(m: Message, space: Option<Id>) -> impl IntoView {
 #[component]
 fn Toolbar(channel: Id, id: Id, mine: bool, space: Option<Id>) -> impl IntoView {
     let s = store();
-    let can_moderate = s.is_mod(space);
+    let can_pin = s.can_pin(space);
+    let can_delete = space.is_some() && s.can(space, perm::MANAGE_MESSAGES);
     let quick = move || s.settings.with(|st| st.recent_emoji.iter().take(3).cloned().collect::<Vec<_>>());
     let can_thread = move || {
         s.channel(channel).is_some_and(|c| c.kind == ChannelKind::Text && c.space_id.is_some())
@@ -853,10 +851,10 @@ fn Toolbar(channel: Id, id: Id, mine: bool, space: Option<Id>) -> impl IntoView 
                 </Show>
             </Show>
             <Show when=move || s.shift.get()>
-                {can_moderate.then(|| view! {
+                {can_pin.then(|| view! {
                     <button title="Pin" on:click=move |_| crate::store::set_pinned(channel, id, !s.message(channel, id).is_some_and(|m| m.pinned))><Icon name="pin" size=18/></button>
                 })}
-                {(mine || can_moderate).then(|| view! {
+                {(mine || can_delete).then(|| view! {
                     <button class="danger" title="Delete (no confirmation while Shift is held)" on:click=move |_| crate::store::delete_message(channel, id)><Icon name="trash" size=18/></button>
                 })}
             </Show>

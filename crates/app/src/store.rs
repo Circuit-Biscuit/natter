@@ -401,15 +401,39 @@ impl Store {
         })
     }
 
-    pub fn my_role(&self, space: Id) -> Option<Role> {
-        self.member(space, self.me_id()).map(|m| m.role)
+    /// What I may do in a space; `None` is a DM, where everyone may chat, pin and call.
+    pub fn perms(&self, space: Option<Id>) -> u64 {
+        let me = self.me_id();
+        match space {
+            Some(sp) => self.spaces.with(|v| v.iter().find(|x| x.id == sp).map_or(0, |x| x.permissions(me))),
+            // Like the server: DM members chat, share, react, ping the group and call.
+            None => perm::SEND_MESSAGES | perm::ATTACH_FILES | perm::ADD_REACTIONS | perm::MENTION_EVERYONE | perm::CONNECT,
+        }
     }
 
-    pub fn is_mod(&self, space: Option<Id>) -> bool {
-        match space {
-            Some(s) => self.my_role(s).is_some_and(Role::is_mod),
-            None => true,
-        }
+    /// Pinning: anyone in a DM, Manage messages in a space.
+    pub fn can_pin(&self, space: Option<Id>) -> bool {
+        space.is_none() || self.can(space, perm::MANAGE_MESSAGES)
+    }
+
+    pub fn can(&self, space: Option<Id>, p: u64) -> bool {
+        self.perms(space) & p == p
+    }
+
+    /// Position of `user`'s highest role in the space (owner: `i64::MAX`).
+    pub fn rank(&self, space: Id, user: Id) -> i64 {
+        self.spaces.with(|v| v.iter().find(|x| x.id == space).map_or(-1, |x| x.rank(user)))
+    }
+
+    /// I may act on `user` (kick, ban, nickname): they're below my highest role.
+    pub fn outranks(&self, space: Id, user: Id) -> bool {
+        self.rank(space, self.me_id()) > self.rank(space, user)
+    }
+
+    /// The colour of `user`'s highest coloured role there.
+    pub fn role_color(&self, space: Option<Id>, user: Id) -> Option<String> {
+        let sp = space?;
+        self.spaces.with(|v| v.iter().find(|x| x.id == sp).and_then(|x| x.color_of(user).map(str::to_string)))
     }
 
     /// Nickname in the space, else display name.
@@ -1204,6 +1228,15 @@ pub fn apply(ev: Event) {
                 }
             });
         }
+        Event::RolesUpdate { space_id, roles, everyone_permissions } => s.spaces.update(|v| {
+            if let Some(sp) = v.iter_mut().find(|x| x.id == space_id) {
+                for m in &mut sp.members {
+                    m.roles.retain(|r| roles.iter().any(|x| x.id == *r));
+                }
+                sp.roles = roles;
+                sp.everyone_permissions = everyone_permissions;
+            }
+        }),
         Event::MemberUpdate { space_id, member } => s.spaces.update(|v| {
             if let Some(m) = v.iter_mut().find(|x| x.id == space_id).and_then(|sp| sp.members.iter_mut().find(|m| m.user_id == member.user_id)) {
                 *m = member;

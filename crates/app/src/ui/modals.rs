@@ -586,7 +586,7 @@ fn Pins(channel: Id) -> impl IntoView {
                             <chat::MessageItem m=m head=true space=space/>
                             <div class="pin-actions">
                                 <button class="btn small" on:click=move |_| { close(); crate::store::jump_to(channel, id); }>"Jump"</button>
-                                <Show when=move || s.is_mod(space)>
+                                <Show when=move || s.can_pin(space)>
                                     <button class="btn small" on:click=move |_| {
                                         crate::store::set_pinned(channel, id, false);
                                         pins.update(|p| if let Some(p) = p { p.retain(|m| m.id != id) });

@@ -10,7 +10,7 @@ use axum::extract::{Path, State};
 use axum::http::{Method, Request, StatusCode};
 use axum::routing::{any, delete, get, post};
 use futures_util::StreamExt;
-use natter_proto::{Event, Id, Registration};
+use natter_proto::{Event, Id, Registration, perm};
 use serde_json::{Value, json};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tower::ServiceExt;
@@ -509,6 +509,78 @@ async fn full_flow() {
         |e| matches!(e, Event::MessageDelete { id, .. } if *id == mid),
     )
     .await;
+
+    // Roles: every space starts with an Admin role; @everyone has the defaults.
+    let admin_role = space["roles"][0]["id"].as_i64().unwrap();
+    assert_eq!(space["roles"][0]["name"], json!("Admin"));
+    assert_eq!(space["roles"][0]["permissions"], json!(perm::ADMINISTRATOR));
+    assert_eq!(space["everyone_permissions"], json!(perm::EVERYONE_DEFAULT));
+    let new_channel = json!({"name": "ops", "kind": "text"});
+    let (s, _) = call(&app, "POST", &format!("/api/spaces/{sid}/channels"), Some(&t2), Some(new_channel.clone())).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    // A "Mods" role that can manage channels and roles; everyone hears about it.
+    let (s, mods) = call(
+        &app,
+        "POST",
+        &format!("/api/spaces/{sid}/roles"),
+        Some(&t1),
+        Some(json!({"name": "Mods", "color": "#23A55A", "emoji": "🛠️", "permissions": perm::MANAGE_CHANNELS | perm::MANAGE_ROLES, "hoist": true})),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{mods}");
+    assert_eq!(mods["color"], json!("#23a55a"));
+    let mods = mods["id"].as_i64().unwrap();
+    let Event::RolesUpdate { roles, .. } = next_event(&mut ws, |e| matches!(e, Event::RolesUpdate { .. })).await else {
+        unreachable!()
+    };
+    assert_eq!(roles.iter().map(|r| (r.id, r.position)).collect::<Vec<_>>(), vec![(admin_role, 2), (mods, 1)]);
+    let role_path = |user: Id, role: Id| format!("/api/spaces/{sid}/members/{user}/roles/{role}");
+    let (s, _) = call(&app, "PUT", &role_path(u2, mods), Some(&t1), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let Event::MemberUpdate { member, .. } = next_event(&mut ws, |e| matches!(e, Event::MemberUpdate { .. })).await else {
+        unreachable!()
+    };
+    assert_eq!((member.user_id, member.roles.clone()), (u2, vec![mods]));
+    // Now the member can do what the role allows…
+    let (s, _) = call(&app, "POST", &format!("/api/spaces/{sid}/channels"), Some(&t2), Some(new_channel)).await;
+    assert_eq!(s, StatusCode::OK);
+    // …but nothing above their own highest role, and no permissions they don't have.
+    let (s, _) = call(&app, "PATCH", &format!("/api/spaces/{sid}/roles/{admin_role}"), Some(&t2), Some(json!({"name": "Mine"}))).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = call(&app, "PUT", &role_path(u2, admin_role), Some(&t2), None).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = call(&app, "POST", &format!("/api/spaces/{sid}/roles"), Some(&t2), Some(json!({"name": "Root", "permissions": perm::ADMINISTRATOR}))).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, helpers) = call(&app, "POST", &format!("/api/spaces/{sid}/roles"), Some(&t2), Some(json!({"name": "Helpers"}))).await;
+    assert_eq!(s, StatusCode::OK);
+    let helpers = helpers["id"].as_i64().unwrap();
+    let reorder = |ids: Vec<Id>| Some(json!({ "ids": ids }));
+    let (s, _) = call(&app, "PUT", &format!("/api/spaces/{sid}/roles"), Some(&t2), reorder(vec![admin_role, helpers, mods])).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "can't lift a role above your own");
+    let (s, _) = call(&app, "PUT", &format!("/api/spaces/{sid}/roles"), Some(&t1), reorder(vec![admin_role, helpers, mods])).await;
+    assert_eq!(s, StatusCode::NO_CONTENT, "the owner can");
+    // @everyone without Send messages can't post.
+    let without_send = perm::EVERYONE_DEFAULT & !perm::SEND_MESSAGES;
+    let (s, _) = call(&app, "PATCH", &format!("/api/spaces/{sid}"), Some(&t1), Some(json!({"everyone_permissions": without_send}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let post = || Some(json!({"content": "still here?"}));
+    let (s, _) = call(&app, "POST", &format!("/api/channels/{general}/messages"), Some(&t2), post()).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = call(&app, "PATCH", &format!("/api/spaces/{sid}"), Some(&t1), Some(json!({"everyone_permissions": perm::EVERYONE_DEFAULT}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    // Making someone admin is giving them the Admin role; older apps see role "admin".
+    let (s, _) = call(&app, "PUT", &role_path(u2, admin_role), Some(&t1), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let Event::MemberUpdate { member, .. } = next_event(&mut ws, |e| matches!(e, Event::MemberUpdate { member, .. } if member.roles.contains(&admin_role))).await else {
+        unreachable!()
+    };
+    assert_eq!(serde_json::to_value(member.role).unwrap(), json!("admin"));
+    let (s, _) = call(&app, "DELETE", &format!("/api/spaces/{sid}/roles/{helpers}"), Some(&t2), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT, "admins manage the roles below theirs");
+    let (s, _) = call(&app, "PATCH", &format!("/api/spaces/{sid}/members/{u2}"), Some(&t1), Some(json!({"role": "member"}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "the old role field is gone");
+    let (s, _) = call(&app, "DELETE", &role_path(u2, admin_role), Some(&t1), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
 
     // Local upload, served back with safe headers.
     let png: &[u8] =

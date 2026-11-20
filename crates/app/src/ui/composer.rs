@@ -131,7 +131,7 @@ fn suggestions(channel: Id, tok: &str) -> Vec<Suggestion> {
             }
             out.sort_by_key(|x| (!x.detail.starts_with(&q), s.status(x.user.unwrap_or(0)) == Status::Offline, x.label.to_lowercase()));
             out.truncate(8);
-            if s.is_mod(c.space_id) {
+            if s.can(c.space_id, perm::MENTION_EVERYONE) {
                 for (w, d) in [("everyone", "Notify everyone in this channel"), ("here", "Notify everyone online")] {
                     if w.starts_with(&q) {
                         out.push(Suggestion { insert: format!("@{w} "), label: format!("@{w}"), detail: d.into(), user: None });
@@ -262,7 +262,7 @@ pub fn Composer(channel: Id, uploads: Uploads) -> impl IntoView {
 
     let can_post = move || {
         let Some(c) = s.channel(channel) else { return false };
-        !c.read_only || s.is_mod(c.space_id)
+        s.can(c.space_id, perm::SEND_MESSAGES) && (!c.read_only || s.can(c.space_id, perm::MANAGE_MESSAGES))
     };
     let placeholder = move || match s.channel(channel) {
         Some(c) if c.kind.is_dm() => format!("Message @{}", s.channel_title(&c)),
@@ -571,7 +571,7 @@ pub fn Composer(channel: Id, uploads: Uploads) -> impl IntoView {
                     </div>
                 }.into_any()
             } else {
-                view! { <div class="composer locked"><Icon name="lock" size=18/>"Only admins can post in this channel."</div> }.into_any()
+                view! { <div class="composer locked"><Icon name="lock" size=18/>{move || if s.channel(channel).is_some_and(|c| c.read_only) { "Only members with Manage messages can post in this channel." } else { "You don't have permission to send messages here." }}</div> }.into_any()
             }}
             <div class="typing">
                 <Show when=move || !typing_line().is_empty()>

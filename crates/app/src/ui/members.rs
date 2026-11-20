@@ -1,41 +1,47 @@
 //! Member list (right column) and the profile popout.
 
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use natter_proto::*;
 
 use super::icons::Icon;
 use super::{Avatar, menu, status_label};
 use crate::store::{Modal, open_dm, store};
-use crate::util;
+use crate::{api, util};
 
 #[component]
 pub fn MemberList() -> impl IntoView {
     let s = store();
+    // Like Discord: online members under their highest "display separately" role, then Online, then Offline.
     let groups = move || {
         let Some(c) = s.nav.get().channel.and_then(|c| s.channel(c)) else { return vec![] };
-        let entries: Vec<(Id, Option<Role>)> = match c.space_id.and_then(|sp| s.space(sp)) {
-            Some(sp) => sp.members.iter().map(|m| (m.user_id, Some(m.role))).collect(),
-            None => c.recipients.iter().map(|&u| (u, None)).collect(),
-        };
         let space = c.space_id;
-        let mut admins = vec![];
+        let sp = space.and_then(|id| s.space(id));
+        let users: Vec<Id> = match &sp {
+            Some(sp) => sp.members.iter().map(|m| m.user_id).collect(),
+            None => c.recipients.clone(),
+        };
+        let mut hoisted: Vec<(i64, String, Vec<Id>)> = vec![];
         let mut online = vec![];
         let mut offline = vec![];
-        for (u, role) in entries {
-            let on = s.status(u) != Status::Offline;
-            match (on, role) {
-                (true, Some(Role::Owner | Role::Admin)) => admins.push(u),
-                (true, _) => online.push(u),
-                (false, _) => offline.push(u),
+        for u in users {
+            if s.status(u) == Status::Offline {
+                offline.push(u);
+                continue;
+            }
+            match sp.as_ref().and_then(|sp| sp.roles_of(u).into_iter().find(|r| r.hoist).cloned()) {
+                Some(r) => match hoisted.iter_mut().find(|(pos, ..)| *pos == r.position) {
+                    Some(g) => g.2.push(u),
+                    None => hoisted.push((r.position, r.name.clone(), vec![u])),
+                },
+                None => online.push(u),
             }
         }
-        let sort = |v: &mut Vec<Id>| v.sort_by_key(|&u| s.name(u, space).to_lowercase());
-        sort(&mut admins);
-        sort(&mut online);
-        sort(&mut offline);
+        hoisted.sort_by_key(|(pos, ..)| std::cmp::Reverse(*pos));
         let mut out = vec![];
-        for (label, v) in [("Admins", admins), ("Online", online), ("Offline", offline)] {
+        for (label, mut v) in hoisted.into_iter().map(|(_, n, v)| (n, v)).chain([("Online".to_string(), online), ("Offline".to_string(), offline)]) {
             if !v.is_empty() {
+                v.sort_by_key(|&u| s.name(u, space).to_lowercase());
                 out.push((format!("{label} — {}", v.len()), v, space));
             }
         }
@@ -65,18 +71,14 @@ pub fn MemberList() -> impl IntoView {
 #[component]
 fn MemberRow(user: Id, space: Option<Id>) -> impl IntoView {
     let s = store();
-    let role_class = move || match space.and_then(|sp| s.member(sp, user)).map(|m| m.role) {
-        Some(Role::Owner) => "name owner",
-        Some(Role::Admin) => "name admin",
-        _ => "name",
-    };
+    let color = move || s.role_color(space, user);
     view! {
         <div class="member" class:offline=move || s.status(user) == Status::Offline
             on:click=move |e| s.open_profile(&e, user)
             on:contextmenu=move |e| s.open_menu(&e, menu::user_menu(user, space))>
             <Avatar user=user size=32 status=true/>
             <div class="member-text">
-                <span class=move || format!("{} ellipsis", role_class())>
+                <span class="name ellipsis" style:color=color>
                     {move || s.name(user, space)}
                     {move || (space.and_then(|sp| s.space(sp)).map(|sp| sp.owner_id) == Some(user)).then(|| view! { <span class="crown" title="Space owner">"👑"</span> })}
                 </span>
@@ -153,10 +155,10 @@ fn Profile(user: Id, x: i32, y: i32) -> impl IntoView {
                         {member.as_ref().map(|m| format!(" · joined this space {}", util::day_label(m.joined_at)))}
                     </div>
                 </div>
-                {member.as_ref().filter(|m| m.role != Role::Member).map(|m| view! {
+                {space.filter(|_| member.is_some()).map(|sp| view! {
                     <div class="profile-section">
-                        <div class="profile-label">"Role"</div>
-                        <span class="role-chip">{if m.role == Role::Owner { "Owner" } else { "Admin" }}</span>
+                        <div class="profile-label">"Roles"</div>
+                        <RoleChips space=sp user=user/>
                     </div>
                 })}
                 {if user == me {
@@ -175,4 +177,67 @@ fn Profile(user: Id, x: i32, y: i32) -> impl IntoView {
             </div>
         </div>
     }
+}
+
+/// A member's roles as chips; people with Manage roles can add roles below their own and remove them.
+#[component]
+pub fn RoleChips(space: Id, user: Id) -> impl IntoView {
+    let s = store();
+    let picking = RwSignal::new(false);
+    let can_manage = move || s.can(Some(space), perm::MANAGE_ROLES);
+    let my_rank = move || s.rank(space, s.me_id());
+    let held = move || s.space(space).map(|sp| sp.roles_of(user).into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
+    let assignable = move || {
+        let mine = s.perms(Some(space));
+        let have: Vec<Id> = held().iter().map(|r| r.id).collect();
+        s.space(space)
+            .map(|sp| sp.roles.into_iter().filter(|r| r.position < my_rank() && r.permissions & !mine == 0 && !have.contains(&r.id)).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let set = move |role: Id, add: bool| {
+        spawn_local(async move {
+            let path = format!("/api/spaces/{space}/members/{user}/roles/{role}");
+            if let Err(e) = api::act(if add { "PUT" } else { "DELETE" }, &path).await {
+                store().error(e);
+            }
+        })
+    };
+    view! {
+        <div class="role-chips">
+            {move || held().into_iter().map(|r| {
+                let id = r.id;
+                let removable = can_manage() && r.position < my_rank();
+                view! {
+                    <span class="role-chip">
+                        <span class="role-dot" style:background=role_swatch(&r.color)></span>
+                        {(!r.emoji.is_empty()).then(|| view! { <span class="role-emoji">{r.emoji.clone()}</span> })}
+                        <span>{r.name.clone()}</span>
+                        {removable.then(|| view! { <button class="chip-x" title="Remove role" on:click=move |_| set(id, false)>"×"</button> })}
+                    </span>
+                }
+            }).collect_view()}
+            <Show when=move || can_manage() && !assignable().is_empty()>
+                <button class="role-chip add" title="Add role" on:click=move |_| picking.update(|p| *p = !*p)>"+"</button>
+            </Show>
+            {move || (held().is_empty() && !can_manage()).then(|| view! { <span class="muted small">"No roles"</span> })}
+        </div>
+        <Show when=move || picking.get()>
+            <div class="role-pick">
+                {move || assignable().into_iter().map(|r| {
+                    let id = r.id;
+                    view! {
+                        <button on:click=move |_| { picking.set(false); set(id, true); }>
+                            <span class="role-dot" style:background=role_swatch(&r.color)></span>
+                            {(!r.emoji.is_empty()).then(|| r.emoji.clone())}" "{r.name.clone()}
+                        </button>
+                    }
+                }).collect_view()}
+            </div>
+        </Show>
+    }
+}
+
+/// A role's colour for dots and swatches (grey when it has none).
+pub fn role_swatch(color: &str) -> String {
+    if color.is_empty() { "#99aab5".into() } else { color.into() }
 }

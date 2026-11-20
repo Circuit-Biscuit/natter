@@ -6,26 +6,52 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use natter_proto::{
-    Ban, BanReq, Channel, ChannelKind, CreateChannel, CreateDm, CreateInvite, CreateSpace,
+    Ban, BanReq, Channel, ChannelKind, CreateChannel, CreateDm, CreateInvite, CreateRole, CreateSpace,
     CreateThread, EPOCH_MS, Event, Id, Invite, InvitePreview, MAX_NAME_LEN, MAX_TOPIC_LEN,
-    MessageKind, Presence, Role, Space, Status, UpdateChannel, UpdateMember, UpdateSpace,
-    channel_slug,
+    MessageKind, Presence, ReorderRoles, RoleDef, Space, Status, UpdateChannel, UpdateMember, UpdateRole,
+    UpdateSpace, channel_slug, perm,
 };
 
 use crate::auth::{Auth, clean, own_image_upload, release_upload};
 use crate::{R, St, bad, conflict, db, forbidden, messages, not_found, now_ms, voice};
 
-async fn require_mod(st: &St, space: Id, user: Id) -> R<Role> {
-    let role = db::member_role(&st.db, space, user).await?;
-    if !role.is_mod() {
-        return Err(forbidden("only owners and admins can do that"));
+/// Your permissions and rank in `space`, or 403 unless you have every permission in `need`.
+async fn require(st: &St, space: Id, user: Id, need: u64) -> R<(u64, i64)> {
+    let (p, rank) = db::my_perms(&st.db, space, user).await?;
+    if p & need != need {
+        let name = perm::LIST.iter().find(|(f, ..)| need & f != 0 && p & f == 0).map_or("a", |(_, n, ..)| *n);
+        return Err(forbidden(format!("that takes the {name} permission")));
     }
-    Ok(role)
+    Ok((p, rank))
 }
 
-/// Lower `Role` sorts higher in rank: Owner < Admin < Member.
-fn outranks(me: Role, them: Role) -> bool {
-    me < them
+/// `target`'s rank in `space` (404 when they aren't a member).
+async fn rank_of(st: &St, space: Id, target: Id) -> R<i64> {
+    Ok(db::perms(&st.db, space, target).await?.ok_or_else(|| not_found("member"))?.1)
+}
+
+/// Tell the space its roles changed.
+async fn roles_changed(st: &St, space: Id) -> R<()> {
+    let members = db::space_members(&st.db, space).await?;
+    st.hub.send(
+        &members,
+        &Event::RolesUpdate {
+            space_id: space,
+            roles: db::roles(&st.db, space).await?,
+            everyone_permissions: db::everyone_permissions(&st.db, space).await?,
+        },
+    );
+    Ok(())
+}
+
+/// Tell the space about one member's new roles / nickname.
+async fn member_changed(st: &St, space: Id, user: Id) -> R<()> {
+    let s = db::space(&st.db, space).await?;
+    if let Some(member) = s.members.into_iter().find(|m| m.user_id == user) {
+        let all = db::space_members(&st.db, space).await?;
+        st.hub.send(&all, &Event::MemberUpdate { space_id: space, member });
+    }
+    Ok(())
 }
 
 /// Hang up everyone in these channels and return the upload tokens of their attachments,
@@ -47,7 +73,7 @@ pub async fn create_space(
 ) -> R<Json<Space>> {
     let name = clean(&req.name, MAX_NAME_LEN, "space name")?;
     let (sid, now, me) = (st.id(), now_ms(), auth.user);
-    let (text_cat, voice_cat, general, lounge) = (st.id(), st.id(), st.id(), st.id());
+    let (text_cat, voice_cat, general, lounge, admin) = (st.id(), st.id(), st.id(), st.id(), st.id());
     let mut tx = st.db.begin().await?;
     sqlx::query("INSERT INTO spaces (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)")
         .bind(sid)
@@ -61,6 +87,17 @@ pub async fn create_space(
     )
     .bind(sid)
     .bind(me)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    // Every space starts with an Admin role, so making someone an admin is one click.
+    sqlx::query(
+        "INSERT INTO roles (id, space_id, name, color, position, permissions, hoist, created_at)
+         VALUES (?, ?, 'Admin', '#e5484d', 1, ?, 1, ?)",
+    )
+    .bind(admin)
+    .bind(sid)
+    .bind(perm::ADMINISTRATOR as i64)
     .bind(now)
     .execute(&mut *tx)
     .await?;
@@ -93,10 +130,24 @@ pub async fn update_space(
     Json(req): Json<UpdateSpace>,
 ) -> R<StatusCode> {
     let me = auth.user;
-    let role = db::member_role(&st.db, id, me).await?;
+    let (mine, rank) = db::my_perms(&st.db, id, me).await?;
     let members = db::space_members(&st.db, id).await?;
     if req.name.is_some() || req.icon.is_some() {
-        require_mod(&st, id, me).await?;
+        require(&st, id, me, perm::MANAGE_SPACE).await?;
+    }
+    if let Some(everyone) = req.everyone_permissions {
+        require(&st, id, me, perm::MANAGE_ROLES).await?;
+        let old = db::everyone_permissions(&st.db, id).await?;
+        let new = everyone & perm::ALL;
+        if (old ^ new) & !mine != 0 {
+            return Err(forbidden("you can only change permissions you have yourself"));
+        }
+        sqlx::query("UPDATE spaces SET everyone_permissions = ? WHERE id = ?")
+            .bind(new as i64)
+            .bind(id)
+            .execute(&st.db)
+            .await?;
+        roles_changed(&st, id).await?;
     }
     if let Some(name) = &req.name {
         let name = clean(name, MAX_NAME_LEN, "space name")?;
@@ -132,13 +183,13 @@ pub async fn update_space(
         }
     }
     if let Some(new_owner) = req.owner_id {
-        if role != Role::Owner {
+        if rank != i64::MAX {
             return Err(forbidden("only the owner can hand the space over"));
         }
         if new_owner != me {
-            db::role(&st.db, id, new_owner)
-                .await?
-                .ok_or_else(|| bad("the new owner must be a member"))?;
+            if !db::is_member(&st.db, id, new_owner).await? {
+                return Err(bad("the new owner must be a member"));
+            }
             let mut tx = st.db.begin().await?;
             sqlx::query("UPDATE spaces SET owner_id = ? WHERE id = ?")
                 .bind(new_owner)
@@ -150,7 +201,7 @@ pub async fn update_space(
                 .bind(new_owner)
                 .execute(&mut *tx)
                 .await?;
-            sqlx::query("UPDATE members SET role = 'admin' WHERE space_id = ? AND user_id = ?")
+            sqlx::query("UPDATE members SET role = 'member' WHERE space_id = ? AND user_id = ?")
                 .bind(id)
                 .bind(me)
                 .execute(&mut *tx)
@@ -187,7 +238,7 @@ pub async fn update_space(
 }
 
 pub async fn delete_space(State(st): State<St>, auth: Auth, Path(id): Path<Id>) -> R<StatusCode> {
-    if db::member_role(&st.db, id, auth.user).await? != Role::Owner {
+    if db::my_perms(&st.db, id, auth.user).await?.1 != i64::MAX {
         return Err(forbidden("only the owner can delete a space"));
     }
     let members = db::space_members(&st.db, id).await?;
@@ -233,13 +284,13 @@ pub async fn list_invites(
     auth: Auth,
     Path(id): Path<Id>,
 ) -> R<Json<Vec<Invite>>> {
-    let role = db::member_role(&st.db, id, auth.user).await?;
+    let (p, _) = db::my_perms(&st.db, id, auth.user).await?;
     let rows: Vec<InviteRow> = sqlx::query_as(
         "SELECT code, space_id, creator_id, uses, max_uses, expires_at, created_at FROM invites
          WHERE space_id = ? AND (? OR creator_id = ?) ORDER BY created_at DESC",
     )
     .bind(id)
-    .bind(role.is_mod())
+    .bind(p & perm::MANAGE_SPACE != 0)
     .bind(auth.user)
     .fetch_all(&st.db)
     .await?;
@@ -252,7 +303,7 @@ pub async fn create_invite(
     Path(id): Path<Id>,
     Json(req): Json<CreateInvite>,
 ) -> R<Json<Invite>> {
-    db::member_role(&st.db, id, auth.user).await?;
+    require(&st, id, auth.user, perm::CREATE_INVITES).await?;
     if req.max_uses.is_some_and(|m| !(1..=1000).contains(&m)) {
         return Err(bad("max uses must be 1 to 1000"));
     }
@@ -301,10 +352,10 @@ pub async fn revoke_invite(
             .fetch_optional(&st.db)
             .await?;
     let (space, creator) = row.ok_or_else(|| not_found("invite"))?;
-    let role = db::member_role(&st.db, space, auth.user).await?;
-    if creator != auth.user && !role.is_mod() {
+    let (p, _) = db::my_perms(&st.db, space, auth.user).await?;
+    if creator != auth.user && p & perm::MANAGE_SPACE == 0 {
         return Err(forbidden(
-            "only its creator or an admin can revoke an invite",
+            "only its creator or someone with Manage space can revoke an invite",
         ));
     }
     sqlx::query("DELETE FROM invites WHERE code = ?")
@@ -355,7 +406,7 @@ pub async fn join(State(st): State<St>, auth: Auth, Path(code): Path<String>) ->
 
 pub async fn join_space(st: &St, user: Id, code: &str) -> R<Space> {
     let space_id = check_invite(st, code).await?;
-    if db::role(&st.db, space_id, user).await?.is_some() {
+    if db::is_member(&st.db, space_id, user).await? {
         return db::space_with_users(&st.db, space_id).await;
     }
     let space = admit(st, user, space_id).await?;
@@ -452,26 +503,13 @@ pub async fn update_member(
     Path((space, target)): Path<(Id, Id)>,
     Json(req): Json<UpdateMember>,
 ) -> R<StatusCode> {
-    let me = db::member_role(&st.db, space, auth.user).await?;
-    let them = db::role(&st.db, space, target)
-        .await?
-        .ok_or_else(|| not_found("member"))?;
-    if let Some(role) = req.role {
-        if me != Role::Owner {
-            return Err(forbidden("only the owner can change roles"));
-        }
-        if role == Role::Owner || them == Role::Owner {
-            return Err(bad("hand over the space to change its owner"));
-        }
-        sqlx::query("UPDATE members SET role = ? WHERE space_id = ? AND user_id = ?")
-            .bind(db::to_s(role))
-            .bind(space)
-            .bind(target)
-            .execute(&st.db)
-            .await?;
+    let (mine, my_rank) = db::my_perms(&st.db, space, auth.user).await?;
+    let their_rank = rank_of(&st, space, target).await?;
+    if req.role.is_some() {
+        return Err(bad("roles are given with PUT /api/spaces/{id}/members/{user}/roles/{role}; update Natter"));
     }
     if let Some(nick) = &req.nickname {
-        if target != auth.user && !(me.is_mod() && outranks(me, them)) {
+        if target != auth.user && !(mine & perm::MANAGE_NICKNAMES != 0 && my_rank > their_rank) {
             return Err(forbidden("you can't change their nickname"));
         }
         let nick = if nick.trim().is_empty() {
@@ -486,17 +524,7 @@ pub async fn update_member(
             .execute(&st.db)
             .await?;
     }
-    let s = db::space(&st.db, space).await?;
-    if let Some(member) = s.members.into_iter().find(|m| m.user_id == target) {
-        let all = db::space_members(&st.db, space).await?;
-        st.hub.send(
-            &all,
-            &Event::MemberUpdate {
-                space_id: space,
-                member,
-            },
-        );
-    }
+    member_changed(&st, space, target).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -538,18 +566,13 @@ pub async fn remove_member(
     auth: Auth,
     Path((space, target)): Path<(Id, Id)>,
 ) -> R<StatusCode> {
-    let me = db::member_role(&st.db, space, auth.user).await?;
+    let (mine, my_rank) = db::my_perms(&st.db, space, auth.user).await?;
     if target == auth.user {
-        if me == Role::Owner {
+        if my_rank == i64::MAX {
             return Err(bad("hand the space over or delete it before leaving"));
         }
-    } else {
-        let them = db::role(&st.db, space, target)
-            .await?
-            .ok_or_else(|| not_found("member"))?;
-        if !me.is_mod() || !outranks(me, them) {
-            return Err(forbidden("you can't kick them"));
-        }
+    } else if mine & perm::KICK_MEMBERS == 0 || my_rank <= rank_of(&st, space, target).await? {
+        return Err(forbidden("you can't kick them"));
     }
     remove_from_space(&st, space, target).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -560,7 +583,7 @@ pub async fn list_bans(
     auth: Auth,
     Path(space): Path<Id>,
 ) -> R<Json<Vec<Ban>>> {
-    require_mod(&st, space, auth.user).await?;
+    require(&st, space, auth.user, perm::BAN_MEMBERS).await?;
     let rows: Vec<(Id, String, i64)> = sqlx::query_as(
         "SELECT user_id, reason, created_at FROM bans WHERE space_id = ? ORDER BY created_at DESC",
     )
@@ -584,13 +607,13 @@ pub async fn ban(
     Path((space, target)): Path<(Id, Id)>,
     Json(req): Json<BanReq>,
 ) -> R<StatusCode> {
-    let me = require_mod(&st, space, auth.user).await?;
+    let (_, my_rank) = require(&st, space, auth.user, perm::BAN_MEMBERS).await?;
     if target == auth.user {
         return Err(bad("you can't ban yourself"));
     }
     db::user(&st.db, target).await?;
-    let them = db::role(&st.db, space, target).await?;
-    if them.is_some_and(|t| !outranks(me, t)) {
+    let them = db::perms(&st.db, space, target).await?;
+    if them.is_some_and(|(_, rank)| rank >= my_rank) {
         return Err(forbidden("you can't ban them"));
     }
     let reason: String = req.reason.trim().chars().take(512).collect();
@@ -639,12 +662,218 @@ pub async fn unban(
     auth: Auth,
     Path((space, target)): Path<(Id, Id)>,
 ) -> R<StatusCode> {
-    require_mod(&st, space, auth.user).await?;
+    require(&st, space, auth.user, perm::BAN_MEMBERS).await?;
     sqlx::query("DELETE FROM bans WHERE space_id = ? AND user_id = ?")
         .bind(space)
         .bind(target)
         .execute(&st.db)
         .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------- roles
+
+fn role_color(c: &str) -> R<String> {
+    let c = c.trim().to_ascii_lowercase();
+    if c.is_empty() || (c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|x| x.is_ascii_hexdigit())) {
+        Ok(c)
+    } else {
+        Err(bad("role colours look like #5d68ec"))
+    }
+}
+
+fn role_emoji(e: &str) -> R<String> {
+    let e = e.trim();
+    if e.chars().count() > 8 || e.chars().any(char::is_whitespace) {
+        return Err(bad("a role icon is one emoji"));
+    }
+    Ok(e.to_string())
+}
+
+/// A role of `space` that `me` (with permissions `mine`, rank `my_rank`) may change: Manage roles, and the role
+/// sits below their own highest role.
+async fn manageable_role(st: &St, space: Id, me: Id, role: Id) -> R<(RoleDef, u64, i64)> {
+    let (mine, my_rank) = require(st, space, me, perm::MANAGE_ROLES).await?;
+    let r = db::roles(&st.db, space)
+        .await?
+        .into_iter()
+        .find(|r| r.id == role)
+        .ok_or_else(|| not_found("role"))?;
+    if r.position >= my_rank {
+        return Err(forbidden("you can only manage roles below your own highest role"));
+    }
+    Ok((r, mine, my_rank))
+}
+
+pub async fn create_role(
+    State(st): State<St>,
+    auth: Auth,
+    Path(space): Path<Id>,
+    Json(req): Json<CreateRole>,
+) -> R<Json<RoleDef>> {
+    let (mine, _) = require(&st, space, auth.user, perm::MANAGE_ROLES).await?;
+    let name = clean(&req.name, MAX_NAME_LEN, "role name")?;
+    let permissions = req.permissions & perm::ALL;
+    if permissions & !mine != 0 {
+        return Err(forbidden("a new role can't have permissions you don't have"));
+    }
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM roles WHERE space_id = ?")
+        .bind(space)
+        .fetch_one(&st.db)
+        .await?;
+    if count >= 250 {
+        return Err(bad("a space can have at most 250 roles"));
+    }
+    let role = RoleDef {
+        id: st.id(),
+        name,
+        color: role_color(&req.color)?,
+        emoji: role_emoji(&req.emoji)?,
+        position: 1,
+        permissions,
+        hoist: req.hoist,
+    };
+    // New roles start at the bottom, just above @everyone.
+    let mut tx = st.db.begin().await?;
+    sqlx::query("UPDATE roles SET position = position + 1 WHERE space_id = ?")
+        .bind(space)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO roles (id, space_id, name, color, emoji, position, permissions, hoist, created_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
+    )
+    .bind(role.id)
+    .bind(space)
+    .bind(&role.name)
+    .bind(&role.color)
+    .bind(&role.emoji)
+    .bind(role.permissions as i64)
+    .bind(role.hoist)
+    .bind(now_ms())
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    roles_changed(&st, space).await?;
+    Ok(Json(role))
+}
+
+pub async fn update_role(
+    State(st): State<St>,
+    auth: Auth,
+    Path((space, role)): Path<(Id, Id)>,
+    Json(req): Json<UpdateRole>,
+) -> R<StatusCode> {
+    let (r, mine, _) = manageable_role(&st, space, auth.user, role).await?;
+    let name = req.name.as_deref().map(|n| clean(n, MAX_NAME_LEN, "role name")).transpose()?;
+    let color = req.color.as_deref().map(role_color).transpose()?;
+    let emoji = req.emoji.as_deref().map(role_emoji).transpose()?;
+    let permissions = req.permissions.map(|p| p & perm::ALL);
+    if permissions.is_some_and(|p| (p ^ r.permissions) & !mine != 0) {
+        return Err(forbidden("you can only change permissions you have yourself"));
+    }
+    sqlx::query(
+        "UPDATE roles SET name = ?, color = ?, emoji = ?, permissions = ?, hoist = ? WHERE id = ? AND space_id = ?",
+    )
+    .bind(name.unwrap_or(r.name))
+    .bind(color.unwrap_or(r.color))
+    .bind(emoji.unwrap_or(r.emoji))
+    .bind(permissions.unwrap_or(r.permissions) as i64)
+    .bind(req.hoist.unwrap_or(r.hoist))
+    .bind(role)
+    .bind(space)
+    .execute(&st.db)
+    .await?;
+    roles_changed(&st, space).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn delete_role(
+    State(st): State<St>,
+    auth: Auth,
+    Path((space, role)): Path<(Id, Id)>,
+) -> R<StatusCode> {
+    manageable_role(&st, space, auth.user, role).await?;
+    // Members lose it through the foreign key; apps drop unknown role ids on RolesUpdate.
+    sqlx::query("DELETE FROM roles WHERE id = ? AND space_id = ?")
+        .bind(role)
+        .bind(space)
+        .execute(&st.db)
+        .await?;
+    roles_changed(&st, space).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Drag-to-reorder. Roles at or above your own highest role must keep their places at the top.
+pub async fn reorder_roles(
+    State(st): State<St>,
+    auth: Auth,
+    Path(space): Path<Id>,
+    Json(req): Json<ReorderRoles>,
+) -> R<StatusCode> {
+    let (_, my_rank) = require(&st, space, auth.user, perm::MANAGE_ROLES).await?;
+    let current = db::roles(&st.db, space).await?;
+    let mut wanted = req.ids.clone();
+    wanted.sort_unstable();
+    let mut have: Vec<Id> = current.iter().map(|r| r.id).collect();
+    have.sort_unstable();
+    if wanted != have {
+        return Err(bad("list every role of the space exactly once"));
+    }
+    let fixed: Vec<Id> = current.iter().take_while(|r| r.position >= my_rank).map(|r| r.id).collect();
+    if req.ids[..fixed.len()] != fixed[..] {
+        return Err(forbidden("you can only move roles below your own highest role"));
+    }
+    let n = req.ids.len() as i64;
+    let mut tx = st.db.begin().await?;
+    for (i, id) in req.ids.iter().enumerate() {
+        sqlx::query("UPDATE roles SET position = ? WHERE id = ? AND space_id = ?")
+            .bind(n - i as i64)
+            .bind(id)
+            .bind(space)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    roles_changed(&st, space).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn add_member_role(
+    State(st): State<St>,
+    auth: Auth,
+    Path((space, target, role)): Path<(Id, Id, Id)>,
+) -> R<StatusCode> {
+    let (r, mine, _) = manageable_role(&st, space, auth.user, role).await?;
+    if r.permissions & !mine != 0 {
+        return Err(forbidden("you can't hand out a role with permissions you don't have"));
+    }
+    if !db::is_member(&st.db, space, target).await? {
+        return Err(not_found("member"));
+    }
+    sqlx::query("INSERT OR IGNORE INTO member_roles (space_id, user_id, role_id) VALUES (?, ?, ?)")
+        .bind(space)
+        .bind(target)
+        .bind(role)
+        .execute(&st.db)
+        .await?;
+    member_changed(&st, space, target).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn remove_member_role(
+    State(st): State<St>,
+    auth: Auth,
+    Path((space, target, role)): Path<(Id, Id, Id)>,
+) -> R<StatusCode> {
+    manageable_role(&st, space, auth.user, role).await?;
+    sqlx::query("DELETE FROM member_roles WHERE space_id = ? AND user_id = ? AND role_id = ?")
+        .bind(space)
+        .bind(target)
+        .bind(role)
+        .execute(&st.db)
+        .await?;
+    member_changed(&st, space, target).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -693,7 +922,7 @@ pub async fn create_channel(
     Path(space): Path<Id>,
     Json(req): Json<CreateChannel>,
 ) -> R<Json<Channel>> {
-    require_mod(&st, space, auth.user).await?;
+    require(&st, space, auth.user, perm::MANAGE_CHANNELS).await?;
     if req.kind == ChannelKind::Thread {
         return Err(bad("start threads with POST /api/channels/{id}/threads"));
     }
@@ -760,8 +989,8 @@ pub async fn update_channel(
             }
         }
         ChannelKind::Thread => {
-            if !acc.is_mod() && ch.thread.as_ref().map(|t| t.owner_id) != Some(auth.user) {
-                return Err(forbidden("only its starter or an admin can edit a thread"));
+            if !acc.has(perm::MANAGE_THREADS) && ch.thread.as_ref().map(|t| t.owner_id) != Some(auth.user) {
+                return Err(forbidden("only its starter or someone with Manage threads can edit a thread"));
             }
             if req.topic.is_some()
                 || req.position.is_some()
@@ -771,7 +1000,7 @@ pub async fn update_channel(
                 return Err(bad("threads only have a name and an archived flag"));
             }
         }
-        _ if !acc.is_mod() => return Err(forbidden("only owners and admins can edit channels")),
+        _ if !acc.has(perm::MANAGE_CHANNELS) => return Err(forbidden("that takes the Manage channels permission")),
         _ => {}
     }
     if let Some(archived) = req.archived {
@@ -855,8 +1084,13 @@ pub async fn delete_channel(State(st): State<St>, auth: Auth, Path(id): Path<Id>
         .thread
         .as_ref()
         .is_some_and(|t| t.owner_id == auth.user);
-    if !acc.is_mod() && !own_thread {
-        return Err(forbidden("only owners and admins can delete channels"));
+    let allowed = if acc.ch.kind == ChannelKind::Thread {
+        own_thread || acc.has(perm::MANAGE_THREADS)
+    } else {
+        acc.has(perm::MANAGE_CHANNELS)
+    };
+    if !allowed {
+        return Err(forbidden("you can't delete that channel"));
     }
     let members = db::space_members(&st.db, space).await?;
     // A text channel takes its threads with it.
@@ -970,6 +1204,9 @@ pub async fn create_thread(
     let Some(space) = acc.ch.space_id.filter(|_| acc.ch.kind == ChannelKind::Text) else {
         return Err(bad("threads start in text channels"));
     };
+    if !acc.has(perm::CREATE_THREADS) {
+        return Err(forbidden("that takes the Create threads permission"));
+    }
     let custom = (!req.name.trim().is_empty())
         .then(|| clean(&req.name, MAX_NAME_LEN, "thread name"))
         .transpose()?;
@@ -990,7 +1227,7 @@ pub async fn create_thread(
         None => {
             let name = custom.ok_or_else(|| bad("name the thread"))?;
             if !acc.can_post() {
-                return Err(forbidden("only owners and admins can post here"));
+                return Err(forbidden("you can't post in this channel"));
             }
             let msg =
                 messages::post_system(&st, &acc.ch, me, MessageKind::ThreadCreated, None, &name)

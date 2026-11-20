@@ -72,19 +72,93 @@ pub enum Role {
     Member,
 }
 
-impl Role {
-    /// Owners and admins manage channels, invites, members and others' messages.
-    pub fn is_mod(self) -> bool {
-        matches!(self, Role::Owner | Role::Admin)
+/// Space permissions (Discord-style bit flags). A member has the space's `everyone_permissions` plus every
+/// permission of every role they hold; Administrator (and owning the space) means all of them.
+pub mod perm {
+    pub const ADMINISTRATOR: u64 = 1;
+    pub const MANAGE_SPACE: u64 = 1 << 1;
+    pub const MANAGE_ROLES: u64 = 1 << 2;
+    pub const MANAGE_CHANNELS: u64 = 1 << 3;
+    pub const KICK_MEMBERS: u64 = 1 << 4;
+    pub const BAN_MEMBERS: u64 = 1 << 5;
+    pub const CREATE_INVITES: u64 = 1 << 6;
+    pub const MANAGE_NICKNAMES: u64 = 1 << 7;
+    pub const MANAGE_MESSAGES: u64 = 1 << 8;
+    pub const MANAGE_THREADS: u64 = 1 << 9;
+    pub const MENTION_EVERYONE: u64 = 1 << 10;
+    pub const SEND_MESSAGES: u64 = 1 << 11;
+    pub const ATTACH_FILES: u64 = 1 << 12;
+    pub const ADD_REACTIONS: u64 = 1 << 13;
+    pub const CREATE_THREADS: u64 = 1 << 14;
+    pub const CONNECT: u64 = 1 << 15;
+    pub const ALL: u64 = (1 << 16) - 1;
+    /// What `@everyone` may do in a new space.
+    pub const EVERYONE_DEFAULT: u64 =
+        CREATE_INVITES | SEND_MESSAGES | ATTACH_FILES | ADD_REACTIONS | CREATE_THREADS | CONNECT;
+
+    /// For settings screens: (flag, name, what it allows, group).
+    pub const LIST: [(u64, &str, &str, &str); 16] = [
+        (ADMINISTRATOR, "Administrator", "Every permission, and every channel. Hand it out with care.", "Advanced"),
+        (MANAGE_SPACE, "Manage space", "Rename the space, change its icon, see and revoke everyone's invites.", "General"),
+        (MANAGE_ROLES, "Manage roles", "Create, edit and hand out roles below their own highest role.", "General"),
+        (MANAGE_CHANNELS, "Manage channels", "Create, edit, reorder and delete channels and categories.", "General"),
+        (CREATE_INVITES, "Create invites", "Invite new people to the space.", "Membership"),
+        (MANAGE_NICKNAMES, "Manage nicknames", "Change other members' nicknames.", "Membership"),
+        (KICK_MEMBERS, "Kick members", "Remove members below them; they can rejoin with an invite.", "Membership"),
+        (BAN_MEMBERS, "Ban members", "Remove members below them for good, and see the ban list.", "Membership"),
+        (SEND_MESSAGES, "Send messages", "Write in text channels and threads.", "Text"),
+        (ATTACH_FILES, "Attach files", "Upload files and share them from Nextcloud.", "Text"),
+        (ADD_REACTIONS, "Add reactions", "React to messages with emoji.", "Text"),
+        (CREATE_THREADS, "Create threads", "Start threads from messages.", "Text"),
+        (MENTION_EVERYONE, "Mention @everyone and @here", "Ping the whole space at once.", "Text"),
+        (MANAGE_MESSAGES, "Manage messages", "Delete and pin anyone's messages, post in announcement channels.", "Text"),
+        (MANAGE_THREADS, "Manage threads", "Rename, archive and delete anyone's threads.", "Text"),
+        (CONNECT, "Connect", "Join voice channels.", "Voice"),
+    ];
+
+    /// What a member may do: everyone's permissions plus their roles'; owners and administrators may do it all.
+    pub fn effective(owner: bool, everyone: u64, roles: impl IntoIterator<Item = u64>) -> u64 {
+        if owner {
+            return ALL;
+        }
+        let p = roles.into_iter().fold(everyone, |a, r| a | r);
+        if p & ADMINISTRATOR != 0 { ALL } else { p & ALL }
     }
+
+    pub fn default_everyone() -> u64 {
+        EVERYONE_DEFAULT
+    }
+}
+
+/// A role in a space. Higher `position` = higher in the list = more senior; members show the colour of
+/// their highest coloured role. `@everyone` isn't one of these: it's the space's `everyone_permissions`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RoleDef {
+    pub id: Id,
+    pub name: String,
+    /// `#rrggbb`, or empty for none.
+    #[serde(default)]
+    pub color: String,
+    /// One emoji shown next to the name, or empty.
+    #[serde(default)]
+    pub emoji: String,
+    pub position: i64,
+    pub permissions: u64,
+    /// Show members with this role in their own group in the member list.
+    #[serde(default)]
+    pub hoist: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Member {
     pub user_id: Id,
+    /// Owner, Admin (has Administrator through a role) or Member. Kept for older apps; `roles` is the truth.
     pub role: Role,
     pub nickname: Option<String>,
     pub joined_at: Millis,
+    /// Role ids (see `Space::roles`).
+    #[serde(default)]
+    pub roles: Vec<Id>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,6 +173,44 @@ pub struct Space {
     /// (`SpaceCreate`, the reply to creating or joining a space); empty inside `Ready`.
     #[serde(default)]
     pub users: Vec<User>,
+    /// Highest position first.
+    #[serde(default)]
+    pub roles: Vec<RoleDef>,
+    /// What every member may do (`@everyone`).
+    #[serde(default = "perm::default_everyone")]
+    pub everyone_permissions: u64,
+}
+
+impl Space {
+    /// What `user` may do here (0 if not a member).
+    pub fn permissions(&self, user: Id) -> u64 {
+        let Some(m) = self.members.iter().find(|m| m.user_id == user) else { return 0 };
+        perm::effective(
+            self.owner_id == user,
+            self.everyone_permissions,
+            self.roles.iter().filter(|r| m.roles.contains(&r.id)).map(|r| r.permissions),
+        )
+    }
+
+    /// Position of `user`'s highest role (0 = none); the owner outranks everyone.
+    pub fn rank(&self, user: Id) -> i64 {
+        if self.owner_id == user {
+            return i64::MAX;
+        }
+        let Some(m) = self.members.iter().find(|m| m.user_id == user) else { return -1 };
+        self.roles.iter().filter(|r| m.roles.contains(&r.id)).map(|r| r.position).max().unwrap_or(0)
+    }
+
+    /// `user`'s roles, highest first.
+    pub fn roles_of(&self, user: Id) -> Vec<&RoleDef> {
+        let Some(m) = self.members.iter().find(|m| m.user_id == user) else { return vec![] };
+        self.roles.iter().filter(|r| m.roles.contains(&r.id)).collect()
+    }
+
+    /// The colour of `user`'s highest coloured role.
+    pub fn color_of(&self, user: Id) -> Option<&str> {
+        self.roles_of(user).into_iter().find(|r| !r.color.is_empty()).map(|r| r.color.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -391,6 +503,13 @@ pub enum Event {
         space_id: Id,
         user_id: Id,
     },
+    /// A space's roles or `@everyone` permissions changed (the whole list, highest first). Members keep only
+    /// role ids that are still in it.
+    RolesUpdate {
+        space_id: Id,
+        roles: Vec<RoleDef>,
+        everyone_permissions: u64,
+    },
     ReadStateUpdate(ReadState),
     VoiceStateUpdate(VoiceState),
     VoiceLeave {
@@ -524,6 +643,39 @@ pub struct UpdateSpace {
     pub icon: Option<Id>,
     /// Hand the space to another member (owner only).
     pub owner_id: Option<Id>,
+    /// What `@everyone` may do (needs Manage roles).
+    #[serde(default)]
+    pub everyone_permissions: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CreateRole {
+    pub name: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub emoji: String,
+    #[serde(default)]
+    pub permissions: u64,
+    #[serde(default)]
+    pub hoist: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateRole {
+    pub name: Option<String>,
+    /// `Some("")` clears it.
+    pub color: Option<String>,
+    /// `Some("")` clears it.
+    pub emoji: Option<String>,
+    pub permissions: Option<u64>,
+    pub hoist: Option<bool>,
+}
+
+/// The new order of a space's roles, highest first; every role must be listed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReorderRoles {
+    pub ids: Vec<Id>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -737,6 +889,28 @@ pub fn channel_slug(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permissions_rank_and_colour() {
+        let role = |id, position, permissions, color: &str| RoleDef {
+            id, name: format!("r{id}"), color: color.into(), emoji: String::new(), position, permissions, hoist: false,
+        };
+        let member = |user_id, roles: Vec<Id>| Member { user_id, role: Role::Member, nickname: None, joined_at: 0, roles };
+        let space = Space {
+            id: 1, name: "s".into(), icon: None, owner_id: 10, channels: vec![], users: vec![],
+            members: vec![member(10, vec![]), member(11, vec![100]), member(12, vec![101, 102]), member(13, vec![])],
+            roles: vec![role(100, 3, perm::ADMINISTRATOR, ""), role(101, 2, perm::KICK_MEMBERS, ""), role(102, 1, 0, "#23a55a")],
+            everyone_permissions: perm::SEND_MESSAGES,
+        };
+        assert_eq!(space.permissions(10), perm::ALL, "owner");
+        assert_eq!(space.permissions(11), perm::ALL, "administrator");
+        assert_eq!(space.permissions(12), perm::SEND_MESSAGES | perm::KICK_MEMBERS);
+        assert_eq!(space.permissions(13), perm::SEND_MESSAGES, "only @everyone");
+        assert_eq!(space.permissions(99), 0, "not a member");
+        assert_eq!((space.rank(10), space.rank(11), space.rank(12), space.rank(13)), (i64::MAX, 3, 2, 0));
+        assert_eq!(space.color_of(12), Some("#23a55a"), "highest coloured role");
+        assert_eq!(space.color_of(11), None);
+    }
 
     #[test]
     fn mentions_and_names() {
