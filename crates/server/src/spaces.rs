@@ -163,8 +163,28 @@ pub async fn update_space(
     let me = auth.user;
     let (mine, rank) = db::my_perms(&st.db, id, me).await?;
     let members = db::space_members(&st.db, id).await?;
-    if req.name.is_some() || req.icon.is_some() {
+    if req.name.is_some() || req.icon.is_some() || req.game_channel_id.is_some() {
         require(&st, id, me, perm::MANAGE_SPACE).await?;
+    }
+    if let Some(ch) = req.game_channel_id {
+        let ch = if ch == 0 {
+            None
+        } else {
+            let c = db::channel(&st.db, ch).await?;
+            if c.space_id != Some(id) || c.kind != ChannelKind::Text {
+                return Err(bad("Daily Word posts to a text channel of this space"));
+            }
+            Some(ch)
+        };
+        sqlx::query("UPDATE spaces SET game_channel_id = ? WHERE id = ?")
+            .bind(ch)
+            .bind(id)
+            .execute(&st.db)
+            .await?;
+        // Members pick it up with the space.
+        for u in &members {
+            st.hub.send(&[*u], &Event::SpaceCreate(db::space_for(&st.db, id, *u).await?));
+        }
     }
     if let Some(everyone) = req.everyone_permissions {
         require(&st, id, me, perm::MANAGE_ROLES).await?;

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- **Daily Word:** a five-letter word game in English or Turkish, from the grid button at the top of any channel. One
+  puzzle a day per language, the same for everyone; the answer stays on the server. Turkish keyboard with ç ğ ı İ ö ş
+  ü, hard mode, high-contrast colours, flip / shake / bounce animations, a countdown to the next word.
+- Finishing posts your spoiler-free grid to the space's Daily Word channel (new setting in Space Settings ›
+  Overview); at 09:00 the **Daily Word bot** posts yesterday's results there, @mentioning everyone who played.
+- Stats (played, win %, streaks, guess distribution), who has played today, and week / month / all-time standings.
+- App accounts such as the bot show a **BOT** tag.
+
 - **Camera bitrate cap:** cameras send at most 1 Mbit/s in calls (about half the browser default), set by the server
   (`NATTER_CAMERA_KBPS`, 0 = off) through the SDP it hands the apps — no app update needed. Screen shares are unchanged.
 - **Space icons and avatars uploaded while signed in with Nextcloud** showed as broken images: they were stored in

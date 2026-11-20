@@ -89,6 +89,18 @@ notification sounds; light, dark, darker and midnight themes plus 14 colour them
 compact mode, text size, zoom, reduced motion; your own global keybinds; start with the computer, close to the tray;
 devices list with remote sign-out; and right-click menus everywhere.
 
+## Daily Word
+
+A five-letter word game built in, in **English or Turkish** (switch any time; each has its own puzzle). Everyone on
+the server gets the same word each day, picked from a few thousand everyday words in an order only the server knows,
+and every guess is checked there, so the answer can't be read from the app. Turkish has its own keyboard (ç ğ ı İ ö ş
+ü) and treats I/ı and İ/i properly. Hard mode and high-contrast colours are one click away.
+
+Finish and your spoiler-free grid is posted to the space's Daily Word channel (Space Settings › Overview). Next
+morning at 09:00 the Daily Word bot posts yesterday's results there, tagging everyone who played and crowning the
+best. Stats (streaks, guess distribution) and week, month and all-time standings sit next to the board: a win is
+worth 6 points in one try down to 1 in six, and both languages count.
+
 ## Natter and Nextcloud Talk
 
 Natter started from a full read of [Nextcloud Talk](https://github.com/nextcloud/spreed)'s features (v26) — see
@@ -122,6 +134,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Background push notifications on Android (app closed) | ⬜ |
 | Private channels and categories, per-channel permissions (allow / inherit / deny per role or member) | ✅ |
 | Link previews: YouTube plays inline, page cards, pictures and videos (SSRF-guarded, cached) | ✅ |
+| Daily Word (English / Turkish): results posts, morning summary, streaks, standings | ✅ |
 | Polls, message scheduling | ⬜ |
 | Simulcast (adaptive video quality for big calls), TURN / TCP fallback | ⬜ |
 | iOS app | ⬜ (the web app works in mobile browsers) |
@@ -216,3 +229,8 @@ the organization and pushes).
 
 Built with Rust, axum, tokio, sqlx/SQLite, str0m, Leptos, Tauri, reqwest and argon2. Feature research from
 Nextcloud Talk (AGPL-3.0; no Talk code is used). Emoji data from the `emojis` crate (Unicode / gemoji).
+
+Daily Word's word lists (`crates/server/words/`) are built from
+[FrequencyWords](https://github.com/hermitdave/FrequencyWords) by Hermit Dave (CC BY-SA 4.0, from OpenSubtitles) and
+[SCOWL](http://wordlist.aspell.net/) (the `american-english` list), then picked through by hand; those lists are
+shared under CC BY-SA 4.0.

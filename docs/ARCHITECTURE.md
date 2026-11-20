@@ -31,6 +31,7 @@
 | `NATTER_MAX_UPLOAD_MB` | `100` | Upload size limit |
 | `NATTER_MEDIA_PORT` | `50000` | UDP port for all call media |
 | `NATTER_CAMERA_KBPS` | `1000` | Most a camera sends in a call, kbit/s (`b=AS`/`b=TIAS` in the SDP the server hands out); `0` = no cap |
+| `NATTER_GAME_UTC_OFFSET` | `60` | Daily Word's time zone, minutes ahead of UTC: when the day's word changes and when the 09:00 summary goes out |
 | `NATTER_PUBLIC_IP` | auto (outbound interface) | IP announced to call clients; set it to the public IP on a server |
 | `NATTER_WEB_DIR` | unset | Serve the built app (`crates/app/dist`) at `/` |
 | `NATTER_NEXTCLOUD_URL` | unset | Nextcloud to sign in with and store files in, e.g. `https://cloud.example.com` |
@@ -196,6 +197,8 @@ Everything else needs `Authorization: Bearer <token>`:
 | PATCH / DELETE | `/api/spaces/{id}/roles/{role_id}` | `UpdateRole` → 204 / → 204 |
 | PUT / DELETE | `/api/spaces/{id}/members/{user_id}/roles/{role_id}` | give / take a role → 204 |
 | PUT / DELETE | `/api/channels/{id}/permissions/{target_id}` | `SetOverwrite` (allow / deny for a role, `@everyone` = the space id, or a member) → 204 |
+| GET | `/api/games/word?lang=en\|tr&space_id=` | → `word::Overview` (today's board, players today in that space, your stats, standings) |
+| POST | `/api/games/word/guess` | `word::GuessReq` → `word::Overview`; 400 for a word not in the list or a hard-mode miss, 409 once finished |
 | GET | `/api/spaces/{id}/bans` | → `[Ban]` |
 | PUT / DELETE | `/api/spaces/{id}/bans/{user_id}` | `BanReq` → 204 / → 204 |
 | POST | `/api/spaces/{id}/channels` | `CreateChannel` → `Channel` |
@@ -285,3 +288,19 @@ Fetching typed URLs is guarded against server-side request forgery: http(s) on p
 the URL, every address the host resolves to must be public (no loopback, private, link-local, CGNAT, multicast,
 documentation, IPv4-mapped private), the connection is pinned to the checked address, redirects are followed by hand
 and re-checked (at most 4), 3 s to connect, 5 s in all, 512 KiB of HTML at most.
+
+### Daily Word
+
+`games.rs`, with the shared rules in `natter_proto::word` (scoring with repeated letters, hard mode, Turkish
+case folding). Word lists are compiled in from `crates/server/words/` (`{lang}_answers.txt`, `{lang}_allowed.txt`,
+`{lang}_extra_allowed.txt`). At start-up each language's answers are shuffled with a random seed made once per
+server and kept in `game_meta`, so day *n* is answer *n* of that order and nobody can work it out from the repo. Day
+1 is 2026-11-20 in the game's time zone.
+
+Plays are kept per user, language and day (`word_plays`: the guesses as JSON, hard mode, solved, finished time); the
+answer only leaves the server once that player has finished. A finished game posts the spoiler-free grid as the
+player's own message to the space's `game_channel_id` (if set and they may post there). Every five minutes after
+09:00 local, each space with a game channel that has no `game_summaries` row for yesterday gets one message from the
+Daily Word bot (a `bot` user with no password, added to the space on first use) listing yesterday's players with
+`<@id>` mentions. Points: 7 − tries for a win, 0 for a loss; stats and streaks (consecutive days
+won) are per language, standings add both.

@@ -178,6 +178,7 @@ fn ChannelHeader(channel: Id, show_chat: Option<RwSignal<bool>>) -> impl IntoVie
             <Show when=move || c().is_some_and(|c| c.kind == ChannelKind::Text && c.space_id.is_some())>
                 <button class="icon-btn" title="Threads" on:click=move |_| s.modal.set(Some(Modal::Threads(channel)))><Icon name="thread"/></button>
             </Show>
+            <button class="icon-btn" title="Daily Word" on:click=move |_| s.modal.set(Some(Modal::WordGame(c().and_then(|c| c.space_id))))><Icon name="grid"/></button>
             <button class="icon-btn" title="Pinned messages (Ctrl+P)" on:click=move |_| s.modal.set(Some(Modal::Pins(channel)))><Icon name="pin"/></button>
             <Show when=move || c().is_some_and(|c| c.space_id.is_some() || c.kind == ChannelKind::GroupDm)>
                 <button class="icon-btn" class:on=move || s.settings.with(|st| st.show_members) title="Member list"
@@ -591,6 +592,7 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
                 {head.then(|| view! {
                     <div class="msg-head">
                         <span class="author" style:color=author_color on:click=move |e| s.open_profile(&e, author)>{author_name}</span>
+                        {move || s.user(author).is_some_and(|u| u.bot).then(|| view! { <span class="tag">"BOT"</span> })}
                         <span class="msg-time" title=util::long_time(created)>{util::timestamp(created)}</span>
                     </div>
                 })}

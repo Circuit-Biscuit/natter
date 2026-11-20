@@ -110,7 +110,7 @@ fn ProfileTab() -> impl IntoView {
     let s = store();
     let me = s.me.get_untracked().unwrap_or_else(|| User {
         id: 0, username: String::new(), display_name: String::new(), avatar: None, about: String::new(),
-        custom_status: None, admin: false, created_at: 0,
+        custom_status: None, admin: false, created_at: 0, bot: false,
     });
     let display = RwSignal::new(me.display_name.clone());
     let about = RwSignal::new(me.about.clone());
@@ -750,6 +750,19 @@ fn SpaceOverview(space: Id) -> impl IntoView {
                 <button class="btn primary" type="submit">"Save"</button>
             </form>
         </div>
+        <h3>"Daily Word channel"</h3>
+        <p class="muted small">"Where members' Daily Word results go, plus a summary each morning that tags yesterday's players."</p>
+        <select on:change=move |e| save(UpdateSpace { game_channel_id: Some(event_target_value(&e).parse().unwrap_or(0)), ..Default::default() })>
+            {move || {
+                let sp = s.space(space);
+                let cur = sp.as_ref().and_then(|sp| sp.game_channel_id);
+                let texts: Vec<Channel> = sp.map(|sp| sp.channels.into_iter().filter(|c| c.kind == ChannelKind::Text).collect()).unwrap_or_default();
+                view! {
+                    <option value="0" selected=cur.is_none()>"Off — results aren't posted"</option>
+                    {texts.into_iter().map(|c| view! { <option value=c.id.to_string() selected=cur == Some(c.id)>{format!("#{}", c.name)}</option> }).collect_view()}
+                }
+            }}
+        </select>
     }
 }
 

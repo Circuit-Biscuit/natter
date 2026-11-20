@@ -4,6 +4,7 @@
 mod auth;
 mod db;
 mod embeds;
+mod games;
 mod gateway;
 mod messages;
 mod nextcloud;
@@ -41,6 +42,8 @@ pub struct Config {
     pub media_port: u16,
     /// Most a camera may send in a call, kbit/s (`NATTER_CAMERA_KBPS`, 0 = no cap).
     pub camera_kbps: u32,
+    /// Daily Word's time zone: minutes ahead of UTC (`NATTER_GAME_UTC_OFFSET`, default 60 = Central Europe).
+    pub game_utc_offset_min: i64,
     pub public_ip: Option<IpAddr>,
     pub web_dir: Option<PathBuf>,
     pub nextcloud_url: Option<String>,
@@ -81,6 +84,10 @@ impl Config {
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(1000),
+            game_utc_offset_min: var("NATTER_GAME_UTC_OFFSET")
+                .map(|v| v.parse())
+                .transpose()?
+                .unwrap_or(60),
             public_ip: var("NATTER_PUBLIC_IP").map(|v| v.parse()).transpose()?,
             web_dir: var("NATTER_WEB_DIR").map(PathBuf::from),
             nextcloud_url: var("NATTER_NEXTCLOUD_URL"),
@@ -244,6 +251,8 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
     tokio::spawn(messages::gc_uploads(st.clone()));
     tokio::spawn(spaces::archive_idle_threads(st.clone()));
     tokio::spawn(embeds::backfill(st.clone()));
+    games::init(&st).await?;
+    tokio::spawn(games::summaries(st.clone()));
 
     let mut app = Router::new()
         .route("/health", get(|| async { "ok" }))
@@ -298,6 +307,8 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
             "/api/channels/{id}/permissions/{target_id}",
             put(spaces::set_overwrite).delete(spaces::delete_overwrite),
         )
+        .route("/api/games/word", get(games::get))
+        .route("/api/games/word/guess", post(games::guess))
         .route("/api/spaces/{id}/bans", get(spaces::list_bans))
         .route(
             "/api/spaces/{id}/bans/{user_id}",

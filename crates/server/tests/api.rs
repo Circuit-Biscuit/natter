@@ -150,6 +150,7 @@ async fn full_flow() {
         max_upload: 10 * 1024 * 1024,
         media_port: 0,
         camera_kbps: 1000,
+        game_utc_offset_min: 60,
         public_ip: Some("127.0.0.1".parse().unwrap()),
         web_dir: None,
         nextcloud_url: Some(nc_base.clone()),
@@ -632,6 +633,37 @@ async fn full_flow() {
     let (s, _) = call(&app, "GET", &msgs(inside["id"].as_i64().unwrap()), Some(&t1), None).await;
     assert_eq!(s, StatusCode::OK, "the owner sees everything");
 
+    // Daily Word: guesses are checked on the server; the result posts (spoiler-free) to the space's game channel.
+    let (s, _) = call(&app, "PATCH", &format!("/api/spaces/{sid}"), Some(&t1), Some(json!({"game_channel_id": general}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let guess = |w: &str| Some(json!({"lang": "en", "word": w, "space_id": sid}));
+    let (s, e) = call(&app, "POST", "/api/games/word/guess", Some(&t1), guess("qzxvj")).await;
+    assert_eq!((s, e["error"].as_str()), (StatusCode::BAD_REQUEST, Some("not in the word list")));
+    let (_, ov) = call(&app, "GET", &format!("/api/games/word?lang=en&space_id={sid}"), Some(&t1), None).await;
+    assert_eq!((ov["today"]["status"].as_str(), ov["today"]["answer"].is_null()), (Some("playing"), true), "{ov}");
+    let mut last = Value::Null;
+    for w in ["house", "water", "light", "music", "plant", "table"] {
+        let (s, ov) = call(&app, "POST", "/api/games/word/guess", Some(&t1), guess(w)).await;
+        assert_eq!(s, StatusCode::OK, "{ov}");
+        assert_eq!(ov["today"]["guesses"].as_array().unwrap().last().unwrap()["marks"].as_array().unwrap().len(), 5);
+        last = ov;
+        if last["today"]["status"] != "playing" {
+            break;
+        }
+    }
+    assert_ne!(last["today"]["status"], "playing");
+    assert!(last["today"]["answer"].as_str().is_some_and(|a| a.len() == 5), "the answer once you've finished");
+    let (s, _) = call(&app, "POST", "/api/games/word/guess", Some(&t1), guess("house")).await;
+    assert_eq!(s, StatusCode::CONFLICT, "one game a day");
+    let Event::MessageCreate(result) = next_event(&mut ws, |e| matches!(e, Event::MessageCreate(m) if m.content.starts_with("Daily Word"))).await else {
+        unreachable!()
+    };
+    assert_eq!((result.channel_id, result.author_id), (general, u1));
+    assert!(result.content.contains("🟩") || result.content.contains("⬛"), "{}", result.content);
+    assert!(!result.content.to_lowercase().contains(last["today"]["answer"].as_str().unwrap()), "no spoilers");
+    assert_eq!(last["players"][0]["user_id"], json!(u1));
+    assert_eq!(last["all_time"][0]["user_id"], json!(u1));
+
     // Local upload, served back with safe headers.
     let png: &[u8] =
         b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x02\0\0\0\x03\x08\x06\0\0\0\x9d\x07\xab\x0f";
@@ -752,7 +784,7 @@ async fn full_flow() {
         .header("authorization", format!("Bearer {t3}"))
         .header("content-type", "image/png")
         .header("x-filename", "me.png")
-        .body(Body::from(png.clone()))
+        .body(Body::from(png))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     let local: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();

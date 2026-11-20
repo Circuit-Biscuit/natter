@@ -13,6 +13,7 @@ mod modals;
 mod rail;
 mod settings;
 mod sidebar;
+mod word;
 
 use leptos::ev;
 use leptos::prelude::*;

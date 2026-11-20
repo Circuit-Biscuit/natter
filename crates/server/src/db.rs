@@ -62,7 +62,7 @@ pub fn file_url(token: &str, filename: &str) -> String {
 macro_rules! user_select {
     ($tail:literal) => {
         concat!(
-            "SELECT u.id, u.username, u.display_name, u.about, u.custom_status, u.admin, u.created_at, ",
+            "SELECT u.id, u.username, u.display_name, u.about, u.custom_status, u.admin, u.created_at, u.bot, ",
             "up.token AS av_token, up.filename AS av_name, up.url AS av_url ",
             "FROM users u LEFT JOIN uploads up ON up.id = u.avatar_id ",
             $tail
@@ -79,6 +79,7 @@ struct UserRow {
     custom_status: Option<String>,
     admin: bool,
     created_at: i64,
+    bot: bool,
     av_token: Option<String>,
     av_name: Option<String>,
     /// Set when the picture was stored in the uploader's Nextcloud (before icons stayed on the server).
@@ -96,6 +97,7 @@ impl From<UserRow> for User {
             custom_status: r.custom_status,
             admin: r.admin,
             created_at: r.created_at,
+            bot: r.bot,
         }
     }
 }
@@ -353,8 +355,8 @@ pub async fn upgrade_roles(db: &SqlitePool, mut next_id: impl FnMut() -> Id) -> 
 }
 
 pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
-    let (name, owner_id, everyone, token, filename, icon_url): (String, Id, i64, Option<String>, Option<String>, Option<String>) = sqlx::query_as(
-        "SELECT s.name, s.owner_id, s.everyone_permissions, up.token, up.filename, up.url FROM spaces s
+    let (name, owner_id, everyone, token, filename, icon_url, game_channel_id): (String, Id, i64, Option<String>, Option<String>, Option<String>, Option<Id>) = sqlx::query_as(
+        "SELECT s.name, s.owner_id, s.everyone_permissions, up.token, up.filename, up.url, s.game_channel_id FROM spaces s
          LEFT JOIN uploads up ON up.id = s.icon_id WHERE s.id = ?",
     )
     .bind(id)
@@ -411,6 +413,7 @@ pub async fn space(db: &SqlitePool, id: Id) -> R<Space> {
         users: vec![],
         roles,
         everyone_permissions: everyone as u64,
+        game_channel_id,
     };
     // The old three-level role, for apps from before roles.
     let legacy: Vec<Role> = space

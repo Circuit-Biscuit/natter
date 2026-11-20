@@ -54,6 +54,9 @@ pub struct User {
     /// Server administrator.
     pub admin: bool,
     pub created_at: Millis,
+    /// An app account (e.g. the Daily Word bot) that posts on its own; nobody signs in as it.
+    #[serde(default)]
+    pub bot: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +197,9 @@ pub struct Space {
     /// What every member may do (`@everyone`).
     #[serde(default = "perm::default_everyone")]
     pub everyone_permissions: u64,
+    /// Where Daily Word results and the daily summary are posted (none: not posted).
+    #[serde(default)]
+    pub game_channel_id: Option<Id>,
 }
 
 impl Space {
@@ -787,6 +793,9 @@ pub struct UpdateSpace {
     /// What `@everyone` may do (needs Manage roles).
     #[serde(default)]
     pub everyone_permissions: Option<u64>,
+    /// The channel for Daily Word results; `Some(0)` turns posting off (needs Manage space).
+    #[serde(default)]
+    pub game_channel_id: Option<Id>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1044,7 +1053,7 @@ mod tests {
             id: 1, name: "s".into(), icon: None, owner_id: 10, channels: vec![], users: vec![],
             members: vec![member(10, vec![]), member(11, vec![100]), member(12, vec![101, 102]), member(13, vec![])],
             roles: vec![role(100, 3, perm::ADMINISTRATOR, ""), role(101, 2, perm::KICK_MEMBERS, ""), role(102, 1, 0, "#23a55a")],
-            everyone_permissions: perm::SEND_MESSAGES,
+            everyone_permissions: perm::SEND_MESSAGES, game_channel_id: None,
         };
         assert_eq!(space.permissions(10), perm::ALL, "owner");
         assert_eq!(space.permissions(11), perm::ALL, "administrator");
@@ -1072,7 +1081,7 @@ mod tests {
                 RoleDef { id: 100, name: "staff".into(), color: String::new(), emoji: String::new(), position: 2, permissions: 0, hoist: false },
                 RoleDef { id: 101, name: "admin".into(), color: String::new(), emoji: String::new(), position: 1, permissions: perm::ADMINISTRATOR, hoist: false },
             ],
-            everyone_permissions: perm::EVERYONE_DEFAULT,
+            everyone_permissions: perm::EVERYONE_DEFAULT, game_channel_id: None,
             channels: vec![
                 ch(2, ChannelKind::Category, None, vec![hide.clone(), ow(100, OverwriteKind::Role, perm::VIEW_CHANNEL, 0)]),
                 ch(3, ChannelKind::Text, Some(2), vec![]),
@@ -1116,5 +1125,218 @@ mod tests {
         );
         let op: Op = serde_json::from_str(r#"{"op":"Heartbeat"}"#).unwrap();
         assert!(matches!(op, Op::Heartbeat));
+    }
+}
+
+// ---------------------------------------------------------------- Daily Word (our five-letter word game)
+
+pub mod word {
+    use super::Id;
+    use serde::{Deserialize, Serialize};
+
+    pub const LENGTH: usize = 5;
+    pub const TRIES: usize = 6;
+    /// The languages with a daily puzzle: (code, name, flag).
+    pub const LANGS: [(&str, &str, &str); 2] = [("en", "English", "🇬🇧"), ("tr", "Türkçe", "🇹🇷")];
+
+    /// One letter's verdict: right place, in the word elsewhere, or not in it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Mark {
+        Correct,
+        Present,
+        Absent,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Guess {
+        pub word: String,
+        pub marks: Vec<Mark>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Status {
+        Playing,
+        Won,
+        Lost,
+    }
+
+    /// Your game today in one language.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Today {
+        pub lang: String,
+        /// Puzzle number (#1 was the first day).
+        pub number: i64,
+        pub guesses: Vec<Guess>,
+        pub hard: bool,
+        pub status: Status,
+        /// Only once you've finished.
+        pub answer: Option<String>,
+        /// Until the next puzzle.
+        pub next_in_ms: i64,
+    }
+
+    /// Someone in the space who played today (their letters are never shown).
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Player {
+        pub user_id: Id,
+        pub tries: u8,
+        pub status: Status,
+        /// Their grid of marks, once you've finished too.
+        pub marks: Option<Vec<Vec<Mark>>>,
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Stats {
+        pub played: u32,
+        pub won: u32,
+        pub current_streak: u32,
+        pub max_streak: u32,
+        /// Wins in 1..=6 tries.
+        pub distribution: Vec<u32>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Standing {
+        pub user_id: Id,
+        /// 6 for a win in one try … 1 in six, 0 for a miss; both languages count.
+        pub points: i64,
+        pub played: u32,
+        pub won: u32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    pub struct Overview {
+        pub today: Today,
+        pub players: Vec<Player>,
+        pub stats: Stats,
+        pub week: Vec<Standing>,
+        pub month: Vec<Standing>,
+        pub all_time: Vec<Standing>,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    pub struct GuessReq {
+        pub lang: String,
+        pub word: String,
+        /// Hard mode (only counts on the first guess of the day).
+        #[serde(default)]
+        pub hard: bool,
+        /// The space you play from: its players, standings and results channel.
+        pub space_id: Option<Id>,
+    }
+
+    /// Lowercase for the language (Turkish: I→ı, İ→i; â î û folded), trimmed.
+    pub fn normalize(lang: &str, word: &str) -> String {
+        let w = word.trim();
+        if lang == "tr" {
+            w.chars()
+                .map(|c| match c {
+                    'I' => 'ı',
+                    'İ' => 'i',
+                    'Â' | 'â' => 'a',
+                    'Î' | 'î' => 'i',
+                    'Û' | 'û' => 'u',
+                    c => c.to_lowercase().next().unwrap_or(c),
+                })
+                .collect()
+        } else {
+            w.to_lowercase()
+        }
+    }
+
+    /// Uppercase for display (Turkish: i→İ, ı→I).
+    pub fn display(lang: &str, word: &str) -> String {
+        if lang == "tr" {
+            word.chars()
+                .map(|c| match c {
+                    'i' => 'İ',
+                    'ı' => 'I',
+                    c => c.to_uppercase().next().unwrap_or(c),
+                })
+                .collect()
+        } else {
+            word.to_uppercase()
+        }
+    }
+
+    /// Score a guess against the answer; repeated letters count only as often as the answer has them.
+    pub fn score(guess: &str, answer: &str) -> Vec<Mark> {
+        let g: Vec<char> = guess.chars().collect();
+        let a: Vec<char> = answer.chars().collect();
+        let mut marks = vec![Mark::Absent; g.len()];
+        let mut left: Vec<Option<char>> = a.iter().map(|&c| Some(c)).collect();
+        for i in 0..g.len().min(a.len()) {
+            if g[i] == a[i] {
+                marks[i] = Mark::Correct;
+                left[i] = None;
+            }
+        }
+        for i in 0..g.len() {
+            if marks[i] == Mark::Correct {
+                continue;
+            }
+            if let Some(slot) = left.iter_mut().find(|c| **c == Some(g[i])) {
+                *slot = None;
+                marks[i] = Mark::Present;
+            }
+        }
+        marks
+    }
+
+    /// Hard mode: every revealed hint must be used. `None` = fine, else what's missing.
+    pub fn hard_mode_miss(lang: &str, guess: &str, earlier: &[Guess]) -> Option<String> {
+        let g: Vec<char> = guess.chars().collect();
+        let up = |c: char| display(lang, &c.to_string());
+        for prev in earlier {
+            let p: Vec<char> = prev.word.chars().collect();
+            for (i, m) in prev.marks.iter().enumerate() {
+                if *m == Mark::Correct && g.get(i) != p.get(i) {
+                    return Some(format!("letter {} must be {}", i + 1, up(p[i])));
+                }
+            }
+            for (i, m) in prev.marks.iter().enumerate() {
+                if *m == Mark::Present {
+                    let need = prev.marks.iter().zip(&p).filter(|(m, c)| **m != Mark::Absent && **c == p[i]).count();
+                    if g.iter().filter(|c| **c == p[i]).count() < need {
+                        return Some(format!("the word has {}", up(p[i])));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use Mark::*;
+
+        #[test]
+        fn scoring_handles_repeats() {
+            assert_eq!(score("crane", "crane"), vec![Correct; 5]);
+            assert_eq!(score("speed", "abide"), vec![Absent, Absent, Present, Absent, Present]);
+            // two E's guessed, one placed right in the answer: the other is absent
+            assert_eq!(score("geese", "those"), vec![Absent, Absent, Absent, Correct, Correct]);
+            assert_eq!(score("ağaçı", "ağaçı"), vec![Correct; 5]);
+            assert_eq!(score("kalem", "elmak"), vec![Present, Present, Present, Present, Present]);
+        }
+
+        #[test]
+        fn turkish_case() {
+            assert_eq!(normalize("tr", "IŞIK"), "ışık");
+            assert_eq!(normalize("tr", "İNCİR"), "incir");
+            assert_eq!(display("tr", "incir"), "İNCİR");
+            assert_eq!(display("tr", "ışık"), "IŞIK");
+            assert_eq!(normalize("en", " Crane "), "crane");
+        }
+
+        #[test]
+        fn hard_mode() {
+            let earlier = vec![Guess { word: "crane".into(), marks: score("crane", "react") }];
+            assert!(hard_mode_miss("en", "trace", &earlier).is_none());
+            assert!(hard_mode_miss("en", "lemon", &earlier).is_some());
+        }
     }
 }

@@ -82,6 +82,7 @@ fn MemberRow(user: Id, space: Option<Id>) -> impl IntoView {
                 <span class="name ellipsis" style:color=color>
                     {move || s.name(user, space)}
                     {move || (space.and_then(|sp| s.space(sp)).map(|sp| sp.owner_id) == Some(user)).then(|| view! { <span class="crown" title="Space owner">"👑"</span> })}
+                    {move || s.user(user).is_some_and(|u| u.bot).then(|| view! { <span class="tag">"BOT"</span> })}
                 </span>
                 {move || s.user(user).and_then(|u| u.custom_status).map(|c| view! { <span class="sub ellipsis">{c}</span> })}
             </div>
@@ -137,6 +138,7 @@ fn Profile(user: Id, x: i32, y: i32) -> impl IntoView {
                 <div class="profile-name">{move || u().map(|u| u.display_name).unwrap_or_default()}</div>
                 <div class="profile-username">{move || u().map(|u| u.username).unwrap_or_default()}
                     {move || u().filter(|u| u.admin).map(|_| view! { <span class="tag">"SERVER ADMIN"</span> })}
+                    {move || u().filter(|u| u.bot).map(|_| view! { <span class="tag">"BOT"</span> })}
                 </div>
                 {move || u().and_then(|u| u.custom_status).map(|c| view! { <div class="profile-status">{c}</div> })}
                 <div class="profile-section">

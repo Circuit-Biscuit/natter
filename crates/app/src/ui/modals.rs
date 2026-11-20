@@ -17,6 +17,7 @@ pub fn ModalHost() -> impl IntoView {
         {move || s.modal.get().map(|m| {
             let wide = matches!(m, Modal::UserSettings | Modal::SpaceSettings(_) | Modal::ChannelPermissions(_));
             let image = matches!(m, Modal::Image(_));
+            let game = matches!(m, Modal::WordGame(_));
             let body = match m {
                 Modal::CreateSpace => view! { <CreateSpace/> }.into_any(),
                 Modal::Invite(sp) => view! { <InviteDialog space=sp/> }.into_any(),
@@ -33,11 +34,12 @@ pub fn ModalHost() -> impl IntoView {
                 Modal::CreateThread { channel, message } => view! { <CreateThreadDialog channel=channel message=message/> }.into_any(),
                 Modal::Threads(c) => view! { <ThreadBrowser channel=c/> }.into_any(),
                 Modal::ChannelPermissions(c) => view! { <settings::ChannelPermissions channel=c/> }.into_any(),
+                Modal::WordGame(sp) => view! { <super::word::WordGame space=sp/> }.into_any(),
                 Modal::Confirm { title, body, ok, action } => view! { <Confirm title=title body=body ok=ok action=action/> }.into_any(),
             };
             view! {
                 <div class="modal-backdrop" class:image=image on:mousedown=move |_| s.modal.set(None)>
-                    <div class="modal" class:wide=wide class:image=image on:mousedown=|e| e.stop_propagation() on:click=|e| e.stop_propagation()>
+                    <div class="modal" class:wide=wide class:image=image class:game=game on:mousedown=|e| e.stop_propagation() on:click=|e| e.stop_propagation()>
                         {body}
                     </div>
                 </div>

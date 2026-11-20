@@ -178,6 +178,8 @@ pub enum Modal {
     CreateThread { channel: Id, message: Option<Id> },
     Threads(Id),
     ChannelPermissions(Id),
+    /// Daily Word, played from a space (results post there) or a DM.
+    WordGame(Option<Id>),
     Confirm { title: String, body: String, ok: String, action: Action },
 }
 
