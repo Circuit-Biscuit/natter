@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The Natter window may listen to shell events (push-to-talk) and call its own commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

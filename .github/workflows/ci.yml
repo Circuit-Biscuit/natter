@@ -1,0 +1,27 @@
+# Every push and pull request: protocol + server tests (incl. the end-to-end test with a fake Nextcloud),
+# and a release build of the WebAssembly app. Installers are built by release.yml.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+      - run: cargo test --locked -p natter-proto -p natter-server -p natter-app
+      - run: trunk build --release
+        working-directory: crates/app

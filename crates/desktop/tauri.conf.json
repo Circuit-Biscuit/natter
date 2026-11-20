@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Natter",
+  "mainBinaryName": "Natter",
+  "identifier": "com.circuitbiscuit.natter",
+  "build": {
+    "frontendDist": "../app/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": { "script": "trunk serve", "cwd": "../app", "wait": false },
+    "beforeBuildCommand": { "script": "trunk build --release", "cwd": "../app" }
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Natter",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 940,
+        "minHeight": 560,
+        "center": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; connect-src 'self' ipc: http://ipc.localhost https: http: wss: ws:; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg", "app", "appimage", "deb"],
+    "publisher": "Circuit Biscuit",
+    "copyright": "© Circuit Biscuit",
+    "category": "SocialNetworking",
+    "shortDescription": "Chat, voice and video for teams — with your Nextcloud",
+    "longDescription": "Natter is a fast, Discord-style team chat with voice and video calls, built in Rust, that signs you in and stores your files with your own Nextcloud.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "windows": { "nsis": { "installMode": "currentUser" } },
+    "macOS": { "minimumSystemVersion": "11.0", "infoPlist": "Info.plist" }
+  }
+}

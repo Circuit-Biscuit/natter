@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["crates/proto", "crates/server", "crates/app", "crates/desktop"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-Proprietary"
+repository = "https://github.com/Circuit-Biscuit/natter"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

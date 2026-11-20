@@ -1,0 +1,19 @@
+[package]
+name = "natter-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console_error_panic_hook = "0.1.7"
+emojis = "0.9.1"
+gloo-timers = { version = "0.4.1", features = ["futures"] }
+js-sys = "0.3.107"
+leptos = { version = "0.8.23", features = ["csr"] }
+natter-proto = { version = "0.1.0", path = "../proto" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4.80"
+web-sys = { version = "0.3.107", features = ["Window", "Document", "Element", "HtmlElement", "HtmlInputElement", "HtmlTextAreaElement", "Storage", "WebSocket", "MessageEvent", "CloseEvent", "KeyboardEvent", "MouseEvent", "DragEvent", "DataTransfer", "FileList", "File", "Blob", "ClipboardEvent", "Headers", "Request", "RequestInit", "Response", "FormData", "Url", "Notification", "NotificationOptions", "NotificationPermission", "ScrollBehavior", "ScrollIntoViewOptions", "ScrollLogicalPosition", "DomRect", "Location", "Navigator", "Clipboard", "FocusEvent", "InputEvent", "EventTarget", "HtmlImageElement", "Event", "Performance", "ResizeObserver", "ResizeObserverEntry", "IntersectionObserver", "IntersectionObserverEntry", "IntersectionObserverInit", "BinaryType", "HtmlMediaElement", "HtmlVideoElement", "MediaStream", "Selection", "Range", "AudioContext", "HtmlAudioElement", "MediaDevices", "MediaDeviceInfo", "DocumentFragment", "Crypto", "HtmlDivElement", "HtmlCanvasElement", "ScrollToOptions", "VisibilityState", "AddEventListenerOptions", "EventListener", "ClipboardItem", "MediaQueryList"] }

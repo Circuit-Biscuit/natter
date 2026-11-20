@@ -1,0 +1,139 @@
+# Publishes a release whenever the version in Cargo.toml ([workspace.package]) goes up.
+#
+#   1. add a "## [x.y.z]" section to CHANGELOG.md, then run scripts/bump.ps1 x.y.z
+#   2. push to main
+#   3. this workflow sees there's no tag vx.y.z yet, builds the desktop installers for Windows, macOS and Linux
+#      plus the Linux server bundle, and publishes them as GitHub release vx.y.z with checksums.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: v
+        run: |
+          VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION is already released; nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            args: ""
+            files: target/release/bundle/nsis/*.exe
+          - name: macOS
+            os: macos-14
+            args: --target universal-apple-darwin
+            files: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          - name: Linux
+            os: ubuntu-22.04
+            args: ""
+            files: |
+              target/release/bundle/appimage/*.AppImage
+              target/release/bundle/deb/*.deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-14' && 'wasm32-unknown-unknown,aarch64-apple-darwin,x86_64-apple-darwin' || 'wasm32-unknown-unknown' }}
+      - uses: Swatinem/rust-cache@v2
+      - if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk,tauri-cli
+      - run: cargo tauri build ${{ matrix.args }}
+        working-directory: crates/desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: ${{ matrix.files }}
+
+  server:
+    name: Server (Linux x86_64, static)
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked -p natter-server --target x86_64-unknown-linux-musl
+      - run: trunk build --release
+        working-directory: crates/app
+      - run: |
+          mkdir -p natter
+          cp target/x86_64-unknown-linux-musl/release/natter-server natter/
+          cp -r crates/app/dist natter/web
+          cp docs/DEPLOY.md natter/
+          tar -czf "natter-server-$VERSION-linux-x86_64.tar.gz" natter
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: natter-server-*.tar.gz
+
+  publish:
+    name: Publish release
+    needs: [version, desktop, server]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="$VERSION" '$0 ~ "^## \[" v "\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Natter $VERSION" > notes.md
+      - run: |
+          cd out && sha256sum * > SHA256SUMS.txt && cd ..
+          gh release create "v$VERSION" out/* --title "Natter $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
