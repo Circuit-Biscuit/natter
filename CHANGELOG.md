@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0] — 2026-11-20
 
 - **Roles, like Discord's:** create roles with a name, colour and emoji; switch 16 permissions on or off (manage
   space, roles, channels, nicknames, messages, threads; kick, ban, invite; send, attach, react, start threads,
