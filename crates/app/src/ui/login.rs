@@ -70,6 +70,10 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let busy = RwSignal::new(false);
     let nc_waiting = RwSignal::new(None::<NcLoginStart>);
     let show_local = RwSignal::new(false);
+    // Came with an invite to a server that lets invited people make a Natter account.
+    let can_join_without_nc = move || {
+        !invite.get().is_empty() && info.get().is_some_and(|i| i.registration != Registration::Closed)
+    };
 
     // Accept an invite link from the address bar (web: /invite/CODE).
     let path = util::window().location().pathname().unwrap_or_default();
@@ -245,8 +249,19 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                     <Icon name="cloud"/>"Sign in with Nextcloud"
                                 </button>
                                 <div class="login-hint">{format!("Uses your account at {host}. Your files stay in your Nextcloud.")}</div>
-                                <button class="btn link" on:click=move |_| show_local.update(|v| *v = !*v)>
-                                    {move || if show_local.get() { "Hide Natter account sign-in" } else { "Use a Natter account instead" }}
+                                // Someone arriving with an invite and no Nextcloud account goes straight to sign-up.
+                                <button class="btn link" on:click=move |_| {
+                                    let open = !show_local.get_untracked();
+                                    show_local.set(open);
+                                    if open && can_join_without_nc() { mode_register.set(true); }
+                                }>
+                                    {move || if show_local.get() {
+                                        "Hide Natter account sign-in"
+                                    } else if can_join_without_nc() {
+                                        "No Nextcloud account? Use a Natter account"
+                                    } else {
+                                        "Use a Natter account instead"
+                                    }}
                                 </button>
                             }
                         })}
