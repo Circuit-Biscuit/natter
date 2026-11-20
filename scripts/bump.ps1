@@ -10,7 +10,11 @@ if (-not (Select-String -Path CHANGELOG.md -Pattern "## \[$Version\]" -Quiet)) {
 $toml = Get-Content Cargo.toml -Raw
 $toml = $toml -replace '(\[workspace\.package\]\s*\r?\nversion = )"[^"]+"', "`$1`"$Version`""
 [IO.File]::WriteAllText("$PWD\Cargo.toml", $toml)
+# Android takes its versionName/versionCode from here (desktop would fall back to Cargo.toml, Android doesn't).
+$conf = Get-Content crates\desktop\tauri.conf.json -Raw
+$conf = $conf -replace '("version": )"[^"]+"', "`$1`"$Version`""
+[IO.File]::WriteAllText("$PWD\crates\desktop\tauri.conf.json", $conf)
 cargo update --workspace --offline | Out-Null
-git add Cargo.toml Cargo.lock CHANGELOG.md
+git add Cargo.toml Cargo.lock CHANGELOG.md crates/desktop/tauri.conf.json
 git commit -m "Release $Version"
 Write-Host "Now: git push origin main  (the Release workflow builds and publishes v$Version)"
