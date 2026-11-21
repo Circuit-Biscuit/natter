@@ -174,7 +174,7 @@ async fn full_flow() {
         (StatusCode::OK, Some(true))
     );
     assert_eq!(info["nextcloud"].as_str(), Some(nc_base.as_str()));
-    assert_eq!(info["klipy_key"].as_str(), Some("klipy-test"));
+    assert!(info["klipy_key"].is_null(), "the GIF key is for signed-in users only");
     let (s, a) = call(
         &app,
         "POST",
@@ -251,6 +251,7 @@ async fn full_flow() {
         unreachable!()
     };
     assert_eq!(ready.user.id, u2);
+    assert_eq!(ready.server.klipy_key.as_deref(), Some("klipy-test"));
     assert_eq!(ready.spaces.len(), 1);
     assert!(ready.users.iter().any(|u| u.id == u1));
     assert!(!ready.nextcloud);

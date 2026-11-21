@@ -33,8 +33,8 @@ accounts with a username and password, and every file is stored in the data fold
 
 **GIFs:** create a free app key at [partner.klipy.com](https://partner.klipy.com) and set `NATTER_KLIPY_KEY`. A new
 key is in testing mode (100 requests an hour for everyone together); ask for production access in KLIPY's panel once
-it works. The apps talk to KLIPY directly (KLIPY's terms require that), so the key reaches every signed-in user, as in
-any app with a GIF picker. Blocked words and single GIFs are set in KLIPY's panel.
+it works. Every server needs its own key. The apps talk to KLIPY directly (KLIPY's terms require that), so the server
+gives the key to signed-in users (never to the public `/api/info`), as in any app with a GIF picker. Blocked words and single GIFs are set in KLIPY's panel.
 
 `chmod 600 /etc/natter.env`. The data folder holds the database (with Nextcloud app passwords of signed-in sessions)
 and local uploads — keep it `700`, owned by `natter`.

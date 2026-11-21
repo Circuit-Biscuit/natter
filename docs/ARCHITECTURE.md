@@ -304,7 +304,8 @@ picture, as in Discord.
 
 ### GIFs
 
-`app/src/ui/gif.rs`. The server only hands out the KLIPY app key (`ServerInfo.klipy_key` from `NATTER_KLIPY_KEY`);
+`app/src/ui/gif.rs`. The server only hands out the KLIPY app key (`ServerInfo.klipy_key` from `NATTER_KLIPY_KEY`,
+in `Ready`, so to signed-in people only; the public `/api/info` leaves it out);
 the app calls `api.klipy.com` itself, because KLIPY's terms require requests and media loads to come from the user's
 app, and keep results in their order. The picker shows category tiles (fetched once per run), Trending, Favorites
 (`Settings.fav_gifs`, synced like every setting) and search (300 ms after typing stops), 24 at a time with more on

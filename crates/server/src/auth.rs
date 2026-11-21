@@ -155,7 +155,8 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
         first_run: user_count(&st).await? == 0,
         max_upload_bytes: st.cfg.max_upload,
         nextcloud: st.nc.as_ref().map(|n| n.base.clone()),
-        klipy_key: st.cfg.klipy_key.clone(),
+        // Only signed-in people get it (in `Ready`): this endpoint is public.
+        klipy_key: None,
     }))
 }
 

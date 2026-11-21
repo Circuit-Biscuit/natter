@@ -731,8 +731,9 @@ pub struct ServerInfo {
     /// Base URL of the Nextcloud you can sign in with (and store files in), if any.
     #[serde(default)]
     pub nextcloud: Option<String>,
-    /// KLIPY app key for the GIF picker (`NATTER_KLIPY_KEY`); none = no GIF button. Apps call KLIPY themselves
-    /// (KLIPY's terms), so this key is visible to your users, as in any app with a GIF picker.
+    /// KLIPY app key for the GIF picker (`NATTER_KLIPY_KEY`); none = no GIF button. Sent to signed-in people only
+    /// (in `Ready`, never from the public `/api/info`). Apps call KLIPY themselves (KLIPY's terms), so your users can
+    /// see it, as in any app with a GIF picker.
     #[serde(default)]
     pub klipy_key: Option<String>,
 }
