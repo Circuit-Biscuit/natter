@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-21
+
 - **GIFs, like in Discord.** A **GIF** button next to the emoji button opens a GIF picker: categories, trending
   GIFs, search, and your favourites (star a GIF; favourites follow you to every device). Picking one sends it at
   once as a message of its own, and every message that's only a picture or GIF link now shows just the picture.
