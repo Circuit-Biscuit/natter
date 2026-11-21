@@ -5,6 +5,8 @@
 //! standard ports only, every address the host resolves to must be public, the connection is pinned to the
 //! address that was checked (no DNS rebinding), redirects are followed by hand (re-checked, at most 4), bodies are
 //! capped at 512 KiB and requests time out after 5 s.
+//!
+//! GIFs from the GIF picker (KLIPY) are never fetched: KLIPY's terms want their media loaded by the apps only.
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
@@ -156,7 +158,6 @@ async fn build(url: &str) -> Option<Embed> {
     if let Some((id, start)) = youtube_id(url) {
         return Some(youtube(url, &id, start).await);
     }
-    let page = fetch(url, false).await?;
     let blank = |kind| Embed {
         url: url.to_string(),
         kind,
@@ -168,6 +169,13 @@ async fn build(url: &str) -> Option<Embed> {
         video: None,
         color: None,
     };
+    if let Some(kind) = klipy_media(url) {
+        return Some(match kind {
+            EmbedKind::Video => Embed { video: Some(url.to_string()), ..blank(kind) },
+            _ => Embed { image: Some(url.to_string()), ..blank(kind) },
+        });
+    }
+    let page = fetch(url, false).await?;
     if page.content_type.starts_with("image/") {
         return Some(Embed { image: Some(page.url.to_string()), ..blank(EmbedKind::Image) });
     }
@@ -243,6 +251,20 @@ async fn youtube(url: &str, id: &str, start: Option<u32>) -> Embed {
         image: Some(format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg")),
         video: Some(format!("https://www.youtube-nocookie.com/embed/{id}?autoplay=1{start}")),
         color: Some("#ff0033".into()),
+    }
+}
+
+/// A GIF straight from KLIPY's media servers (what the GIF picker sends): shown as a picture (or a video).
+pub fn klipy_media(url: &str) -> Option<EmbedKind> {
+    let u = Url::parse(url).ok()?;
+    let host = u.host_str()?;
+    if u.scheme() != "https" || !host.strip_suffix(".klipy.com").is_some_and(|h| h.starts_with("static")) {
+        return None;
+    }
+    match u.path().rsplit_once('.')?.1 {
+        "webp" | "gif" | "jpg" | "png" => Some(EmbedKind::Image),
+        "mp4" | "webm" => Some(EmbedKind::Video),
+        _ => None,
     }
 }
 
@@ -495,6 +517,15 @@ mod tests {
         assert_eq!(youtube_id("https://youtube.com/shorts/T7HfRLiC0nI?si=x"), Some(("T7HfRLiC0nI".into(), None)));
         assert_eq!(youtube_id("https://www.youtube.com/@channel"), None);
         assert_eq!(youtube_id("https://example.com/watch?v=T7HfRLiC0nI"), None);
+    }
+
+    #[test]
+    fn klipy_gifs() {
+        assert_eq!(klipy_media("https://static.klipy.com/ii/935d7ab9/14/af/eUbp2uNc.webp"), Some(EmbedKind::Image));
+        assert_eq!(klipy_media("https://static2.klipy.com/ii/935d7ab9/14/af/MCCBoQlZ.mp4"), Some(EmbedKind::Video));
+        assert_eq!(klipy_media("http://static.klipy.com/a.webp"), None);
+        assert_eq!(klipy_media("https://static.klipy.com.evil.example/a.webp"), None);
+        assert_eq!(klipy_media("https://klipy.com/gifs/hello-hi-662"), None);
     }
 
     #[test]

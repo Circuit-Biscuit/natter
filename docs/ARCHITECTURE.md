@@ -298,6 +298,18 @@ thumbnail and a `youtube-nocookie.com` player URL (the app shows the thumbnail a
 pages become cards from OpenGraph / Twitter / `<title>` tags; links that answer with `image/*` or `video/*` are shown
 as such. Previews are stored per message (`message_embeds`) and per URL (`embed_cache`: a day, failures an hour).
 At start-up older messages with links get previews in the background (newest 2000, quietly).
+Links to KLIPY's media servers (`static*.klipy.com`, what the GIF picker sends) are never fetched: they become
+picture (or video) previews straight away. A message whose whole text is one picture or video link shows only the
+picture, as in Discord.
+
+### GIFs
+
+`app/src/ui/gif.rs`. The server only hands out the KLIPY app key (`ServerInfo.klipy_key` from `NATTER_KLIPY_KEY`);
+the app calls `api.klipy.com` itself, because KLIPY's terms require requests and media loads to come from the user's
+app, and keep results in their order. The picker shows category tiles (fetched once per run), Trending, Favorites
+(`Settings.fav_gifs`, synced like every setting) and search (300 ms after typing stops), 24 at a time with more on
+scroll, in two columns filled shortest-first. Picking a GIF sends its full-size animated WebP link as its own
+message and reports the share to KLIPY (`POST …/gifs/share/{slug}`, with the search words, no user id).
 
 Fetching typed URLs is guarded against server-side request forgery: http(s) on ports 80/443 only, no credentials in
 the URL, every address the host resolves to must be public (no loopback, private, link-local, CGNAT, multicast,

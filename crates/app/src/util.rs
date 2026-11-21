@@ -11,6 +11,16 @@ pub fn window() -> web_sys::Window {
     web_sys::window().expect("window")
 }
 
+/// GET a JSON document from another site (it must allow CORS).
+pub async fn fetch_json<T: serde::de::DeserializeOwned>(url: &str) -> Option<T> {
+    let resp: web_sys::Response = wasm_bindgen_futures::JsFuture::from(window().fetch_with_str(url)).await.ok()?.dyn_into().ok()?;
+    if !resp.ok() {
+        return None;
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().ok()?).await.ok()?.as_string()?;
+    serde_json::from_str(&text).ok()
+}
+
 pub fn storage_get(key: &str) -> Option<String> {
     window().local_storage().ok()??.get_item(key).ok()?
 }

@@ -57,6 +57,22 @@ pub struct Settings {
     pub show_members: bool,
     /// Recently used reactions, most recent first.
     pub recent_emoji: Vec<String>,
+    /// Starred GIFs, newest first.
+    pub fav_gifs: Vec<Gif>,
+}
+
+/// A GIF from the GIF picker (KLIPY).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Gif {
+    /// What gets sent: the full-size animated WebP.
+    pub url: String,
+    /// The small one for the picker.
+    pub preview: String,
+    pub width: u32,
+    pub height: u32,
+    /// KLIPY's name for it (for their share count).
+    #[serde(default)]
+    pub slug: String,
 }
 
 impl Default for Settings {
@@ -84,6 +100,7 @@ impl Default for Settings {
             collapsed: vec![],
             show_members: true,
             recent_emoji: vec!["👍".into(), "❤️".into(), "😂".into(), "🎉".into(), "👀".into()],
+            fav_gifs: vec![],
         }
     }
 }
@@ -637,12 +654,26 @@ impl Store {
         self.popout.set(Some(Popout { user, x: ev.client_x(), y: ev.client_y() }));
     }
 
+    /// Saves go one at a time, always with the newest settings: two quick changes sent side by side could reach
+    /// the server in the wrong order and the older one would win (or its echo would undo the newer one here).
     pub fn save_settings(&self) {
-        let s = self.settings.get_untracked();
-        let json = serde_json::to_value(&s).unwrap_or_default();
-        util::storage_set("natter.settings", &json.to_string());
+        util::storage_set("natter.settings", &serde_json::to_string(&self.settings.get_untracked()).unwrap_or_default());
+        let (saving, _) = SAVING.get();
+        SAVING.set((true, saving));
+        if saving {
+            return;
+        }
+        let settings = self.settings;
         spawn_local(async move {
-            let _: Result<(), _> = api::call("PUT", "/api/me/settings", &json).await;
+            loop {
+                let json = serde_json::to_value(settings.get_untracked()).unwrap_or_default();
+                let _: Result<(), _> = api::call("PUT", "/api/me/settings", &json).await;
+                if !SAVING.get().1 {
+                    break;
+                }
+                SAVING.set((true, false));
+            }
+            SAVING.set((false, false));
         });
     }
 
@@ -654,6 +685,11 @@ impl Store {
     pub fn save_prefs(&self) {
         util::storage_set("natter.voice", &serde_json::to_string(&self.prefs.get_untracked()).unwrap_or_default());
     }
+}
+
+thread_local! {
+    /// (a settings save is under way, settings changed again since it started)
+    static SAVING: std::cell::Cell<(bool, bool)> = const { std::cell::Cell::new((false, false)) };
 }
 
 // ---------------------------------------------------------------- navigation
@@ -800,7 +836,14 @@ fn merge(into: &mut Vec<Message>, new: Vec<Message>) {
             into.retain(|x| !(x.id >= PENDING_BASE && x.nonce.as_ref() == Some(n)));
         }
         match into.binary_search_by_key(&m.id, |x| x.id) {
-            Ok(i) => into[i] = m,
+            Ok(i) => {
+                // An older copy (the reply to your own send, say) can arrive after the previews did: keep them.
+                let old = std::mem::replace(&mut into[i], m);
+                let new = &mut into[i];
+                if new.embeds.is_empty() && new.content == old.content && new.edited_at == old.edited_at {
+                    new.embeds = old.embeds;
+                }
+            }
             Err(i) => into.insert(i, m),
         }
     }
@@ -1332,6 +1375,10 @@ pub fn apply(ev: Event) {
             }
         }
         Event::SettingsUpdate(v) => {
+            // While saving, ours are newer than any echo.
+            if SAVING.get().0 {
+                return;
+            }
             if let Ok(st) = serde_json::from_value::<Settings>(v) {
                 util::storage_set("natter.settings", &serde_json::to_string(&st).unwrap_or_default());
                 s.settings.set(st);

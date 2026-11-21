@@ -245,9 +245,7 @@ async fn android_update() -> Option<(String, Option<String>)> {
         name: String,
         browser_download_url: String,
     }
-    let resp: web_sys::Response = wasm_bindgen_futures::JsFuture::from(util::window().fetch_with_str(LATEST_RELEASE)).await.ok()?.dyn_into().ok()?;
-    let text = wasm_bindgen_futures::JsFuture::from(resp.text().ok()?).await.ok()?.as_string()?;
-    let r: Release = serde_json::from_str(&text).ok()?;
+    let r: Release = util::fetch_json(LATEST_RELEASE).await?;
     let version = r.tag_name.trim_start_matches('v').to_string();
     if !newer(&version, env!("CARGO_PKG_VERSION")) {
         return None;

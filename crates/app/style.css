@@ -548,6 +548,30 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .picker-foot { height: 48px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--elev); font-size: 14px; color: var(--strong); }
 .picker-foot .big { font-size: 26px; }
 
+/* GIF picker */
+.gif-picker { width: min(424px, calc(100vw - 16px)); height: min(480px, calc(100dvh - 16px)); }
+.gif-head { display: flex; align-items: center; gap: 4px; min-height: 48px; padding: 0 6px; border-bottom: 1px solid var(--border-soft); }
+.gif-head .picker-search { margin: 8px 4px; flex: 1; width: auto !important; }
+.gif-title { font-weight: 700; color: var(--strong); padding: 0 6px; }
+.gif-body { flex: 1; padding: 8px; }
+.gif-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gif-tile { position: relative; height: 100px; border-radius: 6px; overflow: hidden; background: var(--elev); }
+.gif-tile.trending { background: linear-gradient(135deg, var(--accent), #8a5cf6); }
+.gif-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.gif-tile span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px; background: rgb(0 0 0 / .45); color: #fff; font-weight: 700; font-size: 15px; text-transform: capitalize; text-shadow: 0 1px 2px rgb(0 0 0 / .6); }
+.gif-tile:hover span { background: rgb(0 0 0 / .25); }
+.gif-grid { display: flex; gap: 6px; align-items: flex-start; }
+.gif-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.gif-item { position: relative; border-radius: 6px; overflow: hidden; background: var(--elev); cursor: pointer; }
+.gif-item img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.gif-item:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gif-star { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgb(0 0 0 / .55); opacity: 0; transition: opacity .1s; }
+.gif-item:hover .gif-star, .gif-star.on, .mobile .gif-star { opacity: 1; }
+.gif-star.on { color: #f5c518; }
+.gif-star.on svg { fill: currentColor; }
+.gif-note { padding: 24px 12px; text-align: center; color: var(--muted); font-size: 14px; }
+.gif-btn span { font-size: 11px; font-weight: 800; letter-spacing: .02em; border: 2px solid currentColor; border-radius: 4px; padding: 1px 3px; line-height: 1.1; }
+
 .switcher-input { font-size: 20px !important; height: 56px; margin-bottom: 12px; }
 .switcher-label { font-size: 12px; font-weight: 700; color: var(--muted); margin: 4px 0; }
 .switcher-list { max-height: 50vh; overflow-y: auto; }

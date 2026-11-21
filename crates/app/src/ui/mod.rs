@@ -5,6 +5,7 @@ mod chat;
 mod composer;
 mod embed;
 mod emoji;
+mod gif;
 pub mod icons;
 mod login;
 mod members;
@@ -29,6 +30,7 @@ pub fn App() -> impl IntoView {
     // App-wide signals must be born under this root owner, or they die with the first component that touches them.
     voice::tracks_version();
     emoji::init();
+    gif::init();
     composer::external();
     api::set_server(&util::storage_get("natter.server").unwrap_or_else(api::default_server));
     let token = util::storage_get("natter.token");

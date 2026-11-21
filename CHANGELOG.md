@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- **GIFs, like in Discord.** A **GIF** button next to the emoji button opens a GIF picker: categories, trending
+  GIFs, search, and your favourites (star a GIF; favourites follow you to every device). Picking one sends it at
+  once as a message of its own, and every message that's only a picture or GIF link now shows just the picture.
+  The GIFs come from KLIPY (Google shut down Tenor's API in June 2026); the server needs a free KLIPY key
+  (`NATTER_KLIPY_KEY`), otherwise there's no GIF button.
+- Pictures and GIFs that finish loading no longer push the newest messages out of view.
+- A link preview could vanish from your own message right after you sent it.
+- Settings changed quickly one after another (or GIFs starred in a row) could undo each other.
+
 ## [0.7.0] — 2026-11-21
 
 - **Automatic updates for the desktop apps.** Natter looks for a new release on GitHub when it starts and installs

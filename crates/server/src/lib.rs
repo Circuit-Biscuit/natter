@@ -50,6 +50,8 @@ pub struct Config {
     pub nextcloud_group: Option<String>,
     pub nextcloud_folder: String,
     pub autojoin_space: Option<Id>,
+    /// KLIPY app key for the GIF picker (`NATTER_KLIPY_KEY`).
+    pub klipy_key: Option<String>,
 }
 
 impl Config {
@@ -96,6 +98,7 @@ impl Config {
             autojoin_space: var("NATTER_AUTOJOIN_SPACE")
                 .map(|v| v.parse())
                 .transpose()?,
+            klipy_key: var("NATTER_KLIPY_KEY"),
         })
     }
 }

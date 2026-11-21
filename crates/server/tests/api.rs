@@ -157,6 +157,7 @@ async fn full_flow() {
         nextcloud_group: Some("staff".into()),
         nextcloud_folder: "Natter".into(),
         autojoin_space: None,
+        klipy_key: Some("klipy-test".into()),
     };
     let (app, _st) = natter_server::build(cfg).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -173,6 +174,7 @@ async fn full_flow() {
         (StatusCode::OK, Some(true))
     );
     assert_eq!(info["nextcloud"].as_str(), Some(nc_base.as_str()));
+    assert_eq!(info["klipy_key"].as_str(), Some("klipy-test"));
     let (s, a) = call(
         &app,
         "POST",

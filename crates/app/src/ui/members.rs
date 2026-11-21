@@ -97,6 +97,7 @@ pub fn PopoutHost() -> impl IntoView {
     view! {
         {move || s.popout.get().map(|p| view! { <Profile user=p.user x=p.x y=p.y/> })}
         <super::emoji::PickerHost/>
+        <super::gif::GifPickerHost/>
     }
 }
 

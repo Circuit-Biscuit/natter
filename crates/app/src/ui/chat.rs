@@ -5,6 +5,8 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use natter_proto::*;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 
 use super::icons::Icon;
 use super::{Avatar, call, composer, emoji, menu};
@@ -308,6 +310,20 @@ pub fn ChatPane(channel: Id) -> impl IntoView {
         first
     });
 
+    // Pictures and GIFs make messages taller once they load: stay at the bottom ("load" doesn't bubble: capture it).
+    Effect::new(move |_| {
+        let Some(el) = list_ref.get() else { return };
+        let keep = Closure::<dyn Fn()>::new(move || {
+            // (`try_`: a picture can finish loading after you've left the channel.)
+            if at_bottom.try_get_untracked() == Some(true) {
+                scroll_to_bottom();
+            }
+        });
+        let _ = el.add_event_listener_with_callback_and_bool("load", keep.as_ref().unchecked_ref(), true);
+        // ponytail: one tiny closure per chat opened; the list element (and its listener) goes when you leave.
+        keep.forget();
+    });
+
     // A phone switching to this screen: it was hidden while messages arrived, so land on the newest.
     Effect::new(move |_| {
         s.pane.track();
@@ -573,6 +589,8 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
     let author_color = move || s.role_color(space, author);
     let content = m.content.clone();
     let jumbo = util::only_emoji(&content) && m.reply.is_none();
+    // Only a link to a picture / GIF / video: show just that (as Discord does), unless previews are off.
+    let bare_media = matches!(&m.embeds[..], [e] if matches!(e.kind, EmbedKind::Image | EmbedKind::Video) && e.url == content.trim());
     let edited_at = m.edited_at;
 
     view! {
@@ -602,7 +620,7 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
                     let content = content.clone();
                     view! {
                         <div class="msg-content" class:jumbo=jumbo>
-                            {(!content.is_empty()).then(|| markdown::render(&content, space))}
+                            {(!content.is_empty() && !(bare_media && s.settings.with(|st| st.embeds))).then(|| markdown::render(&content, space))}
                             {edited_at.map(|t| view! { <span class="edited" title=util::long_time(t)>"(edited)"</span> })}
                         </div>
                     }.into_any()

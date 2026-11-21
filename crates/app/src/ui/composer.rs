@@ -1,13 +1,13 @@
 //! The message box: autocomplete for @people, #channels and :emoji:, replies, uploads (drop, paste,
-//! picker, Nextcloud), drafts per channel, and Discord's keyboard habits.
+//! picker, Nextcloud), GIFs, drafts per channel, and Discord's keyboard habits.
 
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use natter_proto::*;
 
-use super::emoji;
 use super::icons::Icon;
+use super::{emoji, gif};
 use crate::store::{MenuItem, Modal, store};
 use crate::{api, gateway, util};
 
@@ -547,6 +547,15 @@ pub fn Composer(channel: Id, uploads: Uploads) -> impl IntoView {
                             <span class="char-count" class:over=move || { text.with(|t| t.chars().count()) > MAX_MESSAGE_LEN }>
                                 {move || MAX_MESSAGE_LEN as i64 - text.with(|t| t.chars().count()) as i64}
                             </span>
+                        </Show>
+                        <Show when=move || gif::key().is_some()>
+                            // A GIF goes out as its own message; what's typed stays (as in Discord).
+                            <button class="icon-btn gif-btn" title="GIFs" on:click=move |e| {
+                                gif::open_picker(&e, move |g| {
+                                    crate::store::send_message(channel, g.url, vec![], false, ping_reply.get_untracked());
+                                    ping_reply.set(true);
+                                });
+                            }><span>"GIF"</span></button>
                         </Show>
                         <button class="icon-btn" title="Emoji" on:click=move |e| {
                             emoji::open_picker(&e, move |em: String| {

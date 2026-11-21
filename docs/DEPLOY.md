@@ -23,12 +23,18 @@ NATTER_NEXTCLOUD_GROUP=staff          # optional: only this Nextcloud group may 
 NATTER_PUBLIC_IP=203.0.113.10         # the address call media is announced on
 NATTER_MEDIA_PORT=50000
 # NATTER_AUTOJOIN_SPACE=<space id>    # set after creating the company space (right-click it › Copy Space ID)
+# NATTER_KLIPY_KEY=<app key>          # optional: turns on the GIF picker (see below)
 RUST_LOG=natter_server=info
 ```
 
 **Without Nextcloud**, leave out the `NATTER_NEXTCLOUD_*` lines and set `NATTER_REGISTRATION=invite` (people need
 an invite link to make an account) or `open` (anyone who reaches the page may sign up). People then use Natter
 accounts with a username and password, and every file is stored in the data folder. Everything else works the same.
+
+**GIFs:** create a free app key at [partner.klipy.com](https://partner.klipy.com) and set `NATTER_KLIPY_KEY`. A new
+key is in testing mode (100 requests an hour for everyone together); ask for production access in KLIPY's panel once
+it works. The apps talk to KLIPY directly (KLIPY's terms require that), so the key reaches every signed-in user, as in
+any app with a GIF picker. Blocked words and single GIFs are set in KLIPY's panel.
 
 `chmod 600 /etc/natter.env`. The data folder holds the database (with Nextcloud app passwords of signed-in sessions)
 and local uploads — keep it `700`, owned by `natter`.

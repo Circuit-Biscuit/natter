@@ -38,6 +38,7 @@ hiccups. A retried message can never post twice.
 - **Unreads done right** — a red **NEW** line where you left off, "jump to present", mark as read with Esc, mark unread with Alt+click; read state syncs across your devices.
 - **Search** — full-text search across a space or a conversation, results beside the chat.
 - **Files** — drag and drop, paste screenshots, or pick from Nextcloud; images, video and audio play inline.
+- **GIFs** — a GIF picker with categories, trending, search and favourites that follow you between devices (powered by KLIPY).
 - **Presence** — online, idle (automatic), do not disturb, invisible, plus a custom status. "Ada is typing…".
 
 ## Voice and video that scale
@@ -136,6 +137,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Background push notifications on Android (app closed) | ⬜ |
 | Private channels and categories, per-channel permissions (allow / inherit / deny per role or member) | ✅ |
 | Link previews: YouTube plays inline, page cards, pictures and videos (SSRF-guarded, cached) | ✅ |
+| GIF picker (KLIPY): categories, trending, search, synced favourites | ✅ |
 | Daily Word (English / Turkish): results posts, morning summary, streaks, standings | ✅ |
 | Polls, message scheduling | ⬜ |
 | Simulcast (adaptive video quality for big calls), TURN / TCP fallback | ⬜ |
