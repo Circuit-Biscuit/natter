@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- **Automatic updates for the desktop apps.** Natter looks for a new release on GitHub when it starts and installs
+  it before the window opens. While it's running it checks every six hours, downloads the update in the background
+  and shows a green **Update** button in the title bar. Natter never restarts by itself while open, so a call is
+  never cut off; during a call the button asks first. Updates are signed, and Natter refuses any it can't verify.
+  Installs from this version on update themselves; earlier ones need this version installed by hand once.
+- **Android:** a banner says when a newer version is out and links to its APK. Android installs it after one tap,
+  because apps from outside a store can't update themselves.
+- **Android:** full-screen windows (Daily Word, Settings) no longer slide under the status bar and gesture bar; the
+  incoming-call card and messages at the bottom keep clear of them too.
+
 ## [0.6.1] — 2026-11-20
 
 - Desktop: the Windows title bar came back above Natter's own when updating from an earlier version (the saved

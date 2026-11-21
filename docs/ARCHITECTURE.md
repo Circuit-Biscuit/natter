@@ -242,6 +242,21 @@ Tauri 2. The window loads the app's `dist`. Native extras exposed as commands/ev
 badge, tray icon with "show / quit", close-to-tray, single instance, global push-to-talk key (pressed/released events), and
 remembered window size. The webview provides WebRTC (WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux).
 
+**Updates** (`tauri-plugin-updater`, release builds only). Each release carries `latest.json`: the version, plus one
+installer URL and minisign signature per platform (`windows-x86_64`, `linux-x86_64` for the AppImage,
+`linux-x86_64-deb`, `darwin-*`). It is written by the publish job in `release.yml` from the `.sig` files the bundler
+makes when `createUpdaterArtifacts` is on.
+
+- At launch, before the window shows, the shell checks (6 s timeout per request). If a newer version downloads in
+  time, it installs at once. Windows runs the NSIS installer in passive mode, which starts the new Natter with the
+  same arguments, so a tray start stays in the tray. macOS and Linux replace the app and restart.
+- While running, the app calls `check_update` a minute after start and then every 6 h. The shell downloads in the
+  background (no timeout) and keeps the bytes. The app then shows **Update** in the title bar, which calls
+  `install_update`. If Natter is in a call, it asks first.
+- Android has no updater. The app reads `api.github.com/repos/…/releases/latest`, compares `tag_name` with its own
+  version and shows a banner linking to the `.apk` asset.
+- Development builds (`debug_assertions`) never update, so test copies can't replace an installed Natter.
+
 ## Roles and permissions
 
 Discord-style. A space has `everyone_permissions` (`@everyone`) and any number of roles (`RoleDef`: name, colour,

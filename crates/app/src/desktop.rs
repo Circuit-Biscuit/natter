@@ -204,6 +204,93 @@ pub async fn autostart_enabled() -> bool {
     invoke("get_autostart", "{}").await.as_bool().unwrap_or(false)
 }
 
+// ---------------------------------------------------------------- updates (desktop app and Android)
+
+/// Natter's public releases. Desktop updates come through the shell (signed `latest.json`); Android can't
+/// install apps by itself, so it links to the newest APK from here.
+const LATEST_RELEASE: &str = "https://api.github.com/repos/Circuit-Biscuit/natter/releases/latest";
+
+/// Look for a newer Natter a minute after start, then every six hours. The desktop shell downloads it in the
+/// background, then the title bar shows "Update"; on Android a banner links to the APK. The web app updates
+/// with its server. (At launch the desktop shell has just checked by itself, hence the minute.)
+pub fn watch_updates() {
+    if !is_tauri() {
+        return;
+    }
+    set_timeout(check_updates, std::time::Duration::from_secs(60));
+    set_interval(check_updates, std::time::Duration::from_secs(6 * 3600));
+}
+
+fn check_updates() {
+    wasm_bindgen_futures::spawn_local(async {
+        let found = if is_android() {
+            android_update().await
+        } else {
+            invoke("check_update", "{}").await.as_string().map(|v| (v, None))
+        };
+        if found.is_some() {
+            store().update.set(found);
+        }
+    });
+}
+
+async fn android_update() -> Option<(String, Option<String>)> {
+    #[derive(serde::Deserialize)]
+    struct Release {
+        tag_name: String,
+        assets: Vec<Asset>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Asset {
+        name: String,
+        browser_download_url: String,
+    }
+    let resp: web_sys::Response = wasm_bindgen_futures::JsFuture::from(util::window().fetch_with_str(LATEST_RELEASE)).await.ok()?.dyn_into().ok()?;
+    let text = wasm_bindgen_futures::JsFuture::from(resp.text().ok()?).await.ok()?.as_string()?;
+    let r: Release = serde_json::from_str(&text).ok()?;
+    let version = r.tag_name.trim_start_matches('v').to_string();
+    if !newer(&version, env!("CARGO_PKG_VERSION")) {
+        return None;
+    }
+    let apk = r.assets.into_iter().find(|a| a.name.ends_with(".apk"))?.browser_download_url;
+    Some((version, Some(apk)))
+}
+
+/// "0.10.0" is newer than "0.9.3".
+fn newer(a: &str, b: &str) -> bool {
+    let parse = |v: &str| v.split('.').map(|p| p.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
+    parse(a) > parse(b)
+}
+
+/// The title bar's "Update": install the downloaded update and restart (asks first during a call).
+pub fn install_update() {
+    let go = || {
+        wasm_bindgen_futures::spawn_local(async {
+            // On success Natter restarts and this never returns.
+            invoke("install_update", "{}").await;
+            store().update.set(None);
+            store().toast("Couldn't install the update. Natter will try again later.", true);
+        });
+    };
+    if store().call.with_untracked(|c| c.channel.is_some()) {
+        store().confirm("Update now?", "Natter restarts to update, which ends your call.", "Restart and update", go);
+    } else {
+        go();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn newer_versions() {
+        assert!(super::newer("0.7.0", "0.6.1"));
+        assert!(super::newer("0.10.0", "0.9.3"));
+        assert!(super::newer("1.0.0", "0.99.99"));
+        assert!(!super::newer("0.6.1", "0.6.1"));
+        assert!(!super::newer("0.6.0", "0.6.1"));
+    }
+}
+
 /// Apply this device's preferences at startup.
 pub fn apply_prefs() {
     let p = store().prefs.get_untracked();

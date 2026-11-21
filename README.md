@@ -131,6 +131,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Voice & video calls via SFU, screen share, push to talk | ✅ |
 | Sign in with Nextcloud, files in Nextcloud, share from Nextcloud | ✅ |
 | Desktop app: tray, notifications, numbered badge, global keybinds, start with the computer | ✅ Windows · 🚧 macOS / Linux untested |
+| Automatic updates: desktop installs signed releases by itself; Android shows a banner linking to the new APK | ✅ |
 | Android app: phone layout, back button, calls, notifications while open | ✅ (APK, sideload) |
 | Background push notifications on Android (app closed) | ⬜ |
 | Private channels and categories, per-channel permissions (allow / inherit / deny per role or member) | ✅ |
@@ -156,6 +157,9 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | **Server** | `natter-server-<version>-linux-x86_64.tar.gz` | Static binary plus the web app. |
 
 On first start the app asks for your server's address (for example `https://chat.example.com`).
+
+After that the apps keep themselves up to date. The desktop app installs a new release when it starts, or offers
+**Update** in its title bar while it's open. On Android a banner links to the new APK.
 
 ## Run a server
 
@@ -217,6 +221,13 @@ powershell -ExecutionPolicy Bypass -File scripts\bump.ps1 0.2.0
 [CHANGELOG.md](CHANGELOG.md): it becomes the release notes. The **Release** workflow notices the new version, builds
 the Windows installer, the macOS universal `.dmg`, the Linux AppImage and `.deb`, and the Linux server bundle, and
 publishes them as release `v0.2.0`. Pushes that don't change the version are built and tested by **CI**.
+
+Each desktop installer is signed for the in-app updater, and the release gets a `latest.json` that lists them;
+installed apps check `releases/latest/download/latest.json`. The private key is the `TAURI_SIGNING_PRIVATE_KEY`
+Actions secret; the public key is `plugins.updater.pubkey` in `crates/desktop/tauri.conf.json`. If you publish your own
+builds from a fork, make your own pair (`cargo tauri signer generate`) and change both, plus the GitHub address in
+`plugins.updater.endpoints` and in `crates/app/src/desktop.rs`. Keep the private key safe: without it, installed apps
+can't be updated any more.
 
 The Android APK is signed with a key that never goes to GitHub, so it's built locally (command above) and attached to
 the draft while the workflow runs: `gh release upload v0.2.0 Natter_0.2.0.apk` — it then lands in the checksums too.

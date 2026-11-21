@@ -226,6 +226,86 @@ fn set_launch(app: AppHandle, autostart: bool, minimized: bool) -> bool {
     }
 }
 
+// ---------------------------------------------------------------- updates (desktop)
+//
+// Releases on GitHub carry a signed `latest.json` (see .github/workflows/release.yml). At launch, before the
+// window shows, a newer Natter installs straight away and restarts. Nothing is open yet, so nothing gets cut off.
+// While Natter runs, the UI asks every few hours; a newer version then downloads in the background and the
+// title bar offers "Update". Natter never restarts on its own while running, because a call may be on.
+
+/// A downloaded update waiting for the title bar's "Update" button.
+#[cfg(desktop)]
+#[derive(Default)]
+struct PendingUpdate(std::sync::Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>);
+
+/// A newer release, if there is one. Development builds and test copies never replace the installed Natter.
+#[cfg(desktop)]
+async fn find_update(app: &AppHandle, timeout: std::time::Duration) -> Option<tauri_plugin_updater::Update> {
+    use tauri_plugin_updater::UpdaterExt;
+    if cfg!(debug_assertions) {
+        return None;
+    }
+    let h = app.clone();
+    let updater = app.updater_builder().timeout(timeout).on_before_exit(move || h.cleanup_before_exit()).build().ok()?;
+    updater.check().await.ok()?
+}
+
+/// Windows: the installer takes over (a small progress bar) and starts the new Natter; this process exits.
+/// macOS / Linux: the files are replaced in place, then Natter restarts. Returns only if it failed.
+#[cfg(desktop)]
+fn apply_update(app: &AppHandle, update: &tauri_plugin_updater::Update, bytes: &[u8]) {
+    if update.install(bytes).is_ok() {
+        app.restart();
+    }
+}
+
+/// At launch: install a waiting update when it arrives quickly. On a slow line, start normally instead, and the
+/// download happens in the background later.
+#[cfg(desktop)]
+async fn update_at_launch(app: &AppHandle) {
+    if let Some(u) = find_update(app, std::time::Duration::from_secs(6)).await
+        && let Ok(bytes) = u.download(|_, _| {}, || {}).await
+    {
+        apply_update(app, &u, &bytes);
+    }
+}
+
+/// Downloads a newer release, if any, and returns its version once it's ready to install.
+#[tauri::command]
+async fn check_update(app: AppHandle) -> Option<String> {
+    #[cfg(desktop)]
+    {
+        if let Some((u, _)) = &*app.state::<PendingUpdate>().0.lock().ok()? {
+            return Some(u.version.clone());
+        }
+        let mut u = find_update(&app, std::time::Duration::from_secs(30)).await?;
+        u.timeout = None; // the download may take a while; that's fine in the background
+        let bytes = u.download(|_, _| {}, || {}).await.ok()?;
+        let version = u.version.clone();
+        *app.state::<PendingUpdate>().0.lock().ok()? = Some((u, bytes));
+        Some(version)
+    }
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        None
+    }
+}
+
+/// "Update" in the title bar: install the downloaded update and restart. Returns only if that failed.
+#[tauri::command]
+fn install_update(app: AppHandle) {
+    #[cfg(desktop)]
+    {
+        let pending = app.state::<PendingUpdate>().0.lock().ok().and_then(|mut p| p.take());
+        if let Some((u, bytes)) = pending {
+            apply_update(&app, &u, &bytes);
+        }
+    }
+    #[cfg(mobile)]
+    let _ = app;
+}
+
 #[tauri::command]
 fn get_autostart(app: AppHandle) -> bool {
     #[cfg(desktop)]
@@ -258,6 +338,8 @@ pub fn run() {
                 )
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(PendingUpdate::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![AUTOSTART_ARG])));
     builder
@@ -273,19 +355,24 @@ pub fn run() {
             set_close_to_tray,
             set_zoom,
             set_launch,
-            get_autostart
+            get_autostart,
+            check_update,
+            install_update
         ])
         .setup(|_app| {
             #[cfg(desktop)]
             {
                 tray(_app)?;
-                // The window starts hidden (tauri.conf.json); show it unless we started with the computer
-                // and the user wants Natter to wait in the tray.
-                let app = _app.handle();
-                let quiet = std::env::args().any(|a| a == AUTOSTART_ARG) && start_minimized_flag(app).is_some_and(|f| f.exists());
-                if !quiet {
-                    show(app);
-                }
+                // The window starts hidden (tauri.conf.json). A waiting update installs first; then show the
+                // window, unless we started with the computer and the user wants Natter to wait in the tray.
+                let app = _app.handle().clone();
+                let quiet = std::env::args().any(|a| a == AUTOSTART_ARG) && start_minimized_flag(&app).is_some_and(|f| f.exists());
+                tauri::async_runtime::spawn(async move {
+                    update_at_launch(&app).await;
+                    if !quiet {
+                        show(&app);
+                    }
+                });
             }
             Ok(())
         })

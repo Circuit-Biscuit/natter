@@ -282,6 +282,8 @@ pub struct Store {
     pub mobile: RwSignal<bool>,
     /// Which column a phone shows.
     pub pane: RwSignal<Pane>,
+    /// A newer Natter (desktop app, Android): its version, and on Android the APK to download.
+    pub update: RwSignal<Option<(String, Option<String>)>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -378,6 +380,7 @@ impl Store {
             thread: RwSignal::new(None),
             mobile: RwSignal::new(window_is_narrow()),
             pane: RwSignal::new(Pane::Nav),
+            update: RwSignal::new(None),
         };
         let _ = STORE.set(s);
         s

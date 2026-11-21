@@ -35,6 +35,7 @@ pub fn App() -> impl IntoView {
     api::set_token(token.clone());
     voice::init();
     desktop::init();
+    desktop::watch_updates();
     gateway::start_background_timers();
     if token.is_some() {
         gateway::connect();
@@ -94,12 +95,19 @@ pub fn App() -> impl IntoView {
     }
 }
 
-/// Drag to move, double-click to maximise; minimise / maximise / close on the right.
+/// Drag to move, double-click to maximise; minimise / maximise / close on the right, and "Update" once a
+/// newer Natter has downloaded.
 #[component]
 fn TitleBar() -> impl IntoView {
+    let s = store();
     view! {
         <div class="titlebar" data-tauri-drag-region="">
             <span class="titlebar-name" data-tauri-drag-region=""><icons::Logo size=14/>"Natter"</span>
+            {move || s.update.get().map(|(v, _)| view! {
+                <button class="titlebar-update" title=format!("Restart Natter to update to {v}") on:click=|_| desktop::install_update()>
+                    <Icon name="download" size=14/>"Update"
+                </button>
+            })}
             <button class="titlebar-btn" title="Minimise" on:click=|_| desktop::window_action("min")>
                 <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor"/></svg>
             </button>
@@ -161,6 +169,7 @@ fn Shell() -> impl IntoView {
             <sidebar::Sidebar/>
             <main class="main">
                 <ConnBanner/>
+                <UpdateBanner/>
                 <chat::MainView/>
             </main>
             <Show when=show_members>
@@ -190,6 +199,23 @@ fn ConnBanner() -> impl IntoView {
                 <button class="btn small" on:click=|_| gateway::reconnect_now()>"Reconnect now"</button>
             </div>
         </Show>
+    }
+}
+
+/// Android: a newer Natter is out. The APK downloads in the browser; Android installs it after a tap.
+#[component]
+fn UpdateBanner() -> impl IntoView {
+    let s = store();
+    move || {
+        let (v, apk) = s.update.get()?;
+        let apk = apk?;
+        Some(view! {
+            <div class="banner update">
+                {format!("Natter {v} is out.")}
+                <button class="btn small" on:click=move |_| desktop::open_url(&apk)>"Download"</button>
+                <button class="icon-btn" title="Later" on:click=move |_| s.update.set(None)><Icon name="x" size=16/></button>
+            </div>
+        })
     }
 }
 

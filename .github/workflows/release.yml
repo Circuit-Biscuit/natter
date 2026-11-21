@@ -3,7 +3,9 @@
 #   1. add a "## [x.y.z]" section to CHANGELOG.md, then run scripts/bump.ps1 x.y.z
 #   2. push to main
 #   3. this workflow sees there's no tag vx.y.z yet, builds the desktop installers for Windows, macOS and Linux
-#      plus the Linux server bundle into a draft release vx.y.z, then publishes it with checksums.
+#      plus the Linux server bundle into a draft release vx.y.z, then publishes it with checksums and latest.json,
+#      the signed update manifest installed desktop apps check (signing key: the TAURI_SIGNING_PRIVATE_KEY secret,
+#      public key in crates/desktop/tauri.conf.json).
 name: Release
 
 on:
@@ -63,15 +65,15 @@ jobs:
           - name: Windows
             os: windows-latest
             args: ""
-            files: target/release/bundle/nsis/*.exe
+            files: target/release/bundle/nsis/*.exe*
           - name: macOS
             os: macos-14
             args: --target universal-apple-darwin
-            files: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            files: target/universal-apple-darwin/release/bundle/dmg/*.dmg target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz*
           - name: Linux
             os: ubuntu-22.04
             args: ""
-            files: target/release/bundle/appimage/*.AppImage target/release/bundle/deb/*.deb
+            files: target/release/bundle/appimage/*.AppImage* target/release/bundle/deb/*.deb*
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -86,8 +88,14 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: trunk,tauri-cli
-      - run: cargo tauri build ${{ matrix.args }}
+      # Also signs each installer (.sig) for the in-app updater.
+      # (`-c`, not TAURI_CONFIG: the bundler only reads the flag.)
+      - run: cargo tauri build ${{ matrix.args }} -c '{"bundle":{"createUpdaterArtifacts":true}}'
         working-directory: crates/desktop
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
       - name: Upload to the draft release
         shell: bash
         env:
@@ -139,9 +147,24 @@ jobs:
         run: |
           awk -v v="$VERSION" '$0 ~ "^## \[" v "\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "Natter $VERSION" > notes.md
-      - name: Checksums and publish
+      - name: Update manifest, checksums and publish
         run: |
           gh release download "v$VERSION" --dir out --skip-existing
+          # latest.json: what installed desktop apps download (releases/latest/download/latest.json), per platform.
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION"
+          platforms='{}'
+          add() {  # platform, installer (skipped unless it has a .sig)
+            [ -f "$2" ] && [ -f "$2.sig" ] || return 0
+            sig=$(cat "$2.sig")
+            url="$base/$(basename "$2")"
+            platforms=$(jq --arg k "$1" --arg url "$url" --arg sig "$sig" '.[$k] = {url: $url, signature: $sig}' <<<"$platforms")
+          }
+          for f in out/*-setup.exe; do add windows-x86_64 "$f"; done
+          for f in out/*.AppImage; do add linux-x86_64 "$f"; done
+          for f in out/*.deb; do add linux-x86_64-deb "$f"; done
+          for f in out/*.app.tar.gz; do add darwin-aarch64 "$f"; add darwin-x86_64 "$f"; done
+          jq -n --arg v "$VERSION" --argjson p "$platforms" '{version: $v, platforms: $p}' > out/latest.json
+          cat out/latest.json
           (cd out && sha256sum * > SHA256SUMS.txt)
-          gh release upload "v$VERSION" out/SHA256SUMS.txt --clobber
+          gh release upload "v$VERSION" out/latest.json out/SHA256SUMS.txt --clobber
           gh release edit "v$VERSION" --draft=false --notes-file notes.md
