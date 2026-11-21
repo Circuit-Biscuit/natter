@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-11-21
+
 - **Automatic updates for the desktop apps.** Natter looks for a new release on GitHub when it starts and installs
   it before the window opens. While it's running it checks every six hours, downloads the update in the background
   and shows a green **Update** button in the title bar. Natter never restarts by itself while open, so a call is
