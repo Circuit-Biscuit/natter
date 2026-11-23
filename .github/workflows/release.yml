@@ -6,6 +6,9 @@
 #      plus the Linux server bundle into a draft release vx.y.z, then publishes it with checksums and latest.json,
 #      the signed update manifest installed desktop apps check (signing key: the TAURI_SIGNING_PRIVATE_KEY secret,
 #      public key in crates/desktop/tauri.conf.json).
+#   4. meanwhile, locally (the Android signing key never comes here): scripts/android-release.ps1 builds the APK and
+#      the Google Play bundle, attaches the APK to this draft before it's published (so it's in SHA256SUMS) and
+#      uploads the bundle to Google Play's internal testing track with fastlane. See docs/DEPLOY.md › Releasing.
 name: Release
 
 on:

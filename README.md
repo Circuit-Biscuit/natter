@@ -135,7 +135,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Voice & video calls via SFU, screen share, push to talk | ✅ |
 | Sign in with Nextcloud, files in Nextcloud, share from Nextcloud | ✅ |
 | Desktop app: tray, notifications, numbered badge, global keybinds, start with the computer | ✅ Windows · 🚧 macOS / Linux untested |
-| Automatic updates: desktop installs signed releases by itself; Android shows a banner linking to the new APK | ✅ |
+| Automatic updates: desktop installs signed releases by itself; the Android APK shows a banner linking to the new one (Google Play updates its own installs) | ✅ |
 | Android app: phone layout, back button, calls, notifications while open | ✅ (APK, sideload) |
 | Background push notifications on Android (app closed) | ⬜ |
 | Private channels and categories, per-channel permissions (allow / inherit / deny per role or member) | ✅ |
@@ -164,7 +164,8 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 On first start the app asks for your server's address (for example `https://chat.example.com`).
 
 After that the apps keep themselves up to date. The desktop app installs a new release when it starts, or offers
-**Update** in its title bar while it's open. On Android a banner links to the new APK.
+**Update** in its title bar while it's open. On Android a banner links to the new APK; the Google Play version (in testing
+now) updates through Google Play.
 
 ## Run a server
 
@@ -198,7 +199,7 @@ Useful commands:
 ```sh
 cargo test -p natter-proto -p natter-server -p natter-app   # protocol, Markdown, full server test (HTTP, gateway, SFU join, fake Nextcloud)
 cd crates/desktop && cargo tauri build        # installers for this platform
-cd crates/desktop && cargo tauri android build --apk --target aarch64 --target armv7   # Android APK (needs the Android SDK + NDK)
+cd crates/desktop && cargo tauri android build --apk --target aarch64 --target armv7   # Android APK (needs the Android SDK + NDK; build the UI first)
 ```
 
 ## How it's built
@@ -234,8 +235,10 @@ builds from a fork, make your own pair (`cargo tauri signer generate`) and chang
 `plugins.updater.endpoints` and in `crates/app/src/desktop.rs`. Keep the private key safe: without it, installed apps
 can't be updated any more.
 
-The Android APK is signed with a key that never goes to GitHub, so it's built locally (command above) and attached to
-the draft while the workflow runs: `gh release upload v0.2.0 Natter_0.2.0.apk` — it then lands in the checksums too.
+The Android app is signed with a key that never goes to GitHub, so it's built locally while the workflow runs:
+`scriptsndroid-release.ps1` builds the APK and the Google Play bundle, attaches the APK to the draft (so it lands in
+the checksums too) and uploads the bundle to Google Play with fastlane. Setup and options:
+[docs/DEPLOY.md › Releasing](docs/DEPLOY.md#releasing).
 
 ## License and credits
 

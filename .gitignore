@@ -4,3 +4,8 @@ natter-data/
 crates/app/dist/
 *.db
 *.db-*
+# fastlane: local settings and credentials, generated files
+fastlane/.env
+fastlane/report.xml
+fastlane/README.md
+fastlane/metadata/android/*/changelogs/

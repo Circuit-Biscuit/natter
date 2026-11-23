@@ -1,0 +1,78 @@
+# Google Play for the Android app. `scripts/android-release.ps1` builds the APK + bundle and calls `play`;
+# the other lanes run on their own:
+#
+#   fastlane android play aab:target/android/Natter_1.2.3.aab track:internal
+#   fastlane android promote from:internal to:production       # ask before anything reaches production
+#   fastlane android listing                                   # store texts and pictures from fastlane/metadata
+#
+# Credentials never go in git. fastlane/.env (git-ignored, loaded by fastlane) holds either
+#   SUPPLY_JSON_KEY=<service account key file>, or, without key files,
+#   PLAY_SERVICE_ACCOUNT=<service account email>: you act as it through your own gcloud sign-in
+#   (`gcloud auth application-default login`; you need "Service Account Token Creator" on it).
+# See docs/DEPLOY.md › Releasing.
+require "json"
+require "tmpdir"
+
+default_platform(:android)
+
+platform :android do
+  before_all do
+    if ENV["PLAY_SERVICE_ACCOUNT"] && !ENV["SUPPLY_JSON_KEY"]
+      gcloud = ENV["APPDATA"] ? File.join(ENV["APPDATA"], "gcloud") : File.join(Dir.home, ".config", "gcloud")
+      @play_credentials = File.join(Dir.tmpdir, "natter-play-#{Process.pid}.json")
+      File.write(@play_credentials, JSON.generate(
+        type: "impersonated_service_account",
+        service_account_impersonation_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" \
+                                           "#{ENV['PLAY_SERVICE_ACCOUNT']}:generateAccessToken",
+        source_credentials: JSON.parse(File.read(File.join(gcloud, "application_default_credentials.json"))),
+        scopes: ["https://www.googleapis.com/auth/androidpublisher"]
+      ))
+      ENV["GOOGLE_APPLICATION_CREDENTIALS"] = @play_credentials   # supply falls back to these
+    end
+  end
+
+  after_all { File.delete(@play_credentials) if @play_credentials && File.exist?(@play_credentials) }
+  error { File.delete(@play_credentials) if @play_credentials && File.exist?(@play_credentials) }
+
+  desc "Upload a bundle to a track. Options: aab, track (internal), status (completed; draft until the app is published)"
+  lane :play do |o|
+    upload_to_play_store(
+      aab: o[:aab],
+      track: o[:track] || "internal",
+      release_status: o[:status] || "completed",
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+      # "What's new": metadata/android/en-US/changelogs/<versionCode>.txt, written by the release script
+    )
+  end
+
+  desc "Move the newest release of a track to another. Options: from (internal), to (production), rollout (0.1 = 10%)"
+  lane :promote do |o|
+    upload_to_play_store(
+      track: o[:from] || "internal",
+      track_promote_to: o[:to] || "production",
+      rollout: o[:rollout],
+      release_status: o[:rollout] ? "inProgress" : "completed",
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true
+    )
+  end
+
+  desc "Upload the store listing: texts, icon, feature graphic and screenshots from fastlane/metadata"
+  lane :listing do
+    # supply hangs the listing on a release, so name the newest one on internal testing.
+    upload_to_play_store(
+      track: "internal",
+      version_code: google_play_track_version_codes(track: "internal").max,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_changelogs: true
+    )
+  end
+end

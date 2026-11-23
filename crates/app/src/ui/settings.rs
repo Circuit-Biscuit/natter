@@ -9,6 +9,9 @@ use super::icons::Icon;
 use crate::store::{Keybind, Modal, store};
 use crate::{api, desktop, sound, util, voice};
 
+/// The apps' privacy policy (Google Play wants it reachable from inside the app), with account deletion at `#delete`.
+const PRIVACY_URL: &str = "https://circuit-biscuit.com/privacy/natter/";
+
 #[component]
 pub fn UserSettings() -> impl IntoView {
     let tab = RwSignal::new("account");
@@ -102,6 +105,13 @@ fn AccountTab() -> impl IntoView {
             let host = if base.is_empty() { util::window().location().host().unwrap_or_default() } else { base };
             format!("Connected to {} ({})", s.info.get().map(|i| i.name).unwrap_or_default(), host)
         }}</p>
+        <h3>"Delete account"</h3>
+        <p class="muted">"Your account lives on this server, so the server's admin deletes it for you. See how to ask and what gets deleted."</p>
+        // ponytail: a request page, not self-service deletion; add DELETE /api/me when people need it instantly.
+        <button class="btn danger" on:click=|_| desktop::open_url(&format!("{PRIVACY_URL}#delete"))>"Delete account"</button>
+        <p class="muted small">
+            <a href=PRIVACY_URL on:click=|e| { e.prevent_default(); desktop::open_url(PRIVACY_URL); }>"Privacy policy"</a>
+        </p>
     }
 }
 

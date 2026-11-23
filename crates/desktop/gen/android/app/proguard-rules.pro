@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# MainActivity.kt: window.NatterAndroid in the webview.
+-keep class com.CircuitBiscuit.natter.AppInfo {
+  @android.webkit.JavascriptInterface public <methods>;
+}

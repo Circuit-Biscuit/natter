@@ -13,6 +13,8 @@ extern "C" {
     pub fn is_tauri() -> bool;
     #[wasm_bindgen(js_name = isAndroid)]
     pub fn is_android() -> bool;
+    #[wasm_bindgen(js_name = androidInstaller)]
+    fn android_installer() -> String;
     #[wasm_bindgen(js_name = tauriInvoke)]
     async fn invoke(cmd: &str, args: &str) -> JsValue;
     #[wasm_bindgen(js_name = tauriListen)]
@@ -212,9 +214,10 @@ const LATEST_RELEASE: &str = "https://api.github.com/repos/Circuit-Biscuit/natte
 
 /// Look for a newer Natter a minute after start, then every six hours. The desktop shell downloads it in the
 /// background, then the title bar shows "Update"; on Android a banner links to the APK. The web app updates
-/// with its server. (At launch the desktop shell has just checked by itself, hence the minute.)
+/// with its server, and Google Play updates the app it installed. (At launch the desktop shell has just
+/// checked by itself, hence the minute.)
 pub fn watch_updates() {
-    if !is_tauri() {
+    if !is_tauri() || (is_android() && android_installer() == "com.android.vending") {
         return;
     }
     set_timeout(check_updates, std::time::Duration::from_secs(60));

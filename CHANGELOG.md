@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### New
+
+- **Natter on Google Play** (in testing for now). The Google Play app updates through Google Play, so it doesn't
+  show the "new version" banner; the APK from GitHub keeps it. The two are signed differently, so moving from one
+  to the other means uninstalling first.
+- **Delete account and privacy policy** in Settings › My account. Your account lives on your server, so the button
+  explains how to ask its admin; the [privacy policy](https://circuit-biscuit.com/privacy/natter/) says what the
+  apps and our own server keep.
+
+### Fixed
+
+- Android: the app's native code is now aligned for 16 KB memory pages, which newer phones (Android 15+) can use
+  and Google Play requires.
+
+### For people who build Natter
+
+- One command for an Android release: `scripts/android-release.ps1` builds the APK and the Google Play bundle,
+  attaches the APK to the GitHub draft and uploads the bundle to Google Play with fastlane (lanes `play`,
+  `promote`, `listing`). The store listing lives in `fastlane/metadata`. Works with a service-account key or, for
+  organisations that forbid key files, with your own gcloud sign-in. See docs/DEPLOY.md › Releasing.
+- Android builds no longer run trunk themselves (`tauri.android.conf.json`): build the UI first, as before.
+
 ## [0.10.0] — 2026-11-23
 
 ### New

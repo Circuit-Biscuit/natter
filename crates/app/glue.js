@@ -593,6 +593,15 @@ export function isAndroid() {
   return /Android/i.test(navigator.userAgent);
 }
 
+// The Android app's installer (MainActivity.kt): "com.android.vending" when it came from Google Play.
+export function androidInstaller() {
+  try {
+    return (window.NatterAndroid && window.NatterAndroid.installer()) || "";
+  } catch (e) {
+    return "";
+  }
+}
+
 // ------------------------------------------------------------------ app icon + unread badge
 // Drawn here because a canvas has fonts: the tray and taskbar badges carry a real number.
 

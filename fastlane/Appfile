@@ -1,0 +1,2 @@
+# Google Play package of the Android app (desktop keeps com.circuitbiscuit.natter).
+package_name("com.CircuitBiscuit.natter")

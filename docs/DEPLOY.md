@@ -136,6 +136,75 @@ Files sent by Nextcloud users are in their Nextcloud and covered by its backup.
 Replace `/opt/natter`, `systemctl restart natter`. Database migrations run automatically at start. Connected apps
 reconnect by themselves (calls in progress reconnect too).
 
+## Releasing
+
+This part is for whoever publishes Natter's apps. Desktop installers and the server bundle are built by GitHub
+Actions; the Android app is built on your own computer, because its signing key never goes to GitHub.
+
+1. Add a `## [x.y.z]` section to [CHANGELOG.md](../CHANGELOG.md), run
+   `powershell -ExecutionPolicy Bypass -File scripts\bump.ps1 x.y.z` and `git push origin main`. The **Release**
+   workflow builds Windows, macOS, Linux and the server into a draft release `vx.y.z`, then publishes it with
+   checksums and `latest.json` once those builds are done (about 20 minutes).
+2. While the draft is still open, run
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\android-release.ps1
+   ```
+
+   It builds the web UI, then the signed universal APK and the app bundle (`target\android\Natter_x.y.z.apk` and
+   `.aab`), attaches the APK to the draft (so it's in `SHA256SUMS.txt`), and uploads the bundle to Google Play's
+   **internal testing** track. Play's "What's new" is made from the headlines of the changelog section.
+   Options: `-Track alpha` (closed testing), `-Status draft` (upload without rolling out), `-SkipGitHub`,
+   `-SkipPlay`, `-SkipBuild` (reuse what's in `target\android`).
+3. Try the internal build, then move it on. Production goes out only when the owner says so:
+
+   ```powershell
+   fastlane android promote from:internal to:production rollout:0.2
+   ```
+
+   `rollout` is optional (0.2 = 20 % of users; leave it out for everyone).
+
+The store listing (texts, icon, feature graphic, screenshots) lives in `fastlane/metadata/android/en-US/`. Change
+it there and upload it with `fastlane android listing`.
+
+### Version codes and signing
+
+* Android's `versionCode` is `major × 1,000,000 + minor × 1,000 + patch` (Tauri's own rule), the same for the APK
+  and the bundle. Google Play accepts each version code only once.
+* Google Play signs the copies it installs with its own key (Play App Signing); our key is the **upload key** and
+  also signs the APK on GitHub. Android won't update an app from a copy signed with another key, so switching between
+  the Play app and the APK means uninstalling first. The Play app doesn't show the "new APK" banner: Google Play
+  updates it.
+* Google Play needs native code aligned for 16 KB memory pages; `crates/desktop/build.rs` takes care of it.
+
+### One-time setup
+
+* Rust targets `aarch64-linux-android` and `armv7-linux-androideabi`, `cargo install tauri-cli trunk`, the Android
+  SDK with NDK 27 or newer, and a JDK 17+ (Android Studio's `jbr` works).
+* Ruby 3 and `gem install fastlane`; the GitHub CLI (`gh`), signed in.
+* Signing: `crates/desktop/gen/android/keystore.properties` (git-ignored) with `storeFile=<path to .jks>`,
+  `password=…` and `keyAlias=…`. Keep the keystore backed up: without it, no APK can update an installed one, and
+  Google Play needs a key reset before it takes uploads again.
+* Google Play access: a Google Cloud service account, invited in Play Console (*Users and permissions*) with
+  release, testing-track and store-presence rights for the app. Then either
+  * a JSON key file for it: `SUPPLY_JSON_KEY=<path>` in `fastlane/.env`, or
+  * no key file at all (for organisations that forbid them): give yourself *Service Account Token Creator* on the
+    service account, run `gcloud auth application-default login` once, and set
+    `PLAY_SERVICE_ACCOUNT=<its email>` in `fastlane/.env`. fastlane then acts as the service account with your own
+    sign-in.
+* `fastlane/.env` (git-ignored) also holds `ANDROID_HOME`, `NDK_HOME` and `JAVA_HOME` for the script:
+
+  ```sh
+  ANDROID_HOME=C:\Android\sdk
+  NDK_HOME=C:\Android\sdk\ndk\27.0.12077973
+  JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+  PLAY_SERVICE_ACCOUNT=play-publisher@your-project.iam.gserviceaccount.com
+  ```
+
+Publishing your own fork on Google Play? Change the package name first (`crates/desktop/tauri.android.conf.json`,
+`applicationId` and `namespace` in `gen/android/app/build.gradle.kts`, `fastlane/Appfile`): Play keeps each name
+for one developer.
+
 ## Troubleshooting
 
 | Symptom | Fix |
