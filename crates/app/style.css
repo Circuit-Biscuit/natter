@@ -73,9 +73,9 @@ a:hover { text-decoration: underline; }
 .rail-btn img { width: 100%; height: 100%; object-fit: cover; }
 .rail-btn .avatar { width: 48px !important; height: 48px !important; }
 /* Spaces morph into rounded squares; the Natter logo stays a circle. */
-.rail-item:hover .rail-btn:not(.home), .rail-item.active .rail-btn:not(.home) { border-radius: 16px; }
-.rail-item:hover .rail-btn.space, .rail-item.active .rail-btn.space, .rail-item:hover .rail-btn.home, .rail-item.active .rail-btn.home { background: var(--accent); color: #fff; }
-.rail-btn.home { color: var(--strong); }
+.rail-item:hover .rail-btn:not(.rail-home), .rail-item.active .rail-btn:not(.rail-home) { border-radius: 16px; }
+.rail-item:hover .rail-btn.space, .rail-item.active .rail-btn.space, .rail-item:hover .rail-btn.rail-home, .rail-item.active .rail-btn.rail-home { background: var(--accent); color: #fff; }
+.rail-btn.rail-home { color: var(--strong); }
 .rail-btn.add { color: var(--ok); }
 .rail-item:hover .rail-btn.add { background: var(--ok); color: #fff; }
 .space-initials { font-weight: 600; font-size: 16px; }

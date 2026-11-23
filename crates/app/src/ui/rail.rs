@@ -16,7 +16,7 @@ pub fn Rail() -> impl IntoView {
         <nav class="rail">
             <div class="rail-item" class:active=home_active title="Direct Messages">
                 <span class="pill"></span>
-                <button class="rail-btn home" on:click=move |_| {
+                <button class="rail-btn rail-home" on:click=move |_| {
                     util::storage_remove("natter.space");
                     open_space(None);
                 }><Logo size=28/></button>
