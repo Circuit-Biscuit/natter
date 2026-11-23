@@ -148,6 +148,11 @@ One UDP port, one thread, many [`str0m`](https://github.com/algesten/str0m) `Rtc
 * Join: `POST /api/channels/{id}/voice` with the app's SDP offer and a map `mid → TrackKind`. The app always opens the
   same transceivers (`mic`, `cam`, `screen`, `screen_audio`, all send-only) plus a data channel, so turning the camera
   or screen share on and off is `replaceTrack()` — no renegotiation, instant.
+* Quality is per sender, also without renegotiation: screen shares take their frame rate from the capture
+  (`applyConstraints`) and their size, frame rate, bitrate and `degradationPreference` from
+  `RTCRtpSender.setParameters()` (`applyStream` in glue.js; "auto" bitrate = 0.1 bit per pixel per frame, 1–15
+  Mbit/s). Cameras get size / frame rate constraints and an optional `maxBitrate`, still under the server's
+  `b=AS` camera cap, which `ServerInfo.camera_kbps` tells the apps. Every viewer gets the same stream (no simulcast).
 * The server adds a send-only m-line on every other participant's connection for each new track, with msid stream id
   `"<user_id>-<track kind>"` (msid tokens can't contain `:`), and renegotiates over the data channel (offer from server, answer from app).
 * Keyframe requests (PLI/FIR) are routed back to the publisher, throttled to 1/s.

@@ -538,6 +538,9 @@ fn VoiceTab() -> impl IntoView {
     let recording = RwSignal::new(false);
     let previewing = RwSignal::new(false);
     let preview_el = NodeRef::<leptos::html::Video>::new();
+    // The server's own camera limit (0 = none) caps the slider.
+    let server_cap = move || s.info.with(|i| i.as_ref().map(|i| i.camera_kbps).unwrap_or(0));
+    let cam_max = move || if server_cap() > 0 { server_cap() } else { 8000 };
     let start_preview = move || {
         previewing.set(true);
         // The <video> mounts on the next frame.
@@ -555,6 +558,15 @@ fn VoiceTab() -> impl IntoView {
                 }
             });
         });
+    };
+    // Camera quality: saved per device, applied to a camera that's on, and to the preview.
+    let set_cam = move |f: Box<dyn FnOnce(&mut crate::store::CameraQuality)>| {
+        prefs.update(|p| f(&mut p.cam));
+        s.save_prefs();
+        voice::apply_camera_quality();
+        if previewing.get_untracked() {
+            start_preview();
+        }
     };
     let stop_preview = move || {
         voice::camera_preview_stop();
@@ -603,6 +615,35 @@ fn VoiceTab() -> impl IntoView {
         <Show when=move || previewing.get()>
             <video class="camera-preview" node_ref=preview_el autoplay=true playsinline=true prop:muted=true></video>
         </Show>
+        <h3>"Camera quality"</h3>
+        <div class="golive-grid">
+            <span class="golive-label">"Resolution"</span>
+            <div class="seg">
+                {[(360, "360p"), (480, "480p"), (720, "720p"), (1080, "1080p")].into_iter().map(|(h, label)| view! {
+                    <button class:active=move || prefs.with(|p| p.cam.height == h) on:click=move |_| set_cam(Box::new(move |c| c.height = h))>{label}</button>
+                }).collect_view()}
+            </div>
+            <span class="golive-label">"Frame rate"</span>
+            <div class="seg">
+                {[15, 30, 60].into_iter().map(|f| view! {
+                    <button class:active=move || prefs.with(|p| p.cam.fps == f) on:click=move |_| set_cam(Box::new(move |c| c.fps = f))>{format!("{f} fps")}</button>
+                }).collect_view()}
+            </div>
+            <span class="golive-label">"Bitrate"</span>
+            <div class="slider-row">
+                <input type="range" min="0" step="250" max=move || cam_max().to_string() prop:value=move || prefs.with(|p| p.cam.kbps.min(cam_max())).to_string()
+                    on:input=move |e| { let v = event_target_value(&e).parse().unwrap_or(0); set_cam(Box::new(move |c| c.kbps = v)) }/>
+                <span class="slider-value wide">{move || match prefs.with(|p| p.cam.kbps.min(cam_max())) {
+                    0 => "Auto".to_string(),
+                    k if k >= 1000 => format!("{:.2} Mbit/s", f64::from(k) / 1000.0),
+                    k => format!("{k} kbit/s"),
+                }}</span>
+            </div>
+        </div>
+        <p class="muted small">{move || match server_cap() {
+            0 => "A camera that's on changes right away. Auto lets the browser choose.".to_string(),
+            k => format!("A camera that's on changes right away. This server lets cameras send at most {:.1} Mbit/s, whatever you pick here.", f64::from(k) / 1000.0),
+        }}</p>
         <h3>"Input mode"</h3>
         <label class="check"><input type="radio" name="mode" prop:checked=move || !prefs.with(|p| p.push_to_talk)
             on:change=move |_| set(Box::new(|p| p.push_to_talk = false))/>"Voice activity"</label>

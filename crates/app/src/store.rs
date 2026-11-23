@@ -128,6 +128,45 @@ pub struct VoicePrefs {
     pub start_minimized: bool,
     /// Desktop: page zoom in %.
     pub zoom: u16,
+    /// How screen shares go out (the Go Live window).
+    pub stream: StreamPrefs,
+    /// Camera quality in calls.
+    pub cam: CameraQuality,
+}
+
+/// Screen share quality. `height` 0 = the screen's own size; `kbps` 0 = auto (from size and frame rate).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StreamPrefs {
+    pub height: u32,
+    pub fps: u32,
+    pub kbps: u32,
+    /// When the network or computer can't keep up: keep motion smooth (lower the resolution) instead of keeping
+    /// text sharp (lower the frame rate).
+    pub motion: bool,
+    /// Share the sound of the window or screen too.
+    pub audio: bool,
+}
+
+impl Default for StreamPrefs {
+    fn default() -> Self {
+        StreamPrefs { height: 1080, fps: 30, kbps: 0, motion: false, audio: true }
+    }
+}
+
+/// Camera quality. `kbps` 0 = the browser's own choice; the server's limit applies either way.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CameraQuality {
+    pub height: u32,
+    pub fps: u32,
+    pub kbps: u32,
+}
+
+impl Default for CameraQuality {
+    fn default() -> Self {
+        CameraQuality { height: 720, fps: 30, kbps: 0 }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -151,6 +190,8 @@ impl Default for VoicePrefs {
             close_to_tray: true,
             start_minimized: false,
             zoom: 100,
+            stream: StreamPrefs::default(),
+            cam: CameraQuality::default(),
         }
     }
 }
@@ -202,6 +243,8 @@ pub enum Modal {
     SpaceProfile(Id),
     /// Daily Word, played from a space (results post there) or a DM.
     WordGame(Option<Id>),
+    /// Screen share quality: before sharing (then Go Live), or live while sharing.
+    GoLive,
     Confirm { title: String, body: String, ok: String, action: Action },
 }
 

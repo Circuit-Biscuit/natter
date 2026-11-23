@@ -736,6 +736,10 @@ pub struct ServerInfo {
     /// see it, as in any app with a GIF picker.
     #[serde(default)]
     pub klipy_key: Option<String>,
+    /// Most a camera may send in a call, kbit/s (`NATTER_CAMERA_KBPS`); 0 = no limit. Apps show it next to their
+    /// camera quality settings; the server enforces it in the SDP either way.
+    #[serde(default)]
+    pub camera_kbps: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

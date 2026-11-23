@@ -44,6 +44,52 @@ extern "C" {
     pub async fn camera_preview(el: &web_sys::HtmlVideoElement, id: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(js_name = cameraPreviewStop)]
     pub fn camera_preview_stop();
+    #[wasm_bindgen(js_name = voiceSetStream)]
+    async fn js_set_stream(json: &str);
+    #[wasm_bindgen(js_name = voiceSetCameraQuality)]
+    async fn js_set_camera_quality(json: &str);
+    #[wasm_bindgen(js_name = voiceStats)]
+    async fn js_stats(key: &str) -> JsValue;
+}
+
+/// What a video stream is doing right now (see `voiceStats` in glue.js).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Stats {
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub kbps: u32,
+    pub codec: String,
+    /// "none", "bandwidth", "cpu" or "other" (sending only).
+    pub limit: String,
+}
+
+/// `local:screen`, `local:cam`, `<user>:screen`, `<user>:cam`.
+pub async fn stats(key: &str) -> Option<Stats> {
+    serde_json::from_str(&js_stats(key).await.as_string()?).ok()
+}
+
+/// Hand the saved stream settings to the media code: a share in progress changes at once (no need to pick the
+/// window again), the next one starts with them.
+pub fn apply_stream() {
+    let json = serde_json::to_string(&store().prefs.get_untracked().stream).unwrap_or_default();
+    spawn_local(async move { js_set_stream(&json).await });
+}
+
+/// Apply the saved camera quality (a camera that's on changes in place).
+pub fn apply_camera_quality() {
+    let json = serde_json::to_string(&store().prefs.get_untracked().cam).unwrap_or_default();
+    spawn_local(async move { js_set_camera_quality(&json).await });
+}
+
+/// The Screen buttons: choose how to share first (Go Live), or stop sharing.
+pub fn screen_button() {
+    let s = store();
+    if s.call.with_untracked(|c| c.screen) {
+        toggle_screen();
+    } else {
+        s.modal.set(Some(crate::store::Modal::GoLive));
+    }
 }
 
 #[derive(Deserialize)]
@@ -104,7 +150,7 @@ fn opts_json() -> String {
     let c = s.call.get_untracked();
     serde_json::json!({
         "muted": c.muted, "deafened": c.deafened, "input": p.input, "output": p.output, "camera": p.camera,
-        "ptt": p.push_to_talk, "noise": p.noise_suppression,
+        "ptt": p.push_to_talk, "noise": p.noise_suppression, "stream": p.stream, "cam": p.cam,
     })
     .to_string()
 }

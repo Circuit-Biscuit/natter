@@ -8,6 +8,11 @@ let dc = null;
 let handler = null;
 let me = 0;
 let opts = { muted: false, deafened: false, input: "", output: "", camera: "", ptt: false, noise: true };
+// Screen share: height 0 = the screen's own; kbps 0 = auto (from size and frame rate); motion = keep it smooth
+// (drop resolution first) rather than sharp (drop frames first).
+let stream = { height: 1080, fps: 30, kbps: 0, motion: false, audio: true };
+// Camera: kbps 0 = the browser's own choice (under the server's limit either way).
+let camq = { height: 720, fps: 30, kbps: 0 };
 let pttDown = false;
 const local = { mic: null, cam: null, screen: null, screenAudio: null };
 const senders = {};
@@ -144,7 +149,12 @@ async function onSignal(ev) {
 export async function voiceJoin(base, token, channel, myId, optsJson) {
   voiceLeave();
   me = myId;
-  opts = Object.assign(opts, JSON.parse(optsJson));
+  const o = JSON.parse(optsJson);
+  if (o.stream) stream = Object.assign(stream, o.stream);
+  if (o.cam) camq = Object.assign(camq, o.cam);
+  delete o.stream;
+  delete o.cam;
+  opts = Object.assign(opts, o);
   ensureAudioContext();
   local.mic = await getMic();
   pc = new RTCPeerConnection({ bundlePolicy: "max-bundle" });
@@ -234,12 +244,106 @@ export async function voiceSetCamera(on) {
   }
   if (on) local.cam = await openCamera();
   await senders.cam.sender.replaceTrack(local.cam);
+  await setEncoding(senders.cam.sender, { maxBitrate: camq.kbps ? camq.kbps * 1000 : undefined });
   emit({ type: "tracks" });
   return !!local.cam;
 }
 
 function cameraConstraints(id) {
-  return { deviceId: id ? { exact: id } : undefined, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+  const h = camq.height || 720;
+  return { deviceId: id ? { exact: id } : undefined, width: { ideal: Math.round((h * 16) / 9) }, height: { ideal: h }, frameRate: { ideal: camq.fps || 30 } };
+}
+
+// Change one sender's encoding live (no renegotiation). `undefined` clears a value back to the browser's own.
+async function setEncoding(sender, enc, degradation) {
+  const p = sender.getParameters();
+  if (!p.encodings || !p.encodings.length) return;
+  for (const [k, v] of Object.entries(enc)) {
+    if (v === undefined) delete p.encodings[0][k];
+    else p.encodings[0][k] = v;
+  }
+  if (degradation) p.degradationPreference = degradation;
+  try {
+    await sender.setParameters(p);
+  } catch (_) {
+    // Older engines refuse degradationPreference; the rest still applies.
+    delete p.degradationPreference;
+    try { await sender.setParameters(p); } catch (_) {}
+  }
+}
+
+// What "auto" means for a screen share: 0.1 bit per pixel per frame, 1–15 Mbit/s (1080p30 ≈ 6 Mbit/s). Less and
+// the encoder shrinks the picture on busy screens; encoders still go lower when the network asks.
+function autoKbps(w, h, fps) {
+  return Math.round(Math.min(15000, Math.max(1000, (w * h * fps * 0.1) / 1000)));
+}
+
+// Apply `stream` to the screen being shared, live: frame rate on the capture, size / frame rate / bitrate on the
+// encoder, and what to give up first when the network or the computer can't keep up.
+async function applyStream() {
+  const t = local.screen;
+  if (!t || !pc) return;
+  try { await t.applyConstraints({ frameRate: { ideal: stream.fps, max: stream.fps } }); } catch (_) {}
+  t.contentHint = stream.motion ? "motion" : "detail";
+  const src = t.getSettings();
+  const srcH = src.height || 1080;
+  const srcW = src.width || Math.round((srcH * 16) / 9);
+  const scale = stream.height && srcH > stream.height ? srcH / stream.height : 1;
+  const kbps = stream.kbps || autoKbps(srcW / scale, srcH / scale, stream.fps);
+  await setEncoding(
+    senders.screen.sender,
+    { scaleResolutionDownBy: scale, maxFramerate: stream.fps, maxBitrate: kbps * 1000 },
+    stream.motion ? "maintain-framerate" : "maintain-resolution",
+  );
+}
+
+export async function voiceSetStream(json) {
+  stream = Object.assign(stream, JSON.parse(json));
+  await applyStream();
+}
+
+// Camera quality from Settings; a camera that's on changes in place.
+export async function voiceSetCameraQuality(json) {
+  camq = Object.assign(camq, JSON.parse(json));
+  if (pc && local.cam) {
+    const c = cameraConstraints(opts.camera);
+    try { await local.cam.applyConstraints({ width: c.width, height: c.height, frameRate: c.frameRate }); } catch (_) {}
+    await setEncoding(senders.cam.sender, { maxBitrate: camq.kbps ? camq.kbps * 1000 : undefined });
+  }
+}
+
+// What a video stream is doing right now: "local:screen" / "local:cam" (what you send) or "<user>:screen" /
+// "<user>:cam" (what you receive). Bitrate is measured between two calls.
+const lastBytes = new Map();
+export async function voiceStats(key) {
+  if (!pc) return "null";
+  let obj = null;
+  if (key.startsWith("local:")) obj = senders[key.slice(6)]?.sender;
+  else {
+    const r = remote.get(key);
+    obj = r ? pc.getReceivers().find((x) => x.track === r.track) : null;
+  }
+  if (!obj) return "null";
+  let rtp = null;
+  let report;
+  try { report = await obj.getStats(); } catch (_) { return "null"; }
+  report.forEach((x) => {
+    if ((x.type === "outbound-rtp" || x.type === "inbound-rtp") && x.kind === "video") rtp = x;
+  });
+  if (!rtp) return "null";
+  const codec = rtp.codecId ? report.get(rtp.codecId) : null;
+  const bytes = rtp.bytesSent ?? rtp.bytesReceived ?? 0;
+  const prev = lastBytes.get(key);
+  lastBytes.set(key, { bytes, ts: rtp.timestamp });
+  const kbps = prev && rtp.timestamp > prev.ts ? Math.round(((bytes - prev.bytes) * 8) / (rtp.timestamp - prev.ts)) : 0;
+  return JSON.stringify({
+    width: rtp.frameWidth || 0,
+    height: rtp.frameHeight || 0,
+    fps: Math.round(rtp.framesPerSecond || 0),
+    kbps: Math.max(0, kbps),
+    codec: codec && codec.mimeType ? codec.mimeType.split("/")[1] : "",
+    limit: rtp.qualityLimitationReason || "none",
+  });
 }
 
 // The chosen camera, or the default one if it was unplugged.
@@ -288,15 +392,20 @@ export async function voiceSetScreen(on) {
     }
   }
   if (on) {
-    const s = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
+    const s = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: stream.fps, max: stream.fps } },
+      audio: stream.audio,
+      surfaceSwitching: "include",
+    });
     local.screen = s.getVideoTracks()[0];
     local.screenAudio = s.getAudioTracks()[0] || null;
-    local.screen.contentHint = "detail";
+    local.screen.contentHint = stream.motion ? "motion" : "detail";
     // The browser's own "Stop sharing" button.
     local.screen.onended = () => emit({ type: "screen_ended" });
   }
   await senders.screen.sender.replaceTrack(local.screen);
   await senders.screen_audio.sender.replaceTrack(local.screenAudio);
+  await applyStream();
   emit({ type: "tracks" });
   return !!local.screen;
 }

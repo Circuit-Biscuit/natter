@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### New
+
+- **Stream quality controls for screen sharing**, like Discord's Go Live window but more. **Screen** now opens a
+  window before you pick what to share:
+  - Presets: **Text & detail** (full screen size at 15 fps, for code, documents and slides), **Balanced** (1080p,
+    30 fps) and **Smooth motion** (720p, 60 fps, for games and videos).
+  - Or set it yourself: resolution (480p up to your screen's own size), frame rate (5 to 60 fps), bitrate (Auto, or
+    up to 20 Mbit/s).
+  - What to give up when the connection or computer can't keep up: frames (**Keep it sharp**) or resolution
+    (**Keep it smooth**).
+  - Whether to share the sound.
+
+  While you're live, the new gear button next to the screen button opens the same window: every change applies at
+  once, without picking the window again. It shows what's actually going out (for example "1920×1080 · 30 fps · 4.1
+  Mbit/s · VP8") and says when the upload speed or your computer is holding it back. Hover any screen share to see
+  the same numbers for what you receive. Your choices are remembered on each device.
+- **Camera quality:** Settings › Voice & video › Camera quality sets the resolution (360p to 1080p), frame rate (15,
+  30 or 60 fps) and bitrate. A camera that's on changes right away. The server's camera limit (1 Mbit/s unless its
+  owner changed `NATTER_CAMERA_KBPS`) still applies, and the settings say what it is.
+
 ## [0.9.0] — 2026-11-23
 
 ### New

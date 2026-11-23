@@ -175,6 +175,7 @@ async fn full_flow() {
     );
     assert_eq!(info["nextcloud"].as_str(), Some(nc_base.as_str()));
     assert!(info["klipy_key"].is_null(), "the GIF key is for signed-in users only");
+    assert_eq!(info["camera_kbps"], 1000, "apps show the camera limit");
     let (s, a) = call(
         &app,
         "POST",

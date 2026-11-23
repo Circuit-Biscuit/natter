@@ -36,6 +36,7 @@ pub fn ModalHost() -> impl IntoView {
                 Modal::ChannelPermissions(c) => view! { <settings::ChannelPermissions channel=c/> }.into_any(),
                 Modal::SpaceProfile(sp) => view! { <SpaceProfile space=sp/> }.into_any(),
                 Modal::WordGame(sp) => view! { <super::word::WordGame space=sp/> }.into_any(),
+                Modal::GoLive => view! { <super::call::GoLive/> }.into_any(),
                 Modal::Confirm { title, body, ok, action } => view! { <Confirm title=title body=body ok=ok action=action/> }.into_any(),
             };
             view! {

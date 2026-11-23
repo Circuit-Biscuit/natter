@@ -157,6 +157,7 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
         nextcloud: st.nc.as_ref().map(|n| n.base.clone()),
         // Only signed-in people get it (in `Ready`): this endpoint is public.
         klipy_key: None,
+        camera_kbps: st.cfg.camera_kbps,
     }))
 }
 

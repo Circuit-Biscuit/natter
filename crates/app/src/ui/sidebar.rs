@@ -400,7 +400,7 @@ fn VoicePanel() -> impl IntoView {
                         <button class="btn small" class:on=move || s.call.with(|c| c.video) on:click=|_| voice::toggle_camera()>
                             <Icon name="video" size=18/>"Camera"
                         </button>
-                        <button class="btn small" class:on=move || s.call.with(|c| c.screen) on:click=|_| voice::toggle_screen()>
+                        <button class="btn small" class:on=move || s.call.with(|c| c.screen) on:click=|_| voice::screen_button()>
                             <Icon name="screen" size=18/>"Screen"
                         </button>
                     </div>

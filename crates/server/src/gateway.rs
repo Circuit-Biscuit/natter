@@ -210,6 +210,7 @@ pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
             max_upload_bytes: st.cfg.max_upload,
             nextcloud: st.nc.as_ref().map(|n| n.base.clone()),
             klipy_key: st.cfg.klipy_key.clone(),
+            camera_kbps: st.cfg.camera_kbps,
         },
         nextcloud: nextcloud::is_nc_session(st, session).await,
     })

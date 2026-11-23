@@ -54,6 +54,7 @@ backend" connects every participant to every other, which falls apart beyond fou
 
 - **Voice channels** you drop into and out of, Discord-style, and **calls in any DM** with ringing.
 - **Camera, screen sharing (with sound), mute, deafen**, speaking indicators, focus any tile, full screen.
+- **Stream quality you control** — Go Live presets (Text & detail, Balanced, Smooth motion) or your own resolution, frame rate and bitrate, and whether to keep it sharp or smooth when the network is tight; change any of it while live, see exactly what goes out and what holds it back, and hover a share to see what you receive. Camera resolution, frame rate and bitrate too.
 - **Push to talk** — even while Natter is in the background (desktop app) — or voice activity with noise suppression, echo cancellation and gain control.
 - **One UDP port** for all call media, encrypted in transit (DTLS-SRTP). Calls reconnect by themselves after a network change.
 
