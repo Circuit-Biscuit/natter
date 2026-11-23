@@ -607,6 +607,29 @@ pub fn unshare_later(st: &St, owner: Id, share_id: String) {
     });
 }
 
+/// Account deletion: remove the public links of all of `user`'s uploads now, while a session still holds their app
+/// password (`unshare_later` looks one up in the background, after the sessions are gone). The files stay in their
+/// own Nextcloud.
+pub async fn unshare_all(st: &St, user: Id) -> R<()> {
+    let shares: Vec<String> =
+        sqlx::query_scalar("SELECT nc_share_id FROM uploads WHERE owner_id = ? AND nc_share_id IS NOT NULL")
+            .bind(user)
+            .fetch_all(&st.db)
+            .await?;
+    if let (Some(nc), Some(c)) = (&st.nc, any_creds_of(st, user).await) {
+        // ponytail: one request at a time; fine for a team's worth of files.
+        for s in &shares {
+            nc.delete_share(s, &c).await;
+        }
+    }
+    // So purging the messages doesn't try again.
+    sqlx::query("UPDATE uploads SET nc_share_id = NULL WHERE owner_id = ?")
+        .bind(user)
+        .execute(&st.db)
+        .await?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------- files
 
 fn folder_name(s: &str) -> String {

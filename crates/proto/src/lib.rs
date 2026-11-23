@@ -790,6 +790,14 @@ pub struct ChangePassword {
     pub new_password: String,
 }
 
+/// `DELETE /api/me`: your password, or just `confirm` when signed in with Nextcloud (it holds the password).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeleteAccount {
+    pub password: Option<String>,
+    #[serde(default)]
+    pub confirm: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSpace {
     pub name: String,

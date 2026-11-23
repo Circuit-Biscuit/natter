@@ -598,7 +598,7 @@ pub async fn update_member(
 }
 
 /// Take `user` out of `space`: hang up their calls there, drop read states, tell everyone.
-async fn remove_from_space(st: &St, space: Id, user: Id) -> R<()> {
+pub(crate) async fn remove_from_space(st: &St, space: Id, user: Id) -> R<()> {
     let members = db::space_members(&st.db, space).await?;
     let channels: HashSet<Id> = sqlx::query_scalar("SELECT id FROM channels WHERE space_id = ?")
         .bind(space)

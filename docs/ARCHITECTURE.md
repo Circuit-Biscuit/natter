@@ -190,6 +190,7 @@ Everything else needs `Authorization: Bearer <token>`:
 | GET | `/api/me/sessions` | → `[SessionInfo]` |
 | DELETE | `/api/me/sessions/{id}` | → 204 (that device is signed out: `InvalidSession`) |
 | PATCH | `/api/me` | `UpdateMe` → `User` |
+| DELETE | `/api/me` | `DeleteAccount` (password, or `confirm` on a Nextcloud session) → 204; 409 while you own a space. Deletes your messages, uploads, memberships, reactions, pings, games, settings, sessions; the `users` row stays as an anonymous "Deleted User" |
 | PUT | `/api/me/password` | `ChangePassword` → 204 (signs out your other devices) |
 | PUT | `/api/me/settings` | any JSON → 204 |
 | POST | `/api/uploads` | raw bytes → `Attachment` |

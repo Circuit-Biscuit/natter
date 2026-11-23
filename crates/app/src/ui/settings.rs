@@ -9,7 +9,7 @@ use super::icons::Icon;
 use crate::store::{Keybind, Modal, store};
 use crate::{api, desktop, sound, util, voice};
 
-/// The apps' privacy policy (Google Play wants it reachable from inside the app), with account deletion at `#delete`.
+/// The apps' privacy policy (Google Play wants it reachable from inside the app).
 const PRIVACY_URL: &str = "https://circuit-biscuit.com/privacy/natter/";
 
 #[component]
@@ -76,6 +76,29 @@ fn AccountTab() -> impl IntoView {
             }
         });
     };
+    let deleting = RwSignal::new(false);
+    let del_pw = RwSignal::new(String::new());
+    let del_err = RwSignal::new(None::<String>);
+    let pw_input = NodeRef::<leptos::html::Input>::new();
+    Effect::new(move |_| {
+        if let Some(el) = pw_input.get() {
+            let _ = el.focus();
+        }
+    });
+    let delete =move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        // Nextcloud sessions have no password here: clicking the button is the confirmation.
+        let body = DeleteAccount { password: (!s.nextcloud_session.get_untracked()).then(|| del_pw.get_untracked()), confirm: true };
+        spawn_local(async move {
+            match api::call::<_, ()>("DELETE", "/api/me", &body).await {
+                Ok(()) => {
+                    store().modal.set(None);
+                    crate::store::session_expired();
+                }
+                Err(e) => del_err.set(Some(e.message)),
+            }
+        });
+    };
     view! {
         <h2>"My account"</h2>
         <div class="account-card">
@@ -106,12 +129,31 @@ fn AccountTab() -> impl IntoView {
             format!("Connected to {} ({})", s.info.get().map(|i| i.name).unwrap_or_default(), host)
         }}</p>
         <h3>"Delete account"</h3>
-        <p class="muted">"Your account lives on this server, so the server's admin deletes it for you. See how to ask and what gets deleted."</p>
-        // ponytail: a request page, not self-service deletion; add DELETE /api/me when people need it instantly.
-        <button class="btn danger" on:click=|_| desktop::open_url(&format!("{PRIVACY_URL}#delete"))>"Delete account"</button>
+        <p class="muted">"Deletes your messages, files and profile from this server. Spaces you own must be handed over or deleted first."</p>
+        <button class="btn danger" on:click=move |_| { del_pw.set(String::new()); del_err.set(None); deleting.set(true); }>"Delete account"</button>
         <p class="muted small">
             <a href=PRIVACY_URL on:click=|e| { e.prevent_default(); desktop::open_url(PRIVACY_URL); }>"Privacy policy"</a>
         </p>
+        <Show when=move || deleting.get()>
+            // Inside the settings modal, which stops mousedown, so clicking outside closes only this one.
+            <div class="modal-backdrop" on:mousedown=move |_| deleting.set(false)>
+                <div class="modal" on:mousedown=|e| e.stop_propagation()>
+                    <h2>"Delete account"</h2>
+                    <p class="modal-text">"Your messages, files, reactions and profile are deleted from this server and you are signed out everywhere. Others will see \"Deleted User\" in old DMs. This can't be undone."</p>
+                    <form class="form" on:submit=delete>
+                        <Show when=move || !s.nextcloud_session.get()>
+                            <label>"Password"<input type="password" required=true node_ref=pw_input autocomplete="current-password"
+                                prop:value=move || del_pw.get() on:input=move |e| del_pw.set(event_target_value(&e))/></label>
+                        </Show>
+                        {move || del_err.get().map(|m| view! { <div class="form-error">{m}</div> })}
+                        <div class="modal-foot">
+                            <button type="button" class="btn link" on:click=move |_| deleting.set(false)>"Cancel"</button>
+                            <button class="btn danger" type="submit">"Delete account"</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </Show>
     }
 }
 

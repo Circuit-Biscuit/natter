@@ -7,12 +7,19 @@
 - **Natter on Google Play** (in testing for now). The Google Play app updates through Google Play, so it doesn't
   show the "new version" banner; the APK from GitHub keeps it. The two are signed differently, so moving from one
   to the other means uninstalling first.
-- **Delete account and privacy policy** in Settings › My account. Your account lives on your server, so the button
-  explains how to ask its admin; the [privacy policy](https://circuit-biscuit.com/privacy/natter/) says what the
-  apps and our own server keep.
+- **Delete your account** yourself, in Settings › My account › Delete account: confirm with your password (or just
+  confirm, if you signed in with Nextcloud) and it's gone at once. Your messages with their files, reactions,
+  profile picture, memberships, game results, settings and sign-ins are deleted, and the links Natter made to files
+  in your Nextcloud are removed. Like Discord, people who still have a DM or thread with you see "Deleted User",
+  and you need to hand over or delete the spaces you own first. The server side is `DELETE /api/me`, so it works
+  on every Natter server once it runs this version.
+- **Privacy policy** linked in Settings › My account; the
+  [privacy policy](https://circuit-biscuit.com/privacy/natter/) says what the apps and our own server keep.
 
 ### Fixed
 
+- Signing out (or deleting your account) went back to the sign-in screen only after a reload; it stayed on
+  "Connecting…" when the app had started signed in.
 - Android: the app's native code is now aligned for 16 KB memory pages, which newer phones (Android 15+) can use
   and Google Play requires.
 

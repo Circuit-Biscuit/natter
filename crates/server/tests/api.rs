@@ -900,5 +900,76 @@ async fn full_flow() {
     let (s, _) = call(&app, "GET", "/api/me/sessions", Some(&t3), None).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
 
+    // Deleting your account, Nextcloud first: sign in again, share a file, then a confirm is enough.
+    let nc_sign_in = || async {
+        let (_, start) = call(&app, "POST", "/api/auth/nextcloud", None, None).await;
+        let (s, a) = call(&app, "POST", "/api/auth/nextcloud/poll", None, Some(json!({"flow": start["flow"], "device": "test"}))).await;
+        assert_eq!(s, StatusCode::OK, "{a}");
+        a
+    };
+    let nca = nc_sign_in().await;
+    let (t4, u3) = (nca["token"].as_str().unwrap().to_string(), nca["user"]["id"].as_i64().unwrap());
+    let req = Request::post("/api/uploads")
+        .header("authorization", format!("Bearer {t4}"))
+        .header("content-type", "image/png")
+        .header("x-filename", "bye.png")
+        .header("x-channel-id", general.to_string())
+        .body(Body::from(png))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let att: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let (s, shared) = call(&app, "POST", &msgs(general), Some(&t4), Some(json!({"content": "", "attachments": [att["id"]]}))).await;
+    assert_eq!(s, StatusCode::OK, "{shared}");
+    nc.log.lock().unwrap().clear();
+    let (s, _) = call(&app, "DELETE", "/api/me", Some(&t4), Some(json!({}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "nothing happens without the confirm");
+    let (s, _) = call(&app, "DELETE", "/api/me", Some(&t4), Some(json!({"confirm": true}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert!(nc.log.lock().unwrap().contains(&"UNSHARE 7".to_string()), "links go while the app password still works");
+    eventually(&nc, "FORGET app-pw").await;
+    let (s, _) = call(&app, "GET", "/api/me/sessions", Some(&t4), None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    // Others see the message go, the member leave, and the name turn into "Deleted User".
+    next_event(&mut ws, |e| matches!(e, Event::MessageDelete { id, .. } if Some(*id) == shared["id"].as_i64())).await;
+    next_event(&mut ws, |e| matches!(e, Event::MemberRemove { user_id, .. } if *user_id == u3)).await;
+    let Event::UserUpdate(gone) = next_event(&mut ws, |e| matches!(e, Event::UserUpdate(u) if u.id == u3)).await else {
+        unreachable!()
+    };
+    assert_eq!((gone.display_name.as_str(), gone.avatar, gone.about.as_str()), ("Deleted User", None, ""));
+    // The Nextcloud login is let go: signing in again makes a new account (and "alice2" is free again).
+    let again = nc_sign_in().await;
+    assert_ne!(again["user"]["id"].as_i64(), Some(u3));
+    assert_eq!(again["user"]["username"].as_str(), Some("alice2"));
+
+    // A local account confirms with its password, and nobody can leave their spaces without an owner.
+    let delete_me = |t: &str, pw: &str| {
+        let (t, pw, app) = (t.to_string(), pw.to_string(), app.clone());
+        async move { call(&app, "DELETE", "/api/me", Some(&t), Some(json!({"password": pw}))).await }
+    };
+    let (s, e) = delete_me(&t1, "hunter2hunter2").await;
+    assert_eq!((s, e["error"].as_str()), (StatusCode::CONFLICT, Some("transfer or delete your spaces first")));
+    let (s, _) = delete_me(&t2, "not-my-password").await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (mut ws1, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/gateway?token={t1}")).await.unwrap();
+    next_event(&mut ws1, |e| matches!(e, Event::Ready(_))).await;
+    let (_, bye) = call(&app, "POST", &msgs(general), Some(&t1), Some(json!({"content": "bye bob"}))).await;
+    let bye = bye["id"].as_i64().unwrap();
+    let (s, _) = call(&app, "PUT", &format!("/api/channels/{general}/messages/{bye}{thumbs}"), Some(&t2), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = delete_me(&t2, "hunter2hunter2").await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    next_event(&mut ws, |e| matches!(e, Event::InvalidSession)).await;
+    next_event(&mut ws1, |e| matches!(e, Event::MemberRemove { space_id, user_id } if *space_id == sid && *user_id == u2)).await;
+    next_event(&mut ws1, |e| matches!(e, Event::UserUpdate(u) if u.id == u2 && u.display_name == "Deleted User")).await;
+    // Their messages (threads too) and reactions are gone, and the password no longer signs in.
+    let (_, list) = call(&app, "GET", &format!("{}?limit=100", msgs(general)), Some(&t1), None).await;
+    let list = list.as_array().unwrap();
+    assert!(list.iter().all(|m| m["author_id"].as_i64() != Some(u2)), "{list:?}");
+    assert_eq!(list.iter().find(|m| m["id"].as_i64() == Some(bye)).unwrap()["reactions"], json!([]));
+    let (_, in_thread) = call(&app, "GET", &msgs(tid), Some(&t1), None).await;
+    assert_eq!(in_thread, json!([]));
+    let (s, _) = call(&app, "POST", "/api/auth/login", None, Some(json!({"username": "bob", "password": "hunter2hunter2"}))).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+
     let _ = std::fs::remove_dir_all(data);
 }

@@ -268,7 +268,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .route("/api/auth/nextcloud/poll", post(nextcloud::login_poll))
         .route("/api/nextcloud/files", get(nextcloud::files))
         .route("/api/nextcloud/share", post(nextcloud::share))
-        .route("/api/me", patch(auth::update_me))
+        .route("/api/me", patch(auth::update_me).delete(auth::delete_me))
         .route("/api/me/sessions", get(auth::sessions))
         .route("/api/me/sessions/{id}", delete(auth::revoke_session))
         .route("/api/me/password", put(auth::change_password))

@@ -44,8 +44,10 @@ pub fn App() -> impl IntoView {
     }
     let signed_in = RwSignal::new(token.is_some());
     // Sign-out (or an expired token) clears `me` without a `ready`; follow it back to the sign-in screen.
+    // `ready` is read first: behind a short-circuited `&&` the effect never subscribed to it when the app started
+    // signed in, so signing out stayed on "Connecting…".
     Effect::new(move |_| {
-        if api::token().is_none() && !s.ready.get() {
+        if !s.ready.get() && api::token().is_none() {
             signed_in.set(false);
         }
     });

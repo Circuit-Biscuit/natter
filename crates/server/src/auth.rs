@@ -10,13 +10,14 @@ use axum::http::StatusCode;
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use natter_proto::{
-    AuthResp, ChangePassword, Event, Id, LoginReq, MAX_ABOUT_LEN, RegisterReq, Registration,
-    ServerInfo, SessionInfo, Status, UpdateMe, User, valid_username,
+    AuthResp, ChangePassword, DeleteAccount, Event, Id, LoginReq, MAX_ABOUT_LEN, RegisterReq,
+    Registration, ServerInfo, SessionInfo, Status, UpdateMe, User, valid_username,
 };
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ApiErr, R, St, bad, conflict, db, forbidden, gateway, nextcloud, not_found, now_ms, spaces,
+    ApiErr, R, St, bad, conflict, db, forbidden, gateway, messages, nextcloud, not_found, now_ms,
+    spaces, voice,
 };
 
 /// The signed-in user behind a request.
@@ -344,6 +345,97 @@ pub async fn change_password(
         .await?;
     // Every other device has to sign in again.
     end_sessions(&st, auth.user, auth.session, true).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Delete your own account, like Discord: your password confirms it (or `confirm` on a Nextcloud session), and it is
+/// refused while you own a space. Your messages (with their files and Nextcloud links), other uploads, memberships,
+/// reactions, pings, read markers, Daily Word games, settings and sessions go.
+///
+/// The `users` row is anonymised, not deleted: it becomes "Deleted User" with no name, password, picture or Nextcloud
+/// link, so DMs, threads, bans and `<@id>` mentions that other people keep still point at someone
+/// (`messages.author_id` and `spaces.owner_id` have no ON DELETE). Sessions end first but the row is anonymised last,
+/// so a failure halfway leaves an account you can sign back into and delete again.
+pub async fn delete_me(
+    State(st): State<St>,
+    auth: Auth,
+    Json(req): Json<DeleteAccount>,
+) -> R<StatusCode> {
+    let me = auth.user;
+    let (hash, nc_session): (String, bool) = sqlx::query_as(
+        "SELECT u.password_hash, s.nc_login IS NOT NULL FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?",
+    )
+    .bind(auth.session)
+    .fetch_one(&st.db)
+    .await?;
+    if nc_session {
+        if !req.confirm {
+            return Err(bad("confirm that you want to delete your account"));
+        }
+    } else if !verify_password(req.password.unwrap_or_default(), hash).await {
+        return Err(forbidden("password is wrong"));
+    }
+    let owns: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM spaces WHERE owner_id = ?)")
+        .bind(me)
+        .fetch_one(&st.db)
+        .await?;
+    if owns {
+        return Err(conflict("transfer or delete your spaces first"));
+    }
+    let audience = db::user_audience(&st.db, me).await?;
+
+    // Links first: removing them takes an app password, and ending the sessions deletes those.
+    nextcloud::unshare_all(&st, me).await?;
+    end_sessions(&st, me, auth.session, true).await?;
+    end_sessions(&st, me, auth.session, false).await?;
+    voice::disconnect(&st, me).await?;
+
+    let mine: Vec<(Id, Id)> =
+        sqlx::query_as("SELECT channel_id, id FROM messages WHERE author_id = ? ORDER BY channel_id")
+            .bind(me)
+            .fetch_all(&st.db)
+            .await?;
+    for chunk in mine.chunk_by(|a, b| a.0 == b.0) {
+        let ch = db::channel(&st.db, chunk[0].0).await?;
+        let ids: Vec<Id> = chunk.iter().map(|m| m.1).collect();
+        messages::purge(&st, &ch, &ids).await?;
+    }
+    let joined: Vec<Id> = sqlx::query_scalar("SELECT space_id FROM members WHERE user_id = ?")
+        .bind(me)
+        .fetch_all(&st.db)
+        .await?;
+    for space in joined {
+        spaces::remove_from_space(&st, space, me).await?;
+    }
+    // ponytail: reactions vanish for others at their next reload (no ReactionRemove per reaction).
+    for sql in [
+        "DELETE FROM reactions WHERE user_id = ?",
+        "DELETE FROM pings WHERE user_id = ?",
+        "DELETE FROM read_states WHERE user_id = ?",
+        "DELETE FROM word_plays WHERE user_id = ?",
+    ] {
+        sqlx::query(sql).bind(me).execute(&st.db).await?;
+    }
+    // What's left is the avatar and files never sent. Space icons they set stay: those belong to the space.
+    let tokens: Vec<String> = sqlx::query_scalar(
+        "DELETE FROM uploads WHERE owner_id = ? AND id NOT IN (SELECT icon_id FROM spaces WHERE icon_id IS NOT NULL)
+         RETURNING token",
+    )
+    .bind(me)
+    .fetch_all(&st.db)
+    .await?;
+    messages::delete_files(&st, &tokens);
+    // "deleted-…" has a '-', which usernames can't, so nobody can take it; '!' marks a hash nothing matches.
+    sqlx::query(
+        "UPDATE users SET username = ?, display_name = 'Deleted User', password_hash = '!deleted', avatar_id = NULL,
+         about = '', custom_status = NULL, admin = 0, settings = '{}', nc_user_id = NULL WHERE id = ?",
+    )
+    .bind(format!("deleted-{me}"))
+    .bind(me)
+    .execute(&st.db)
+    .await?;
+    // Space members already got MemberRemove; this renames them in DMs, mentions and threads.
+    st.hub.send(&audience, &Event::UserUpdate(db::user(&st.db, me).await?));
     Ok(StatusCode::NO_CONTENT)
 }
 
