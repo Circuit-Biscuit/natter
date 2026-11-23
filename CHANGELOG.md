@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-23
+
 ### New
 
 - **Stream quality controls for screen sharing**, like Discord's Go Live window but more. **Screen** now opens a
@@ -35,6 +37,10 @@
   codec), so you can see what you get. Your picks stay through a reconnect. The sender's Go Live and camera settings
   still apply: they set the top size, and the smaller ones follow with the same quality per pixel. If the sender's
   upload can't carry every size, the browser drops the biggest first and you get the next one down.
+
+  Sending three sizes takes more upload: a 1080p, 30 fps screen share sends about 9.7 Mbit/s in total instead of
+  6.2. Simulcast is tested in Chromium-based apps (Windows, Android, web in Chrome or Edge); a sender whose browser
+  can't do it is forwarded as one stream, as before.
 
 ## [0.9.0] — 2026-11-23
 
