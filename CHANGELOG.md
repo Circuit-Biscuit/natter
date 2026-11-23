@@ -21,6 +21,20 @@
 - **Camera quality:** Settings › Voice & video › Camera quality sets the resolution (360p to 1080p), frame rate (15,
   30 or 60 fps) and bitrate. A camera that's on changes right away. The server's camera limit (1 Mbit/s unless its
   owner changed `NATTER_CAMERA_KBPS`) still applies, and the settings say what it is.
+- **Pick the quality you receive (simulcast).** Cameras and screen shares now go out in up to three sizes at once:
+  as the sender set it, 720p and 360p. Everyone in the call gets the one that suits them, so one person on a slow
+  connection no longer drags everyone else down, and a fast one isn't held back. Hover someone's camera or screen
+  share and choose from the menu in its corner:
+  - **Auto** (the default): the server measures what your connection can take and picks for you. It starts on
+    the smallest size, so the picture comes up fast, and steps up as it finds room. With several streams it shares
+    your bandwidth between them, screen shares first. It steps down at once when your connection struggles.
+  - **Source**: the full stream as sent. **720p** or **360p**: save bandwidth, or keep a small tile light.
+
+  Discord picks for you; here you choose, per stream. The switch happens on the stream's next keyframe (about a
+  second). Hovering a camera now shows the same numbers as a screen share (resolution, frame rate, bitrate,
+  codec), so you can see what you get. Your picks stay through a reconnect. The sender's Go Live and camera settings
+  still apply: they set the top size, and the smaller ones follow with the same quality per pixel. If the sender's
+  upload can't carry every size, the browser drops the biggest first and you get the next one down.
 
 ## [0.9.0] — 2026-11-23
 

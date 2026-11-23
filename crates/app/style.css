@@ -883,6 +883,10 @@ input.switch:focus-visible { outline: 2px solid var(--link); outline-offset: 2px
 .golive-stats .warn { color: var(--warn, #f0b232); }
 .mobile .golive-grid { grid-template-columns: 1fr; }
 .tile-stats { position: absolute; left: 8px; top: 8px; z-index: 2; padding: 3px 8px; border-radius: 4px; background: rgba(0, 0, 0, .65); color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+/* Quality you receive of a camera or screen: shown on hover (always on phones, which have none). */
+.tile-quality { position: absolute; right: 8px; top: 8px; z-index: 2; padding: 2px 6px; border: 0; border-radius: 4px; background: rgba(0, 0, 0, .65); color: #fff; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity .15s; }
+.tile-quality option { background: #232428; }
+.tile:hover .tile-quality, .tile-quality:focus, .mobile .tile-quality { opacity: 1; }
 .btn.sound-pick { background: var(--side); color: var(--text); gap: 6px; }
 .btn.sound-pick.active { background: var(--accent); color: #fff; }
 .test-row { margin-top: 20px; }

@@ -13,6 +13,11 @@ let opts = { muted: false, deafened: false, input: "", output: "", camera: "", p
 let stream = { height: 1080, fps: 30, kbps: 0, motion: false, audio: true };
 // Camera: kbps 0 = the browser's own choice (under the server's limit either way).
 let camq = { height: 720, fps: 30, kbps: 0 };
+// Simulcast: cameras and screens go out as three layers, smallest first (rid, height; 0 = as set). The SFU
+// forwards each viewer one of them: the one it picked, or what its connection carries.
+const LAYERS = [["l", 360], ["m", 720], ["h", 0]];
+// Quality picked per received stream ("<user>:<kind>" -> "auto" | "h" | "m" | "l"); sent again on reconnect.
+let layerWants = {};
 let pttDown = false;
 const local = { mic: null, cam: null, screen: null, screenAudio: null };
 const senders = {};
@@ -152,8 +157,10 @@ export async function voiceJoin(base, token, channel, myId, optsJson) {
   const o = JSON.parse(optsJson);
   if (o.stream) stream = Object.assign(stream, o.stream);
   if (o.cam) camq = Object.assign(camq, o.cam);
+  layerWants = o.layers || {};
   delete o.stream;
   delete o.cam;
+  delete o.layers;
   opts = Object.assign(opts, o);
   ensureAudioContext();
   local.mic = await getMic();
@@ -167,11 +174,13 @@ export async function voiceJoin(base, token, channel, myId, optsJson) {
   ];
   for (const [name, kind] of order) {
     const track = name === "mic" ? local.mic : null;
-    const t = pc.addTransceiver(track || kind, { direction: "sendonly", streams: [micStream] });
-    senders[name] = t;
+    const init = { direction: "sendonly", streams: [micStream] };
+    if (kind === "video") init.sendEncodings = LAYERS.map(([rid]) => ({ rid }));
+    senders[name] = pc.addTransceiver(track || kind, init);
   }
   dc = pc.createDataChannel("signal");
   dc.onmessage = (ev) => onSignal(ev).catch((e) => emit({ type: "warn", text: "Call renegotiation failed: " + e }));
+  dc.onopen = () => Object.keys(layerWants).forEach(sendLayer);
   pc.ontrack = onRemoteTrack;
   pc.onconnectionstatechange = () => emit({ type: "state", state: pc ? pc.connectionState : "closed" });
   applyMicEnabled();
@@ -244,9 +253,16 @@ export async function voiceSetCamera(on) {
   }
   if (on) local.cam = await openCamera();
   await senders.cam.sender.replaceTrack(local.cam);
-  await setEncoding(senders.cam.sender, { maxBitrate: camq.kbps ? camq.kbps * 1000 : undefined });
+  await applyCamLayers();
   emit({ type: "tracks" });
   return !!local.cam;
+}
+
+// The camera's layers: the top one is what the camera gives (its size is set on the capture).
+async function applyCamLayers() {
+  if (!local.cam) return;
+  const h = local.cam.getSettings().height || camq.height || 720;
+  await setLayers(senders.cam.sender, h, 0, 0, camq.kbps);
 }
 
 function cameraConstraints(id) {
@@ -254,13 +270,22 @@ function cameraConstraints(id) {
   return { deviceId: id ? { exact: id } : undefined, width: { ideal: Math.round((h * 16) / 9) }, height: { ideal: h }, frameRate: { ideal: camq.fps || 30 } };
 }
 
-// Change one sender's encoding live (no renegotiation). `undefined` clears a value back to the browser's own.
-async function setEncoding(sender, enc, degradation) {
+// Spread one sender's settings over its layers, live (no renegotiation). `srcH` = the capture's height, `h` = the
+// top layer's (0 = the capture's own), `fps` 0 = leave it, `kbps` = the top layer's bitrate (0 = the browser's own
+// choice); smaller layers get the same bits per pixel. A layer as big as the one above is a duplicate: off.
+// An engine without simulcast has one encoding without a rid: it gets the top layer.
+async function setLayers(sender, srcH, h, fps, kbps, degradation) {
   const p = sender.getParameters();
   if (!p.encodings || !p.encodings.length) return;
-  for (const [k, v] of Object.entries(enc)) {
-    if (v === undefined) delete p.encodings[0][k];
-    else p.encodings[0][k] = v;
+  const top = h && srcH > h ? h : srcH;
+  for (const e of p.encodings) {
+    const want = (LAYERS.find(([rid]) => rid === e.rid) || [])[1] || 0;
+    const lh = want && want < top ? want : top;
+    e.active = !e.rid || e.rid === "h" || lh < top;
+    e.scaleResolutionDownBy = srcH / lh;
+    if (fps) e.maxFramerate = fps;
+    if (kbps) e.maxBitrate = Math.round(Math.max(150, kbps * (lh / top) ** 2) * 1000);
+    else delete e.maxBitrate;
   }
   if (degradation) p.degradationPreference = degradation;
   try {
@@ -288,13 +313,9 @@ async function applyStream() {
   const src = t.getSettings();
   const srcH = src.height || 1080;
   const srcW = src.width || Math.round((srcH * 16) / 9);
-  const scale = stream.height && srcH > stream.height ? srcH / stream.height : 1;
-  const kbps = stream.kbps || autoKbps(srcW / scale, srcH / scale, stream.fps);
-  await setEncoding(
-    senders.screen.sender,
-    { scaleResolutionDownBy: scale, maxFramerate: stream.fps, maxBitrate: kbps * 1000 },
-    stream.motion ? "maintain-framerate" : "maintain-resolution",
-  );
+  const top = stream.height && srcH > stream.height ? stream.height : srcH;
+  const kbps = stream.kbps || autoKbps((srcW * top) / srcH, top, stream.fps);
+  await setLayers(senders.screen.sender, srcH, top, stream.fps, kbps, stream.motion ? "maintain-framerate" : "maintain-resolution");
 }
 
 export async function voiceSetStream(json) {
@@ -308,8 +329,20 @@ export async function voiceSetCameraQuality(json) {
   if (pc && local.cam) {
     const c = cameraConstraints(opts.camera);
     try { await local.cam.applyConstraints({ width: c.width, height: c.height, frameRate: c.frameRate }); } catch (_) {}
-    await setEncoding(senders.cam.sender, { maxBitrate: camq.kbps ? camq.kbps * 1000 : undefined });
+    await applyCamLayers();
   }
+}
+
+// Which layer to receive of someone's camera or screen ("<user>:<kind>"): "auto", "h" (as sent), "m" (720p) or
+// "l" (360p). The SFU switches on the next keyframe.
+function sendLayer(key) {
+  const [user, kind] = key.split(":");
+  if (dc && dc.readyState === "open") dc.send(JSON.stringify({ type: "layer", user: Number(user), kind, want: layerWants[key] }));
+}
+
+export function voiceSetLayer(key, want) {
+  layerWants[key] = want;
+  sendLayer(key);
 }
 
 // What a video stream is doing right now: "local:screen" / "local:cam" (what you send) or "<user>:screen" /
@@ -325,14 +358,18 @@ export async function voiceStats(key) {
   }
   if (!obj) return "null";
   let rtp = null;
+  let bytes = 0;
   let report;
   try { report = await obj.getStats(); } catch (_) { return "null"; }
+  // Sending simulcast there's one entry per layer: show the biggest, and the upload of all of them.
   report.forEach((x) => {
-    if ((x.type === "outbound-rtp" || x.type === "inbound-rtp") && x.kind === "video") rtp = x;
+    if ((x.type === "outbound-rtp" || x.type === "inbound-rtp") && x.kind === "video") {
+      bytes += x.bytesSent ?? x.bytesReceived ?? 0;
+      if (!rtp || (x.frameHeight || 0) > (rtp.frameHeight || 0)) rtp = x;
+    }
   });
   if (!rtp) return "null";
   const codec = rtp.codecId ? report.get(rtp.codecId) : null;
-  const bytes = rtp.bytesSent ?? rtp.bytesReceived ?? 0;
   const prev = lastBytes.get(key);
   lastBytes.set(key, { bytes, ts: rtp.timestamp });
   const kbps = prev && rtp.timestamp > prev.ts ? Math.round(((bytes - prev.bytes) * 8) / (rtp.timestamp - prev.ts)) : 0;

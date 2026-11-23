@@ -50,6 +50,21 @@ extern "C" {
     async fn js_set_camera_quality(json: &str);
     #[wasm_bindgen(js_name = voiceStats)]
     async fn js_stats(key: &str) -> JsValue;
+    #[wasm_bindgen(js_name = voiceSetLayer)]
+    fn js_set_layer(key: &str, want: &str);
+}
+
+/// Pick the quality of someone's camera or screen you receive ("<user>:<kind>"): "auto", "h" (as sent), "m"
+/// (720p) or "l" (360p). The server switches at the stream's next keyframe; kept across reconnects.
+pub fn set_layer(key: &str, want: &str) {
+    store().call.update(|c| {
+        if want == "auto" {
+            c.layers.remove(key);
+        } else {
+            c.layers.insert(key.to_string(), want.to_string());
+        }
+    });
+    js_set_layer(key, want);
 }
 
 /// What a video stream is doing right now (see `voiceStats` in glue.js).
@@ -150,7 +165,7 @@ fn opts_json() -> String {
     let c = s.call.get_untracked();
     serde_json::json!({
         "muted": c.muted, "deafened": c.deafened, "input": p.input, "output": p.output, "camera": p.camera,
-        "ptt": p.push_to_talk, "noise": p.noise_suppression, "stream": p.stream, "cam": p.cam,
+        "ptt": p.push_to_talk, "noise": p.noise_suppression, "stream": p.stream, "cam": p.cam, "layers": c.layers,
     })
     .to_string()
 }

@@ -130,10 +130,10 @@ fn TileView(t: Tile, big: bool) -> impl IntoView {
         }
     });
     let speaking = move || s.call.with(|c| c.speaking.contains(&user));
-    // Hovering a screen share shows what it's doing (what you receive, or for your own what you send).
+    // Hovering a camera or screen shows what it's doing (what you receive, or for your own what you send).
     let hovered = RwSignal::new(false);
     let info = RwSignal::new(None::<voice::Stats>);
-    if kind == "screen" {
+    if has_video {
         let k3 = src_key.clone();
         if let Ok(h) = set_interval_with_handle(move || {
             if hovered.get_untracked() {
@@ -158,6 +158,18 @@ fn TileView(t: Tile, big: bool) -> impl IntoView {
             <Show when=move || hovered.get() && info.with(|i| i.as_ref().is_some_and(|i| i.height > 0))>
                 <div class="tile-stats">{move || info.get().map(|st| stats_line(&st))}</div>
             </Show>
+            {(user != me && has_video).then(|| {
+                let (k, k2) = (src_key.clone(), src_key.clone());
+                let picked = Memo::new(move |_| s.call.with(|c| c.layers.get(&k).cloned().unwrap_or_else(|| "auto".into())));
+                view! {
+                    <select class="tile-quality" title="Quality you receive" on:click=|e| e.stop_propagation()
+                        on:change=move |e| voice::set_layer(&k2, &event_target_value(&e))>
+                        {QUALITIES.iter().map(|&(v, label)| view! {
+                            <option value=v prop:selected=move || picked.get() == v>{label}</option>
+                        }).collect_view()}
+                    </select>
+                }
+            })}
             {has_video.then(|| view! {
                 <video node_ref=video autoplay=true playsinline=true prop:muted=true class:hidden=move || !live.get()></video>
             })}
@@ -172,6 +184,10 @@ fn TileView(t: Tile, big: bool) -> impl IntoView {
         </div>
     }
 }
+
+/// What you can pick to receive of someone's camera or screen: simulcast layers (glue.js `LAYERS`). Auto goes by
+/// what your connection carries.
+const QUALITIES: [(&str, &str); 4] = [("auto", "Auto"), ("h", "Source"), ("m", "720p"), ("l", "360p")];
 
 fn rate(kbps: u32) -> String {
     if kbps >= 1000 { format!("{:.1} Mbit/s", f64::from(kbps) / 1000.0) } else { format!("{kbps} kbit/s") }

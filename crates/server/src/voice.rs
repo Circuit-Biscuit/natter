@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 use natter_proto::{
     Event, Id, MessageKind, Millis, VoiceAnswer, VoiceJoin, VoiceState, VoiceUpdate, perm,
 };
+use str0m::bwe::Bitrate;
 use str0m::change::SdpOffer;
 use str0m::media::Mid;
 use str0m::{Candidate, Rtc};
@@ -130,7 +131,8 @@ pub async fn join(
 
     disconnect(&st, me).await?; // one call at a time
 
-    let mut rtc = Rtc::builder().build(Instant::now());
+    // Bandwidth estimation picks the simulcast layer each viewer gets on Auto (sfu.rs).
+    let mut rtc = Rtc::builder().enable_bwe(Some(Bitrate::kbps(1500))).build(Instant::now());
     let candidate = Candidate::host(st.voice.candidate, "udp")
         .map_err(|e| internal(format!("candidate: {e:?}")))?;
     rtc.add_local_candidate(candidate);

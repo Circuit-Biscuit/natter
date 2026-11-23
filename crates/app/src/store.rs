@@ -302,6 +302,8 @@ pub struct Call {
     pub ptt_down: bool,
     /// Tile shown large ("<user>:<kind>").
     pub focus: Option<String>,
+    /// Quality picked per received camera or screen ("<user>:<kind>" -> "h" / "m" / "l"); not here = Auto.
+    pub layers: HashMap<String, String>,
 }
 
 #[derive(Clone, Copy)]
