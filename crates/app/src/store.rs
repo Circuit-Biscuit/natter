@@ -108,6 +108,9 @@ impl Default for Settings {
     }
 }
 
+/// Channel sidebar width: (default, narrowest, widest) in px.
+pub const SIDEBAR_WIDTH: (u16, u16, u16) = (240, 200, 480);
+
 /// Per-device preferences (never synced: devices, keys and windows differ per machine).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -132,6 +135,8 @@ pub struct VoicePrefs {
     pub stream: StreamPrefs,
     /// Camera quality in calls.
     pub cam: CameraQuality,
+    /// Channel sidebar width in px (dragged at its right edge).
+    pub sidebar_width: u16,
 }
 
 /// Screen share quality. `height` 0 = the screen's own size; `kbps` 0 = auto (from size and frame rate).
@@ -192,6 +197,7 @@ impl Default for VoicePrefs {
             zoom: 100,
             stream: StreamPrefs::default(),
             cam: CameraQuality::default(),
+            sidebar_width: SIDEBAR_WIDTH.0,
         }
     }
 }

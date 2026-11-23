@@ -13,6 +13,8 @@
   in your Nextcloud are removed. Like Discord, people who still have a DM or thread with you see "Deleted User",
   and you need to hand over or delete the spaces you own first. The server side is `DELETE /api/me`, so it works
   on every Natter server once it runs this version.
+- **Resizable channel list.** Drag its right edge (200–480 px), or focus the edge and use the arrow keys;
+  double-click resets it. Each computer or browser remembers its own width.
 - **Privacy policy** linked in Settings › My account; the
   [privacy policy](https://circuit-biscuit.com/privacy/natter/) says what the apps and our own server keep.
 

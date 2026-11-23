@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 
 use super::icons::Icon;
 use super::{Avatar, menu};
-use crate::store::{MenuItem, Modal, open_channel, set_status, store};
+use crate::store::{MenuItem, Modal, SIDEBAR_WIDTH, open_channel, set_status, store};
 use crate::{api, voice};
 
 /// Channels in display order: loose channels first, then each category followed by its children.
@@ -158,8 +158,33 @@ pub fn sorted_dms() -> Vec<Channel> {
 pub fn Sidebar() -> impl IntoView {
     let s = store();
     let space = Memo::new(move |_| s.nav.get().space);
+    // Width: dragged at the right edge (or arrow keys on the handle), saved per device; double-click resets.
+    let (default_w, min_w, max_w) = SIDEBAR_WIDTH;
+    let width = RwSignal::new(s.prefs.with_untracked(|p| p.sidebar_width).clamp(min_w, max_w));
+    let save = move || {
+        s.prefs.update(|p| p.sidebar_width = width.get_untracked());
+        s.save_prefs();
+    };
+    let set = move |w: i32| width.set(w.clamp(i32::from(min_w), i32::from(max_w)) as u16);
+    // (pointer x, width) when the drag started
+    let drag = RwSignal::new(None::<(i32, i32)>);
+    let mv = window_event_listener(leptos::ev::mousemove, move |e| {
+        if let Some((x0, w0)) = drag.get_untracked() {
+            set(w0 + e.client_x() - x0);
+        }
+    });
+    let up = window_event_listener(leptos::ev::mouseup, move |_| {
+        if drag.get_untracked().is_some() {
+            drag.set(None);
+            save();
+        }
+    });
+    on_cleanup(move || {
+        mv.remove();
+        up.remove();
+    });
     view! {
-        <aside class="sidebar">
+        <aside class="sidebar" style:--sidebar-w=move || format!("{}px", width.get())>
             {move || match space.get() {
                 Some(sp) => view! { <SpaceChannels space=sp/> }.into_any(),
                 None => view! { <DmList/> }.into_any(),
@@ -167,6 +192,24 @@ pub fn Sidebar() -> impl IntoView {
             <VoicePanel/>
             <UserPanel/>
         </aside>
+        <div class="sidebar-resize" class:active=move || drag.get().is_some() tabindex="0" role="separator"
+            aria-orientation="vertical" aria-label="Resize the channel list" title="Drag to resize, double-click to reset"
+            aria-valuenow=move || width.get().to_string() aria-valuemin=min_w.to_string() aria-valuemax=max_w.to_string()
+            on:mousedown=move |e| {
+                e.prevent_default();
+                drag.set(Some((e.client_x(), i32::from(width.get_untracked()))));
+            }
+            on:dblclick=move |_| { width.set(default_w); save(); }
+            on:keydown=move |e| {
+                let step = match e.key().as_str() { "ArrowLeft" => -16, "ArrowRight" => 16, _ => return };
+                e.prevent_default();
+                set(i32::from(width.get_untracked()) + step);
+                save();
+            }></div>
+        // Over everything while dragging: keeps the cursor and stops videos and text from taking the mouse.
+        <Show when=move || drag.get().is_some()>
+            <div class="resize-cover"></div>
+        </Show>
     }
 }
 
