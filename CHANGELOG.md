@@ -26,6 +26,8 @@
 
 - Signing out (or deleting your account) went back to the sign-in screen only after a reload; it stayed on
   "Connecting…" when the app had started signed in.
+- The Natter logo at the top of the server list turned into a rounded square on hover, like a space does; it now
+  stays a circle.
 - The sign-in screen ran off the sides on phones narrower than the sign-in card (most of them); it now fits the
   screen.
 - Android: the app's native code is now aligned for 16 KB memory pages, which newer phones (Android 15+) can use
