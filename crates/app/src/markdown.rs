@@ -461,6 +461,11 @@ fn one(i: Inline, space: Option<Id>) -> AnyView {
             .into_any()
         }
         Inline::Link { url, label } => {
+            // A link to one of our channels shows as the channel, like a <#channel> mention.
+            let s = crate::store::store();
+            if label.is_none() && let Some(ch) = crate::util::channel_link(&url).filter(|&ch| s.channel(ch).is_some()) {
+                return one(Inline::Channel(ch), space);
+            }
             let href = url.clone();
             let title = url.clone();
             let body = match label {

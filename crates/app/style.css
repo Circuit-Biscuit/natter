@@ -126,6 +126,9 @@ a:hover { text-decoration: underline; }
 .channel.unread .unread-pill { position: absolute; left: -8px; width: 4px; height: 8px; border-radius: 0 4px 4px 0; background: var(--strong); }
 .channel.muted { opacity: .45; }
 .channel .name { flex: 1; }
+.channel.dragging, .category.dragging { opacity: .4; }
+.channel.drop-before, .category.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.channel.drop-after, .category.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .channel .hover-only { display: none; width: 20px; height: 20px; }
 .channel:hover .hover-only, .channel.active .hover-only { display: inline-grid; }
 .dm-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; }
@@ -487,7 +490,7 @@ a:hover { text-decoration: underline; }
 
 .form { display: flex; flex-direction: column; gap: 14px; }
 .form.narrow { max-width: 420px; }
-.form label, .modal label:not(.switch-row), .settings-body label:not(.check):not(.btn):not(.switch-row) {
+.form label:not(.check), .modal label:not(.switch-row, .check), .settings-body label:not(.check):not(.btn):not(.switch-row) {
   display: flex; flex-direction: column; gap: 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: .02em;
 }
 .form input:not([type=checkbox]):not([type=radio]):not([type=range]), .form textarea, .form select, .modal select, .wide-input, .profile-note, .switcher-input, .picker-search, .copy-row input, .settings-body select {
@@ -498,6 +501,10 @@ a:hover { text-decoration: underline; }
 .form textarea { resize: vertical; }
 label.check { display: flex; flex-direction: row; align-items: center; gap: 10px; text-transform: none; font-size: 15px; font-weight: 400; color: var(--text); margin: 6px 0; cursor: pointer; letter-spacing: 0; }
 label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+/* A radio choice is a full-width row, the picked one highlighted (like Discord's). */
+.settings-body label.check:has(> input[type=radio]) { background: var(--side); padding: 10px 12px; border-radius: 6px; margin: 0 0 8px; font-weight: 500; }
+.settings-body label.check:has(> input[type=radio]):hover { background: var(--hover); }
+.settings-body label.check:has(> input[type=radio]:checked) { background: var(--active); color: var(--strong); }
 .form-error { color: var(--danger-text); font-size: 14px; }
 .form-ok { color: var(--ok); font-size: 14px; }
 .wide-input { margin-bottom: 8px; }
@@ -965,6 +972,17 @@ label.switch-row.off-limits { opacity: .55; cursor: not-allowed; }
 .embed-image { display: block; max-width: min(440px, 100%); max-height: 320px; margin-top: 6px; border-radius: 6px; cursor: zoom-in; }
 .embed-video { display: block; max-width: min(440px, 100%); max-height: 320px; margin-top: 6px; border-radius: 6px; background: #000; }
 .mobile .embed, .mobile .embed-image, .mobile .embed-video { max-width: 100%; }
+.channel-card { border-left: 0; padding: 12px 16px; gap: 10px; }
+.cc-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: .02em; }
+.cc-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cc-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--hover); color: var(--strong); display: grid; place-items: center; flex: none; }
+.cc-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cc-text b { color: var(--strong); font-size: 16px; }
+.cc-text span { color: var(--muted); font-size: 13px; }
+.cc-people { display: flex; flex: none; }
+.cc-people > * + * { margin-left: -6px; }
+.channel-card .btn { flex: none; }
+.channel-card .btn.on { background: var(--ok); }
 
 /* Daily Word */
 .modal.game { width: 520px; padding: 16px 20px 20px; position: relative; }

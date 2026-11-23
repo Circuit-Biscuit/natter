@@ -59,6 +59,8 @@ pub struct Settings {
     pub recent_emoji: Vec<String>,
     /// Starred GIFs, newest first.
     pub fav_gifs: Vec<Gif>,
+    /// Turn `:)` into 🙂 when sending, like Discord.
+    pub emoticons: bool,
 }
 
 /// A GIF from the GIF picker (KLIPY).
@@ -101,6 +103,7 @@ impl Default for Settings {
             show_members: true,
             recent_emoji: vec!["👍".into(), "❤️".into(), "😂".into(), "🎉".into(), "👀".into()],
             fav_gifs: vec![],
+            emoticons: true,
         }
     }
 }
@@ -936,7 +939,7 @@ pub const PENDING_BASE: Id = 1 << 52;
 
 pub fn send_message(channel: Id, content: String, attachments: Vec<Attachment>, silent: bool, reply_ping: bool) {
     let s = store();
-    let content = util::expand_shortcodes(content.trim());
+    let content = outgoing(&content);
     if content.is_empty() && attachments.is_empty() {
         return;
     }
@@ -1044,9 +1047,15 @@ pub fn discard_failed(channel: Id, nonce: String) {
     });
 }
 
+/// What the composer's text becomes when sent: `:shortcodes:` and (unless turned off) `:)` as emoji.
+fn outgoing(content: &str) -> String {
+    let content = util::expand_shortcodes(content.trim());
+    if store().settings.with_untracked(|st| st.emoticons) { util::emoticons(&content) } else { content }
+}
+
 pub fn edit_message(channel: Id, id: Id, content: String) {
     let s = store();
-    let content = util::expand_shortcodes(content.trim());
+    let content = outgoing(&content);
     s.editing.set(None);
     if s.message(channel, id).is_some_and(|m| m.content == content) {
         return;
@@ -1413,6 +1422,9 @@ fn apply_ready(r: Ready) {
         let last_space = util::storage_get("natter.space").and_then(|v| v.parse::<Id>().ok());
         let space = last_space.filter(|id| s.spaces.with_untracked(|v| v.iter().any(|x| x.id == *id)));
         open_space(space.or_else(|| s.spaces.with_untracked(|v| v.first().map(|x| x.id))));
+        if let Some(ch) = util::take_channel_path().filter(|&ch| s.channel(ch).is_some()) {
+            open_channel(ch);
+        }
     } else if let Some(c) = open {
         if s.channel(c).is_some() {
             fetch_latest(c);

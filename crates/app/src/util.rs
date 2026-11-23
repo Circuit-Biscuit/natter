@@ -186,3 +186,98 @@ pub fn expand_shortcodes(text: &str) -> String {
     out.push_str(rest);
     out
 }
+
+/// Discord's emoticons. Only a whole word converts, so links (`https://`) and `a:b` stay as they are.
+const EMOTICONS: &[(&str, &str)] = &[
+    (":)", "🙂"), (":-)", "🙂"), ("=)", "🙂"),
+    (":(", "🙁"), (":-(", "🙁"), ("=(", "🙁"),
+    (":D", "😃"), (":-D", "😃"), ("=D", "😃"),
+    (";)", "😉"), (";-)", "😉"),
+    (":P", "😛"), (":-P", "😛"), (":p", "😛"), (":-p", "😛"),
+    (":O", "😮"), (":-O", "😮"), (":o", "😮"),
+    (":|", "😐"), (":-|", "😐"),
+    (":/", "😕"), (":-/", "😕"), (":\\", "😕"),
+    (":'(", "😢"), (":')", "🥲"), (">:(", "😠"), (":*", "😘"),
+    ("<3", "❤️"), ("</3", "💔"),
+];
+
+/// `:)` → 🙂 and the rest of [`EMOTICONS`], outside code.
+pub fn emoticons(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for (n, part) in text.split('`').enumerate() {
+        if n > 0 {
+            out.push('`');
+        }
+        if n % 2 == 1 {
+            out.push_str(part);
+            continue;
+        }
+        for word in part.split_inclusive(char::is_whitespace) {
+            let tok = word.trim_end_matches(char::is_whitespace);
+            match EMOTICONS.iter().find(|(e, _)| *e == tok) {
+                Some((_, emoji)) => {
+                    out.push_str(emoji);
+                    out.push_str(&word[tok.len()..]);
+                }
+                None => out.push_str(word),
+            }
+        }
+    }
+    out
+}
+
+/// Where this server's links start (invites, channel links).
+pub fn link_base() -> String {
+    let b = crate::api::server();
+    if b.is_empty() { window().location().origin().unwrap_or_default() } else { b }
+}
+
+/// `<base>/channels/<space>/<channel>` → (base, channel).
+fn split_channel_link(url: &str) -> Option<(&str, Id)> {
+    let (base, ids) = url.split_once("/channels/")?;
+    let (space, channel) = ids.trim_end_matches('/').split_once('/')?;
+    space.parse::<Id>().ok()?;
+    Some((base, channel.parse().ok()?))
+}
+
+/// The channel a "Copy Channel Link" link points to, if it's on this server.
+pub fn channel_link(url: &str) -> Option<Id> {
+    let (base, ch) = split_channel_link(url)?;
+    (base == link_base() || crate::store::store().channel(ch).is_some()).then_some(ch)
+}
+
+/// The channels a message links to, once each.
+pub fn channel_links(text: &str) -> Vec<Id> {
+    let mut v: Vec<Id> = Vec::new();
+    for ch in text.split(|c: char| c.is_whitespace() || "<>()".contains(c)).filter_map(channel_link) {
+        if !v.contains(&ch) {
+            v.push(ch);
+        }
+    }
+    v
+}
+
+/// Opened from a channel link (web: `/channels/<space>/<channel>`): that channel, and the address bar goes back
+/// to the app's own address.
+pub fn take_channel_path() -> Option<Id> {
+    let path = window().location().pathname().ok()?;
+    let (_, ch) = split_channel_link(&path)?;
+    let base = format!("{}/", crate::api::default_server());
+    let _ = window().history().map(|h| h.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&base)));
+    Some(ch)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emoticons_and_links() {
+        assert_eq!(emoticons(":) hi :D\n<3"), "🙂 hi 😃\n❤️");
+        assert_eq!(emoticons("https://x.org a:b (:) :)."), "https://x.org a:b (:) :).");
+        assert_eq!(emoticons("`:)` ```\n:(\n``` ;)"), "`:)` ```\n:(\n``` 😉");
+        assert_eq!(split_channel_link("https://a.b/natter/channels/1/22"), Some(("https://a.b/natter", 22)));
+        assert_eq!(split_channel_link("/channels/1/22/"), Some(("", 22)));
+        assert_eq!(split_channel_link("https://a.b/channels/x/22"), None);
+    }
+}

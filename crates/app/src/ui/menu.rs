@@ -127,6 +127,12 @@ pub fn channel_menu(id: Id) -> Vec<Option<MenuItem>> {
     if can_permissions {
         v.push(Some(MenuItem::new("Permissions", move || s.modal.set(Some(Modal::ChannelPermissions(id))))));
     }
+    if let Some(sp) = c.space_id.filter(|_| c.kind != ChannelKind::Category) {
+        v.push(Some(MenuItem::new("Copy Channel Link", move || {
+            util::copy_text(&format!("{}/channels/{sp}/{id}", util::link_base()));
+            store().toast("Channel link copied", false);
+        })));
+    }
     v.push(Some(MenuItem::new("Copy ID", move || util::copy_text(&id.to_string()))));
     if can_mod {
         let name = c.name.clone();

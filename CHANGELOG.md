@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-11-23
+
+### New
+
+- **Drag and drop channels and categories in the channel list.** If you can manage channels, grab a channel and
+  drop it where it should go: a line shows where it will land. Drop it on another channel to sit above or below it
+  (in that channel's category), or on a category's name to put it at the top of that category. Categories drag the
+  same way, between other categories. Everyone sees the new order at once. Works on desktop and the web (phones have
+  no drag and drop; use the channel's settings there).
+- **Channel links.** Right-click a channel › **Copy Channel Link**. Paste the link in a message and it shows as a
+  card under it: **Join Voice** for a voice channel (with who's in it), **Go to Channel** for a text channel, **Open
+  Thread** for a thread. Someone who can't see the channel gets a "No access" card. Inside the message the link
+  shows as the channel's name, like a #channel mention; a message that's only the link shows just the card. Opening
+  the link in a browser opens the web app on that channel.
+- **Emoticons become emoji when you send**, as in Discord: `:)` 🙂, `:(` 🙁, `:D` 😃, `;)` 😉, `:P` 😛, `:O` 😮,
+  `:|` 😐, `:/` 😕, `:'(` 😢, `>:(` 😠, `:*` 😘, `<3` ❤️ and a few more. Only a whole word converts, so links and
+  times like `10:30` stay as they are, and code is never touched. Turn it off in Settings › Appearance › **Convert
+  emoticons**.
+
+### Fixed
+
+- Radio buttons (Notifications › Notify me about, Voice & video › Input mode) sat centred above shouting upper-case
+  labels. They're full-width rows now, with the picked one highlighted. The checkboxes in the create / edit channel
+  windows had the same problem and line up properly again.
+- **Move up / Move down** in a channel's settings sometimes did nothing (the channel ended up with the same number
+  as its neighbour). They now swap it with the channel above or below.
+- GitHub release pages only ever said "Natter x.y.z": the release workflow never found the changelog. Every release
+  now carries its changelog section, and a version without one isn't released.
+
 ## [0.8.0] — 2026-11-21
 
 - **GIFs, like in Discord.** A **GIF** button next to the emoji button opens a GIF picker: categories, trending

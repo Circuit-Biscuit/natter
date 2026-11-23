@@ -42,6 +42,8 @@ jobs:
             echo "v$VERSION is already released; nothing to do."
             echo "release=false" >> "$GITHUB_OUTPUT"
           else
+            # Every release gets its changelog as its release notes: no section, no release.
+            grep -q "^## \[$VERSION\]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## [$VERSION]' section"; exit 1; }
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
       # Builds upload straight into a draft release (no Actions artifact storage, which has a shared quota).
@@ -145,8 +147,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Release notes from CHANGELOG.md
         run: |
-          awk -v v="$VERSION" '$0 ~ "^## \[" v "\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "Natter $VERSION" > notes.md
+          awk -v v="## [$VERSION]" 'index($0, v) == 1 {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > notes.md
+          cat notes.md
+          [ -s notes.md ]
       - name: Update manifest, checksums and publish
         run: |
           gh release download "v$VERSION" --dir out --skip-existing

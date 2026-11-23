@@ -223,11 +223,7 @@ fn InviteDialog(space: Id) -> impl IntoView {
     };
     make();
     let link = move || {
-        invite.get().map(|i| {
-            let base = api::server();
-            let base = if base.is_empty() { util::window().location().origin().unwrap_or_default() } else { base };
-            format!("{base}/invite/{}", i.code)
-        })
+        invite.get().map(|i| format!("{}/invite/{}", util::link_base(), i.code))
     };
     view! {
         <h2>{move || format!("Invite people to {}", s.space(space).map(|s| s.name).unwrap_or_default())}</h2>
@@ -378,14 +374,18 @@ fn EditChannel(id: Id) -> impl IntoView {
             }
         });
     };
-    let move_by = move |delta: i32| {
-        let Some(c) = store().channel(id) else { return };
-        let body = UpdateChannel { position: Some(c.position + delta), ..Default::default() };
-        spawn_local(async move {
-            if let Ok(c) = api::call::<_, Channel>("PATCH", &format!("/api/channels/{id}"), &body).await {
-                crate::store::apply(Event::ChannelUpdate(c));
-            }
-        });
+    // Swap places with the neighbour above / below, as dragging it there would.
+    let move_by = move |delta: isize| {
+        let s = store();
+        let Some(c) = s.channel(id) else { return };
+        let chans = c.space_id.and_then(|sp| s.space(sp)).map(|sp| sp.channels).unwrap_or_default();
+        let group: Vec<Id> = super::sidebar::ordered_channels(&chans).into_iter()
+            .filter(|x| if category { x.kind == ChannelKind::Category } else { x.kind != ChannelKind::Category && x.parent_id == c.parent_id })
+            .map(|x| x.id).collect();
+        let next = group.iter().position(|&x| x == id).and_then(|i| i.checked_add_signed(delta)).and_then(|i| group.get(i));
+        if let Some(&target) = next {
+            super::sidebar::move_channel(id, target, delta > 0);
+        }
     };
     view! {
         <h2>{if category { "Edit category" } else { "Edit channel" }}</h2>

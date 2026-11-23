@@ -591,6 +591,9 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
     let jumbo = util::only_emoji(&content) && m.reply.is_none();
     // Only a link to a picture / GIF / video: show just that (as Discord does), unless previews are off.
     let bare_media = matches!(&m.embeds[..], [e] if matches!(e.kind, EmbedKind::Image | EmbedKind::Video) && e.url == content.trim());
+    // Links to our channels get a card of their own; one alone in a message shows only the card.
+    let channel_links = util::channel_links(&content);
+    let bare_link = util::channel_link(content.trim()).is_some();
     let edited_at = m.edited_at;
 
     view! {
@@ -620,7 +623,7 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
                     let content = content.clone();
                     view! {
                         <div class="msg-content" class:jumbo=jumbo>
-                            {(!content.is_empty() && !(bare_media && s.settings.with(|st| st.embeds))).then(|| markdown::render(&content, space))}
+                            {(!content.is_empty() && !bare_link && !(bare_media && s.settings.with(|st| st.embeds))).then(|| markdown::render(&content, space))}
                             {edited_at.map(|t| view! { <span class="edited" title=util::long_time(t)>"(edited)"</span> })}
                         </div>
                     }.into_any()
@@ -630,8 +633,11 @@ pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
                 })}
                 {
                     let embeds = m.embeds.clone();
-                    move || s.settings.with(|st| st.embeds).then(|| embeds.clone().into_iter().map(|e| view! { <super::embed::EmbedView e=e/> }).collect_view())
+                    move || s.settings.with(|st| st.embeds).then(|| embeds.clone().into_iter()
+                        .filter(|e| util::channel_link(&e.url).is_none())
+                        .map(|e| view! { <super::embed::EmbedView e=e/> }).collect_view())
                 }
+                {channel_links.into_iter().map(|c| view! { <super::embed::ChannelCard channel=c/> }).collect_view()}
                 {(!m.reactions.is_empty()).then(|| view! { <Reactions m=m.clone() space=space/> })}
                 {m.thread.clone().map(|t| view! { <ThreadCard t=t space=space/> })}
                 {move || failed().then(|| {

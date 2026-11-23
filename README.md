@@ -29,12 +29,13 @@ A self-hosted chat server with apps for Windows, macOS, Linux and Android — bu
 Messages appear the moment you press Enter, before the server has even replied, and quietly retry if the network
 hiccups. A retried message can never post twice.
 
-- **Spaces, channels, categories** — text channels, voice channels and announcement channels, grouped in collapsible categories.
+- **Spaces, channels, categories** — text channels, voice channels and announcement channels, grouped in collapsible categories; drag them into order right in the channel list.
+- **Channel links** — "Copy Channel Link" on any channel; pasted in a message it becomes a card with **Join Voice** or **Go to Channel**.
 - **Direct messages and groups** — one-to-one or up to ten people, with calls built in.
 - **Threads** — spin a side conversation off any message; it opens beside the channel, shows a live card under the original message, sits under its channel in the sidebar, and archives itself after a quiet week.
 - **Replies, reactions, edits, pins** — reply with or without a ping, react with any emoji, edit with ↑, pin what matters.
 - **Mentions that work** — `@person`, `@everyone`, `@here` and `#channel` autocomplete as you type; mentions light up and count on every unread badge.
-- **Markdown** — **bold**, *italic*, __underline__, ~~strike~~, `code`, code blocks with a copy button, quotes, headings, lists, ||spoilers||, masked links, jumbo emoji.
+- **Markdown** — **bold**, *italic*, __underline__, ~~strike~~, `code`, code blocks with a copy button, quotes, headings, lists, ||spoilers||, masked links, jumbo emoji; `:)` becomes 🙂 as you send (can be turned off).
 - **Unreads done right** — a red **NEW** line where you left off, "jump to present", mark as read with Esc, mark unread with Alt+click; read state syncs across your devices.
 - **Search** — full-text search across a space or a conversation, results beside the chat.
 - **Files** — drag and drop, paste screenshots, or pick from Nextcloud; images, video and audio play inline.
@@ -122,6 +123,7 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 | Area | Status |
 |---|---|
 | Spaces, text / voice / announcement channels, categories, DMs and groups | ✅ |
+| Drag-and-drop channel and category order; channel links with Join Voice / Go to Channel cards | ✅ (drag: desktop and web) |
 | Messages: send, edit, delete, reply, reactions, pins, mentions, Markdown, search | ✅ |
 | Threads: from any message or the channel, side panel, sidebar, auto-archive, archived list | ✅ |
 | Unread markers, mention counts, read sync across devices | ✅ |
