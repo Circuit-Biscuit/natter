@@ -142,17 +142,87 @@ fn Loading() -> impl IntoView {
     }
 }
 
+/// The open channel has a member list (space channels and group DMs, not voice channels).
+fn has_members() -> bool {
+    let s = store();
+    s.nav.get().channel.and_then(|c| s.channel(c)).is_some_and(|c| {
+        (c.space_id.is_some() || c.kind == ChannelKind::GroupDm) && c.kind != ChannelKind::Voice
+    })
+}
+
+/// Phone swipes. Right (finger moving right): channel list from the chat, chat from the members; both are "back",
+/// like the arrow. Left: chat from the channel list, members from the chat.
+fn swipe(right: bool) {
+    let s = store();
+    if s.modal.with_untracked(Option::is_some) || s.menu.with_untracked(Option::is_some) || s.popout.with_untracked(Option::is_some) {
+        return;
+    }
+    let overlay = s.thread.with_untracked(Option::is_some) || s.search.with_untracked(Option::is_some);
+    match (s.pane.get_untracked(), right) {
+        (Pane::Chat | Pane::Members, true) => crate::store::go_back(),
+        (Pane::Nav, false) if s.nav.with_untracked(|n| n.channel.is_some()) => {
+            crate::store::push_layer();
+            s.pane.set(Pane::Chat);
+        }
+        (Pane::Chat, false) if !overlay && untrack(has_members) => {
+            crate::store::push_layer();
+            s.pane.set(Pane::Members);
+        }
+        _ => {}
+    }
+}
+
+/// A swipe may start anywhere in the app except on text fields, sliders and things that scroll sideways.
+fn swipe_allowed(target: Option<web_sys::EventTarget>) -> bool {
+    use wasm_bindgen::JsCast;
+    let Some(mut el) = target.and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else { return false };
+    if el.closest(".shell").ok().flatten().is_none() || el.closest("input, textarea, select, [contenteditable]").ok().flatten().is_some() {
+        return false;
+    }
+    loop {
+        if el.class_list().contains("shell") {
+            return true;
+        }
+        if el.scroll_width() > el.client_width() + 1 {
+            let x = util::window().get_computed_style(&el).ok().flatten().and_then(|cs| cs.get_property_value("overflow-x").ok());
+            if matches!(x.as_deref(), Some("auto" | "scroll")) {
+                return false;
+            }
+        }
+        let Some(p) = el.parent_element() else { return true };
+        el = p;
+    }
+}
+
 #[component]
 fn Shell() -> impl IntoView {
     let s = store();
     let show_members = move || {
-        let Some(c) = s.nav.get().channel.and_then(|c| s.channel(c)) else { return false };
-        let has_members = (c.space_id.is_some() || c.kind == ChannelKind::GroupDm) && c.kind != ChannelKind::Voice;
         if s.mobile.get() {
-            return has_members && s.pane.get() == Pane::Members;
+            return has_members() && s.pane.get() == Pane::Members;
         }
-        s.settings.with(|st| st.show_members) && s.search.with(|r| r.is_none()) && s.thread.with(|t| t.is_none()) && has_members
+        s.settings.with(|st| st.show_members) && s.search.with(|r| r.is_none()) && s.thread.with(|t| t.is_none()) && has_members()
     };
+    // Phones: swipe between the channel list, the chat and the member list.
+    let start = StoredValue::new(None::<(i32, i32, natter_proto::Millis)>);
+    let down = window_event_listener(ev::touchstart, move |e| {
+        let one = e.touches().length() == 1 && s.mobile.get_untracked();
+        start.set_value(e.touches().get(0).filter(|_| one && swipe_allowed(e.target())).map(|t| (t.client_x(), t.client_y(), util::now())));
+    });
+    let up = window_event_listener(ev::touchend, move |e| {
+        let (Some((x0, y0, t0)), Some(t)) = (start.get_value(), e.changed_touches().get(0)) else { return };
+        start.set_value(None);
+        let (dx, dy) = (t.client_x() - x0, t.client_y() - y0);
+        // A quick, mostly sideways stroke; not a scroll, a long press or a text selection.
+        let selecting = util::window().get_selection().ok().flatten().is_some_and(|sel| !sel.is_collapsed());
+        if dx.abs() >= 60 && dy.abs() * 2 < dx.abs() && util::now() - t0 < 800 && !selecting {
+            swipe(dx > 0);
+        }
+    });
+    on_cleanup(move || {
+        down.remove();
+        up.remove();
+    });
     // Phones show one column at a time; CSS hides the others so they keep their scroll position.
     let pane = move || {
         if !s.mobile.get() {

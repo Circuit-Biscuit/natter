@@ -15,6 +15,10 @@
   on every Natter server once it runs this version.
 - **Resizable channel list.** Drag its right edge (200–480 px), or focus the edge and use the arrow keys;
   double-click resets it. Each computer or browser remembers its own width.
+- **Swipe between screens on phones.** From the chat, swipe right for the channel list and left for the member
+  list; swipe left on the channel list to get back to the chat, and right on the member list. Swiping right works
+  like the back arrow (it closes an open thread or search first). Swipes that start on a text field or on something
+  that scrolls sideways, like a wide code block, are left alone.
 - **Privacy policy** linked in Settings › My account; the
   [privacy policy](https://circuit-biscuit.com/privacy/natter/) says what the apps and our own server keep.
 
