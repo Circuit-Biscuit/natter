@@ -1,4 +1,4 @@
-package com.circuitbiscuit.natter
+package com.CircuitBiscuit.natter
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

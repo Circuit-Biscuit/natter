@@ -42,6 +42,14 @@
   6.2. Simulcast is tested in Chromium-based apps (Windows, Android, web in Chrome or Edge); a sender whose browser
   can't do it is forwarded as one stream, as before.
 
+### Changed
+
+- **Android: the app's ID is now `com.CircuitBiscuit.natter`**, the one it will have on Google Play. Android treats
+  that as a different app, so this version installs next to the old Natter instead of replacing it. Install it, sign
+  in, then uninstall the old one (it would keep showing the update banner). Messages and synced settings live on the
+  server, so nothing is lost; only this phone's own choices (microphone, camera quality) start fresh. Desktop apps
+  keep their ID and update as usual.
+
 ## [0.9.0] — 2026-11-23
 
 ### New
