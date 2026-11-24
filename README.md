@@ -55,7 +55,8 @@ backend" connects every participant to every other, which falls apart beyond fou
 - **Voice channels** you drop into and out of, Discord-style, and **calls in any DM** with ringing.
 - **Camera, screen sharing (with sound), mute, deafen**, speaking indicators, focus any tile, full screen.
 - **Stream quality you control** — Go Live presets (Text & detail, Balanced, Smooth motion) or your own resolution, frame rate and bitrate, and whether to keep it sharp or smooth when the network is tight; change any of it while live, see exactly what goes out and what holds it back, and hover a share to see what you receive. Camera resolution, frame rate and bitrate too.
-- **Push to talk** — even while Natter is in the background (desktop app) — or voice activity with noise suppression, echo cancellation and gain control.
+- **Push to talk** — even while Natter is in the background (desktop app) — or voice activity, with echo cancellation and gain control.
+- **AI noise suppression** (RNNoise, on your device): keyboard clicks, fans and background chatter don't reach the call.
 - **One UDP port** for all call media, encrypted in transit (DTLS-SRTP). Calls reconnect by themselves after a network change.
 
 ## Made for Nextcloud
@@ -210,7 +211,8 @@ cd crates/desktop && cargo tauri android build --apk --target aarch64 --target a
 | Server | `crates/server` | axum HTTP API, WebSocket gateway, SQLite (WAL + FTS5), file store, Nextcloud bridge |
 | Calls | `crates/server/src/sfu.rs` | SFU on [str0m](https://github.com/algesten/str0m): one UDP socket, rooms, renegotiation, keyframe routing |
 | App | `crates/app` | the whole UI in Rust with [Leptos](https://leptos.dev), compiled to WebAssembly by trunk |
-| Media glue | `crates/app/glue.js` | the only JavaScript: WebRTC, synthesized sounds, desktop bridge |
+| Media glue | `crates/app/glue.js` | the main JavaScript: WebRTC, synthesized sounds, desktop bridge |
+| Noise suppression | `crates/denoise`, `crates/app/denoise.js` | RNNoise ([nnnoiseless](https://github.com/jneem/nnnoiseless)) built to its own small wasm module, run on the mic in an AudioWorklet |
 | Desktop & Android | `crates/desktop` | [Tauri 2](https://tauri.app) shell: tray, notifications, numbered badge, global keybinds, autostart, installers; the same crate builds the Android app (`gen/android`) |
 
 Design notes, the full API and the gateway protocol: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -247,7 +249,8 @@ use it, run it for your team, change it and share it. If you let people use a ch
 them its source under the same licence.
 
 Built with Rust, axum, tokio, sqlx/SQLite, str0m, Leptos, Tauri, reqwest and argon2. Feature research from
-Nextcloud Talk (AGPL-3.0; no Talk code is used). Emoji data from the `emojis` crate (Unicode / gemoji).
+Nextcloud Talk (AGPL-3.0; no Talk code is used). Emoji data from the `emojis` crate (Unicode / gemoji). Noise
+suppression is Xiph's [RNNoise](https://github.com/xiph/rnnoise) through its Rust port nnnoiseless (both BSD-3-Clause).
 
 Daily Word's word lists (`crates/server/words/`) are built from
 [FrequencyWords](https://github.com/hermitdave/FrequencyWords) by Hermit Dave (CC BY-SA 4.0, from OpenSubtitles) and

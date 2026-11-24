@@ -7,7 +7,8 @@ let pc = null;
 let dc = null;
 let handler = null;
 let me = 0;
-let opts = { muted: false, deafened: false, input: "", output: "", camera: "", ptt: false, noise: true };
+// noise: "off" | "standard" (the browser's own filter) | "strong" (RNNoise, see `denoised`); v: the app version.
+let opts = { muted: false, deafened: false, input: "", output: "", camera: "", ptt: false, noise: "strong", v: "" };
 // Screen share: height 0 = the screen's own; kbps 0 = auto (from size and frame rate); motion = keep it smooth
 // (drop resolution first) rather than sharp (drop frames first).
 let stream = { height: 1080, fps: 30, kbps: 0, motion: false, audio: true };
@@ -39,26 +40,57 @@ function micConstraints() {
   return {
     deviceId: opts.input ? { exact: opts.input } : undefined,
     echoCancellation: true,
-    noiseSuppression: opts.noise,
+    // "strong" leaves the raw sound to RNNoise: it works best on audio no other filter has touched.
+    noiseSuppression: opts.noise === "standard",
     autoGainControl: true,
   };
 }
 
 async function getMic() {
+  let raw = null;
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
-    return s.getAudioTracks()[0];
+    raw = (await navigator.mediaDevices.getUserMedia({ audio: micConstraints() })).getAudioTracks()[0];
   } catch (e) {
     if (opts.input) {
       // The saved device is gone (unplugged headset): fall back to the default one.
       opts.input = "";
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
-        return s.getAudioTracks()[0];
+        raw = (await navigator.mediaDevices.getUserMedia({ audio: micConstraints() })).getAudioTracks()[0];
       } catch (_) {}
     }
+  }
+  if (!raw) {
     emit({ type: "warn", text: "No microphone available — you joined listen-only." });
     return null;
+  }
+  return opts.noise === "strong" ? denoised(raw) : raw;
+}
+
+// "Strong" noise suppression: the mic goes through RNNoise (denoise.js + natter_denoise.wasm, next to the app,
+// in their own 48 kHz audio context) and the cleaned track is what the call, the meters and mute use. Stopping
+// it stops the mic too. If anything here fails, the call just gets the plain mic.
+let dnWasm = null;
+async function denoised(raw) {
+  try {
+    const v = "?v=" + opts.v; // a new release never pairs a cached worklet with a new module
+    dnWasm = dnWasm || (await (await fetch("natter_denoise.wasm" + v)).arrayBuffer());
+    const ctx = new AudioContext({ sampleRate: 48000 });
+    await ctx.audioWorklet.addModule("denoise.js" + v);
+    const node = new AudioWorkletNode(ctx, "natter-denoise", { processorOptions: { wasm: dnWasm }, outputChannelCount: [1] });
+    const dest = ctx.createMediaStreamDestination();
+    ctx.createMediaStreamSource(new MediaStream([raw])).connect(node).connect(dest);
+    if (ctx.state === "suspended") await ctx.resume();
+    const track = dest.stream.getAudioTracks()[0];
+    const stop = track.stop.bind(track);
+    track.stop = () => {
+      stop();
+      raw.stop();
+      ctx.close();
+    };
+    return track;
+  } catch (e) {
+    console.warn("Noise suppression unavailable, using the plain microphone:", e);
+    return raw;
   }
 }
 
@@ -483,6 +515,8 @@ export async function voiceSetDevices(input, output, noise) {
     local.mic = await getMic();
     await senders.mic.sender.replaceTrack(local.mic);
     if (old) old.stop();
+    // The new meter starts quiet and only reports changes: turn the old one's speaking ring off first.
+    if (meters.get("local")?.speaking) emit({ type: "speaking", user: me, on: false });
     meters.delete("local");
     if (local.mic) addMeter("local", local.mic);
     applyMicEnabled();

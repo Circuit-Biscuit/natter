@@ -1,4 +1,4 @@
-# Every push and pull request: protocol + server tests (incl. the end-to-end test with a fake Nextcloud),
+# Every push and pull request: protocol, server, app and noise-suppression tests (incl. the end-to-end test with a fake Nextcloud),
 # and a release build of the WebAssembly app. Installers are built by release.yml.
 name: CI
 
@@ -22,6 +22,6 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: trunk
-      - run: cargo test --locked -p natter-proto -p natter-server -p natter-app
+      - run: cargo test --locked -p natter-proto -p natter-server -p natter-app -p natter-denoise
       - run: trunk build --release
         working-directory: crates/app

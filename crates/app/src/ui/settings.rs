@@ -720,11 +720,20 @@ fn VoiceTab() -> impl IntoView {
                 <span class="muted small">{if desktop::is_tauri() { "Works even when Natter is in the background." } else { "In the browser it only works while Natter has focus." }}</span>
             </div>
         </Show>
-        <h3>"Processing"</h3>
-        <label class="check"><input type="checkbox" prop:checked=move || prefs.with(|p| p.noise_suppression)
-            on:change=move |e| { let v = event_target_checked(&e); set(Box::new(move |p| p.noise_suppression = v)) }/>
-            "Noise suppression"</label>
-        <p class="muted small">"Echo cancellation and automatic gain control are always on."</p>
+        <h3>"Noise suppression"</h3>
+        <div class="seg">
+            {[("off", "Off", false, false), ("standard", "Standard", true, false), ("strong", "Strong (AI)", true, true)].into_iter()
+                .map(|(mode, label, on, ai)| view! {
+                    <button class:active=move || prefs.with(|p| voice::noise_mode(p) == mode)
+                        on:click=move |_| set(Box::new(move |p| { p.noise_suppression = on; p.noise_ai = ai; }))>{label}</button>
+                }).collect_view()}
+        </div>
+        <p class="muted small">{move || match prefs.with(voice::noise_mode) {
+            "strong" => "An AI model (RNNoise) takes out keyboard clicks, fans, traffic and background chatter before anyone hears you. It runs on this device; nothing leaves it.",
+            "standard" => "The system's own filter: takes the edge off steady hum and fan noise, little else.",
+            _ => "Your microphone as it is.",
+        }}</p>
+        <p class="muted small">"Echo cancellation and automatic gain control are always on. A change applies to a call you're in right away."</p>
     }
 }
 

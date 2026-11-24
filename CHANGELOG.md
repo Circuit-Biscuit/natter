@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### New
+
+- **AI noise suppression.** Settings › Voice & video › Noise suppression is now Off / Standard / **Strong (AI)**,
+  and Strong is the default. It runs your microphone through RNNoise, a small neural network made for calls, on
+  your own device (nothing leaves it): keyboard and mouse clicks, fans, traffic and background chatter are taken
+  out before anyone hears you, while your voice comes through. It adds about 10 ms. Standard is the old setting,
+  the system's own filter, which only takes the edge off steady hum. If you had turned noise suppression off,
+  it stays off. A change applies to a call you're in right away.
+
+### Fixed
+
+- Switching microphone or noise suppression during a call could leave your speaking ring lit until you spoke
+  again.
+
 ## [0.11.0] — 2026-11-23
 
 ### New

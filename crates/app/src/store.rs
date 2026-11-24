@@ -122,7 +122,10 @@ pub struct VoicePrefs {
     pub push_to_talk: bool,
     /// `KeyboardEvent.code`, e.g. "Backquote".
     pub ptt_key: String,
+    /// Off / Standard (the browser's filter) / Strong (RNNoise): see `voice::noise_mode`.
     pub noise_suppression: bool,
+    /// With `noise_suppression`: RNNoise ("Strong") instead of the browser's filter.
+    pub noise_ai: bool,
     /// Custom keybinds (global in the desktop app).
     pub keybinds: Vec<Keybind>,
     /// Desktop: the close button hides Natter to the tray instead of quitting.
@@ -191,6 +194,7 @@ impl Default for VoicePrefs {
             push_to_talk: false,
             ptt_key: "Backquote".into(),
             noise_suppression: true,
+            noise_ai: true,
             keybinds: vec![],
             close_to_tray: true,
             start_minimized: false,

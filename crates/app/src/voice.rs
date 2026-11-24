@@ -37,7 +37,7 @@ extern "C" {
     #[wasm_bindgen(js_name = voiceDevices)]
     async fn js_devices() -> JsValue;
     #[wasm_bindgen(js_name = voiceSetDevices)]
-    async fn js_set_devices(input: &str, output: &str, noise: bool);
+    async fn js_set_devices(input: &str, output: &str, noise: &str);
     #[wasm_bindgen(js_name = voiceSetCameraDevice, catch)]
     async fn js_set_camera_device(id: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(js_name = cameraPreview, catch)]
@@ -159,13 +159,23 @@ pub fn init() {
     cb.forget();
 }
 
+/// "off", "standard" (the browser's own filter: steady hum only) or "strong" (RNNoise, crates/denoise).
+pub fn noise_mode(p: &crate::store::VoicePrefs) -> &'static str {
+    match (p.noise_suppression, p.noise_ai) {
+        (false, _) => "off",
+        (true, false) => "standard",
+        (true, true) => "strong",
+    }
+}
+
 fn opts_json() -> String {
     let s = store();
     let p = s.prefs.get_untracked();
     let c = s.call.get_untracked();
     serde_json::json!({
         "muted": c.muted, "deafened": c.deafened, "input": p.input, "output": p.output, "camera": p.camera,
-        "ptt": p.push_to_talk, "noise": p.noise_suppression, "stream": p.stream, "cam": p.cam, "layers": c.layers,
+        "ptt": p.push_to_talk, "noise": noise_mode(&p), "stream": p.stream, "cam": p.cam, "layers": c.layers,
+        "v": env!("CARGO_PKG_VERSION"),
     })
     .to_string()
 }
@@ -371,7 +381,7 @@ pub fn apply_devices() {
     let s = store();
     let p = s.prefs.get_untracked();
     spawn_local(async move {
-        js_set_devices(&p.input, &p.output, p.noise_suppression).await;
+        js_set_devices(&p.input, &p.output, noise_mode(&p)).await;
         if js_set_camera_device(&p.camera).await.is_err() {
             s.toast("Couldn't switch to that camera. Is another app using it?", true);
         }

@@ -158,6 +158,12 @@ One UDP port, one thread, many [`str0m`](https://github.com/algesten/str0m) `Rtc
 * Keyframe requests (PLI/FIR) are routed back to the publisher, throttled to 1/s.
 * A dead connection (ICE timeout) or `DELETE /api/voice` removes the voice state and broadcasts `VoiceLeave`.
 * Speaking indicators are computed in the app from audio levels; nothing goes over the network.
+* Noise suppression (Settings › Voice & video): "Standard" is the browser's `noiseSuppression` constraint, which
+  only tames steady hum. "Strong" (the default) turns that off and runs the mic through RNNoise instead:
+  `crates/denoise` (nnnoiseless, plain `extern "C"` exports, no imports) is built to `natter_denoise.wasm` by a
+  Trunk pre-build hook, and `denoise.js`, an AudioWorklet in its own 48 kHz AudioContext, cleans 10 ms frames
+  (adds ~10 ms). The cleaned track is what the call, the speaking meter and mute use; stopping it stops the mic.
+  Both files load with `?v=<version>`; if anything fails, the call gets the plain mic.
 
 ### Server notes
 
@@ -239,7 +245,8 @@ Leptos 0.8, client-side rendered, built by `trunk` into `crates/app/dist`.
 | `store.rs` | All state as signals: users, spaces, channels, messages per channel, read states, presence, voice, typing, UI |
 | `markdown.rs` | Discord-flavoured Markdown → view nodes (never `innerHTML`, so messages cannot inject script into the shell) |
 | `ui/*` | Rail, channel list, chat, composer, member list, popouts, menus, modals, settings, call view |
-| `glue.js` + `voice.rs`, `sound.rs` | The only JavaScript: WebRTC (devices, the one peer connection to the SFU, tracks, speaking detection, push-to-talk), synthesized sounds, Tauri bridge |
+| `glue.js` + `voice.rs`, `sound.rs` | The main JavaScript: WebRTC (devices, the one peer connection to the SFU, tracks, speaking detection, push-to-talk), synthesized sounds, Tauri bridge |
+| `denoise.js` + `crates/denoise` | The audio-thread side of "Strong" noise suppression (RNNoise in wasm) |
 | `desktop.rs` | Bridge to the Tauri shell (notifications, badge, push-to-talk), with browser fallbacks |
 
 ## Desktop shell

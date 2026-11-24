@@ -4,3 +4,10 @@ dist = "dist"
 
 [serve]
 port = 1420
+
+# "Strong" noise suppression (crates/denoise) is its own small wasm module for the audio worklet (denoise.js);
+# index.html copies it next to the app. Always a release build: debug RNNoise can't keep up in real time.
+[[hooks]]
+stage = "pre_build"
+command = "cargo"
+command_arguments = ["build", "--release", "-p", "natter-denoise", "--target", "wasm32-unknown-unknown"]
