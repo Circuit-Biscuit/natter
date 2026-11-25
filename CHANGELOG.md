@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.12.0] — 2026-11-25
 
 ### New
 
@@ -28,6 +28,13 @@
   "i" plus an invisible dot, so the name never matched (and signing up with it failed). "İ" and "ı" now count as
   "i" in usernames, on every server running this version, whichever app version signs in. The username box on
   phones no longer capitalizes or spell-checks what you type.
+
+### For people who run or build Natter
+
+- The server's database gains an optional e-mail per account and a table for reset codes (migration 0010); it
+  updates itself on start. Reset e-mails stay off until you set `NATTER_SMTP_URL` and `NATTER_SMTP_FROM`.
+- Noise suppression lives in `crates/denoise` (RNNoise through nnnoiseless, BSD-3), built to its own small wasm
+  module by a Trunk pre-build hook. `trunk build` needs nothing new.
 
 ## [0.11.0] — 2026-11-23
 
