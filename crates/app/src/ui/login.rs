@@ -118,7 +118,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
         spawn_local(async move {
             let r: Result<AuthResp, api::Error> = if register {
                 let body = RegisterReq {
-                    username: username.get_untracked().trim().to_lowercase(),
+                    username: natter_proto::username_key(&username.get_untracked()),
                     password: password.get_untracked(),
                     display_name: Some(display.get_untracked()).filter(|d| !d.trim().is_empty()),
                     invite: Some(invite_code(&invite.get_untracked())).filter(|c| !c.is_empty()),
@@ -127,7 +127,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                 api::call("POST", "/api/auth/register", &body).await
             } else {
                 let body = LoginReq {
-                    username: username.get_untracked().trim().to_lowercase(),
+                    username: natter_proto::username_key(&username.get_untracked()),
                     password: password.get_untracked(),
                     device: Some(device_name()),
                 };
@@ -274,7 +274,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                         on:click=move |_| mode_register.set(true)>"Create account"</button>
                                 </div>
                                 <label>"Username"
-                                    <input autocomplete="username" required=true minlength="2" maxlength="32"
+                                    <input autocomplete="username" autocapitalize="none" spellcheck="false" required=true minlength="2" maxlength="32"
                                         prop:value=move || username.get() on:input=move |e| username.set(event_target_value(&e))/>
                                 </label>
                                 <Show when=move || mode_register.get()>

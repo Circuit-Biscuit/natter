@@ -15,6 +15,10 @@
 
 - Switching microphone or noise suppression during a call could leave your speaking ring lit until you spoke
   again.
+- Usernames typed on a Turkish keyboard didn't sign in when they had a capital i: that keyboard's "İ" turned into
+  "i" plus an invisible dot, so the name never matched (and signing up with it failed). "İ" and "ı" now count as
+  "i" in usernames, on every server running this version, whichever app version signs in. The username box on
+  phones no longer capitalizes or spell-checks what you type.
 
 ## [0.11.0] — 2026-11-23
 

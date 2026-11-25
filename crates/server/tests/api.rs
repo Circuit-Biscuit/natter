@@ -188,6 +188,9 @@ async fn full_flow() {
     let t1 = a["token"].as_str().unwrap().to_string();
     let u1 = a["user"]["id"].as_i64().unwrap();
     assert_eq!(a["user"]["admin"], json!(true));
+    // Case doesn't matter, also from a Turkish keyboard (capital i = "İ").
+    let (s, _) = call(&app, "POST", "/api/auth/login", None, Some(json!({"username": " ALİCE", "password": "hunter2hunter2"}))).await;
+    assert_eq!(s, StatusCode::OK);
 
     // Space with default channels.
     let (s, space) = call(

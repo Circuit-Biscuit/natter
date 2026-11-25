@@ -1041,6 +1041,13 @@ pub fn parse_user_mentions(content: &str) -> Vec<Id> {
     out
 }
 
+/// What someone typed as a username, the way it's stored: trimmed and lower-case, also from a Turkish keyboard,
+/// whose capital i is "İ" (Unicode lower-cases it to "i" plus a combining dot) and whose "ı" stands for an i
+/// here (usernames are ASCII). Apps before 0.12 lower-case before sending, so the stray dot goes too.
+pub fn username_key(typed: &str) -> String {
+    typed.trim().replace(['İ', 'ı'], "i").to_lowercase().replace('\u{307}', "")
+}
+
 /// Usernames: 2-32 of a-z, 0-9, `_` and `.`.
 pub fn valid_username(name: &str) -> bool {
     (2..=32).contains(&name.len())
@@ -1134,6 +1141,9 @@ mod tests {
         assert!(valid_username("alice.k_2"));
         assert!(!valid_username("Alice"));
         assert!(!valid_username("a"));
+        for typed in [" Asilİstanbullu ", "AsilIstanbullu", "asılistanbullu", "asili\u{307}stanbullu"] {
+            assert_eq!(username_key(typed), "asilistanbullu", "{typed:?}");
+        }
         assert_eq!(channel_slug("  Release Notes!! 2 "), "release-notes-2");
         assert_eq!(channel_slug("--a  -  b--"), "a-b");
         assert_eq!(id_time(5 << 10), EPOCH_MS + 5);

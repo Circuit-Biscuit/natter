@@ -11,7 +11,7 @@ use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use natter_proto::{
     AuthResp, ChangePassword, DeleteAccount, Event, Id, LoginReq, MAX_ABOUT_LEN, RegisterReq,
-    Registration, ServerInfo, SessionInfo, Status, UpdateMe, User, valid_username,
+    Registration, ServerInfo, SessionInfo, Status, UpdateMe, User, username_key, valid_username,
 };
 use sha2::{Digest, Sha256};
 
@@ -163,7 +163,7 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
 }
 
 pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<Json<AuthResp>> {
-    let username = req.username.trim().to_lowercase();
+    let username = username_key(&req.username);
     if !valid_username(&username) {
         return Err(bad("usernames are 2-32 characters: a-z, 0-9, _ and ."));
     }
@@ -229,7 +229,7 @@ pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<J
 }
 
 pub async fn login(State(st): State<St>, Json(req): Json<LoginReq>) -> R<Json<AuthResp>> {
-    let username = req.username.trim().to_lowercase();
+    let username = username_key(&req.username);
     {
         let mut fails = st.login_fails.lock().unwrap();
         let list = fails.entry(username.clone()).or_default();
