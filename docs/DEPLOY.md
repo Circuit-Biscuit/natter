@@ -24,6 +24,8 @@ NATTER_PUBLIC_IP=203.0.113.10         # the address call media is announced on
 NATTER_MEDIA_PORT=50000
 # NATTER_AUTOJOIN_SPACE=<space id>    # set after creating the company space (right-click it › Copy Space ID)
 # NATTER_KLIPY_KEY=<app key>          # optional: turns on the GIF picker (see below)
+# NATTER_SMTP_URL=smtps://chat%40example.com:<password>@mail.example.com:465   # optional: "Forgot password?" e-mails
+# NATTER_SMTP_FROM=Natter <chat@example.com>
 RUST_LOG=natter_server=info
 ```
 
@@ -35,6 +37,16 @@ accounts with a username and password, and every file is stored in the data fold
 key is in testing mode (100 requests an hour for everyone together); ask for production access in KLIPY's panel once
 it works. Every server needs its own key. The apps talk to KLIPY directly (KLIPY's terms require that), so the server
 gives the key to signed-in users (never to the public `/api/info`), as in any app with a GIF picker. Blocked words and single GIFs are set in KLIPY's panel.
+
+**Password reset e-mails:** Natter accounts (not Nextcloud ones) can add an e-mail address, and then reset a lost
+password themselves with a code sent there, once the server can send mail. Set `NATTER_SMTP_URL` to your mail
+account: `smtps://user:password@mail.example.com:465` (TLS from the start) or
+`smtp://user:password@mail.example.com:587?tls=required` (STARTTLS). Write an `@` in the user name as `%40` and any
+other special character in the password URL-encoded too. `NATTER_SMTP_FROM` is the sender people see, like
+`Natter <chat@example.com>`; most mail servers want it to be the account you sign in with or one of its aliases.
+The log says `password reset e-mail is on` at startup, or why the mail server didn't answer. Without SMTP the apps
+offer no e-mail reset. Either way a server admin can give someone a temporary password: right-click them ›
+**Reset Password…**.
 
 `chmod 600 /etc/natter.env`. The data folder holds the database (with Nextcloud app passwords of signed-in sessions)
 and local uploads — keep it `700`, owned by `natter`.

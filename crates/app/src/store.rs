@@ -255,6 +255,8 @@ pub enum Modal {
     WordGame(Option<Id>),
     /// Screen share quality: before sharing (then Go Live), or live while sharing.
     GoLive,
+    /// A server admin gives someone a temporary password.
+    ResetPassword(Id),
     Confirm { title: String, body: String, ok: String, action: Action },
 }
 
@@ -322,6 +324,8 @@ pub struct Store {
     pub my_status: RwSignal<Status>,
     pub info: RwSignal<Option<ServerInfo>>,
     pub nextcloud_session: RwSignal<bool>,
+    /// Your e-mail for password resets (from `Ready`; only you see it).
+    pub email: RwSignal<Option<String>>,
     pub users: RwSignal<HashMap<Id, User>>,
     pub presence: RwSignal<HashMap<Id, Status>>,
     pub spaces: RwSignal<Vec<Space>>,
@@ -425,6 +429,7 @@ impl Store {
             my_status: RwSignal::new(Status::Online),
             info: RwSignal::new(None),
             nextcloud_session: RwSignal::new(false),
+            email: RwSignal::new(None),
             users: RwSignal::new(HashMap::new()),
             presence: RwSignal::new(HashMap::new()),
             spaces: RwSignal::new(vec![]),
@@ -1456,6 +1461,7 @@ fn apply_ready(r: Ready) {
     let s = store();
     s.info.set(Some(r.server));
     s.nextcloud_session.set(r.nextcloud);
+    s.email.set(r.email);
     s.my_status.set(r.status);
     s.users.set(r.users.into_iter().map(|u| (u.id, u)).collect());
     s.me.set(Some(r.user));

@@ -38,6 +38,8 @@
 | `NATTER_NEXTCLOUD_GROUP` | unset | Only members of this Nextcloud group may sign in with Nextcloud |
 | `NATTER_NEXTCLOUD_FOLDER` | `Natter` | Folder in each user's Nextcloud that receives their uploads |
 | `NATTER_AUTOJOIN_SPACE` | unset | Space id every Nextcloud user joins on first sign-in (the company space) |
+| `NATTER_SMTP_URL` | unset | Mail account for password reset codes: `smtps://user:password@host:465` or `smtp://…:587?tls=required`; `file:///folder` writes `.eml` files instead (testing) |
+| `NATTER_SMTP_FROM` | unset | Sender of those e-mails, e.g. `Natter <chat@example.com>` (needed with `NATTER_SMTP_URL`) |
 | `RUST_LOG` | `natter_server=info` | Log filter |
 
 ### Storage
@@ -184,7 +186,10 @@ One UDP port, one thread, many [`str0m`](https://github.com/algesten/str0m) `Rtc
 
 ### Routes
 
-Public: `GET /api/info` · `POST /api/auth/register` · `POST /api/auth/login` · `POST /api/auth/nextcloud` ·
+Public: `GET /api/info` · `POST /api/auth/register` · `POST /api/auth/login` · `POST /api/auth/forgot`
+(`ForgotPassword` → 204, the same whether or not the account exists; e-mails a code, at most 3 per account per 15
+minutes) · `POST /api/auth/reset` (`ResetWithCode` → `AuthResp`; the code lasts 30 minutes and 5 tries, is stored
+hashed, works once, and the reset signs out every other device) · `POST /api/auth/nextcloud` ·
 `POST /api/auth/nextcloud/poll` · `GET /api/invites/{code}` ·
 `GET /files/{token}/{name}` · `GET /gateway?token=` · `GET /health`.
 
@@ -198,6 +203,8 @@ Everything else needs `Authorization: Bearer <token>`:
 | PATCH | `/api/me` | `UpdateMe` → `User` |
 | DELETE | `/api/me` | `DeleteAccount` (password, or `confirm` on a Nextcloud session) → 204; 409 while you own a space. Deletes your messages, uploads, memberships, reactions, pings, games, settings, sessions; the `users` row stays as an anonymous "Deleted User" |
 | PUT | `/api/me/password` | `ChangePassword` → 204 (signs out your other devices) |
+| PUT | `/api/me/email` | `SetEmail` (with your password) → 204; your e-mail for reset codes, empty removes it. Only you see it (`Ready.email`) |
+| POST | `/api/users/{id}/password` | server admins: → `TempPassword` (a new, temporary password for a local account; it's signed out everywhere) |
 | PUT | `/api/me/settings` | any JSON → 204 |
 | POST | `/api/uploads` | raw bytes → `Attachment` |
 | POST | `/api/spaces` | `CreateSpace` → `Space` (with categories, `#general` and a `General` voice channel) |

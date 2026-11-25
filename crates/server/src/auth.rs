@@ -10,8 +10,9 @@ use axum::http::StatusCode;
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use natter_proto::{
-    AuthResp, ChangePassword, DeleteAccount, Event, Id, LoginReq, MAX_ABOUT_LEN, RegisterReq,
-    Registration, ServerInfo, SessionInfo, Status, UpdateMe, User, username_key, valid_username,
+    AuthResp, ChangePassword, DeleteAccount, Event, ForgotPassword, Id, LoginReq, MAX_ABOUT_LEN, RegisterReq,
+    ResetWithCode, SetEmail, email_key,
+    Registration, ServerInfo, SessionInfo, Status, TempPassword, UpdateMe, User, username_key, valid_username,
 };
 use sha2::{Digest, Sha256};
 
@@ -159,6 +160,7 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
         // Only signed-in people get it (in `Ready`): this endpoint is public.
         klipy_key: None,
         camera_kbps: st.cfg.camera_kbps,
+        email_reset: st.mailer.is_some(),
     }))
 }
 
@@ -168,6 +170,10 @@ pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<J
         return Err(bad("usernames are 2-32 characters: a-z, 0-9, _ and ."));
     }
     check_password(&req.password)?;
+    let email = match req.email.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
+        Some(e) => Some(email_key(e).ok_or_else(|| bad("that e-mail address doesn't look right"))?),
+        None => None,
+    };
     let display_name = clean(
         req.display_name.as_deref().unwrap_or(&username),
         32,
@@ -202,19 +208,24 @@ pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<J
     let id = st.id();
     // The first account becomes admin; decided inside the insert so two racing sign-ups can't both win.
     let res = sqlx::query(
-        "INSERT INTO users (id, username, display_name, password_hash, admin, created_at)
-         VALUES (?, ?, ?, ?, (SELECT COUNT(*) = 0 FROM users), ?)",
+        "INSERT INTO users (id, username, display_name, password_hash, admin, created_at, email)
+         VALUES (?, ?, ?, ?, (SELECT COUNT(*) = 0 FROM users), ?, ?)",
     )
     .bind(id)
     .bind(&username)
     .bind(&display_name)
     .bind(&hash)
     .bind(now_ms())
+    .bind(&email)
     .execute(&st.db)
     .await;
     match res {
         Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
-            return Err(conflict("that username is taken"));
+            return Err(conflict(if e.message().contains("email") {
+                "that e-mail address belongs to another account"
+            } else {
+                "that username is taken"
+            }));
         }
         r => r?,
     };
@@ -348,6 +359,198 @@ pub async fn change_password(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// A server admin gives someone a new, temporary password, for when theirs is lost: there's no e-mail here to reset
+/// it with. They're signed out everywhere and sign back in with it (and can change it in their settings). Accounts
+/// that sign in with Nextcloud reset there; your own password changes in your settings.
+pub async fn reset_password(
+    State(st): State<St>,
+    auth: Auth,
+    Path(user): Path<Id>,
+) -> R<Json<TempPassword>> {
+    let admin: bool = sqlx::query_scalar("SELECT admin FROM users WHERE id = ?")
+        .bind(auth.user)
+        .fetch_one(&st.db)
+        .await?;
+    if !admin {
+        return Err(forbidden("only server admins can reset passwords"));
+    }
+    if user == auth.user {
+        return Err(bad("change your own password in your settings"));
+    }
+    let row: Option<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT username, nc_user_id, password_hash FROM users WHERE id = ? AND bot = 0",
+    )
+    .bind(user)
+    .fetch_optional(&st.db)
+    .await?;
+    let Some((username, nc, _)) = row.filter(|(_, _, h)| h != "!deleted") else {
+        return Err(not_found("user"));
+    };
+    if nc.is_some() {
+        return Err(bad("this account signs in with Nextcloud: reset its password there"));
+    }
+    let password = temp_password();
+    let hash = hash_password(password.clone()).await?;
+    sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+        .bind(hash)
+        .bind(user)
+        .execute(&st.db)
+        .await?;
+    sqlx::query("DELETE FROM password_resets WHERE user_id = ?")
+        .bind(user)
+        .execute(&st.db)
+        .await?;
+    // Their failed tries don't hold the new password back.
+    st.login_fails.lock().unwrap().remove(&username);
+    end_sessions(&st, user, 0, true).await?;
+    Ok(Json(TempPassword { password }))
+}
+
+/// The account someone means by a username or an e-mail address: (id, username, display name, e-mail). Only local
+/// accounts (Nextcloud ones reset in Nextcloud), never deleted ones.
+async fn local_account(st: &St, login: &str) -> R<Option<(Id, String, String, Option<String>)>> {
+    let q = if login.contains('@') {
+        sqlx::query_as(
+            "SELECT id, username, display_name, email FROM users
+             WHERE email = ? AND nc_user_id IS NULL AND bot = 0 AND password_hash != '!deleted'",
+        )
+        .bind(email_key(login).unwrap_or_default())
+    } else {
+        sqlx::query_as(
+            "SELECT id, username, display_name, email FROM users
+             WHERE username = ? AND nc_user_id IS NULL AND bot = 0 AND password_hash != '!deleted'",
+        )
+        .bind(username_key(login))
+    };
+    Ok(q.fetch_optional(&st.db).await?)
+}
+
+/// What the e-mail shows ("K7MP-Q2XR") and what's compared (lower case, letters and digits only).
+fn reset_code() -> String {
+    temp_password()[..9].to_uppercase()
+}
+
+fn code_key(typed: &str) -> String {
+    typed.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_lowercase()
+}
+
+/// "Forgot password?": e-mails a code (30 minutes, 5 tries) to the account's address. Always the same answer, sent
+/// before the mail goes out, so neither it nor its timing says whether the account exists.
+pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPassword>) -> R<StatusCode> {
+    if st.mailer.is_none() {
+        return Err(not_found("e-mail reset on this server (ask one of its admins to reset your password)"));
+    }
+    let Some((id, username, name, Some(email))) = local_account(&st, &req.login).await? else {
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    {
+        let mut sends = st.reset_sends.lock().unwrap();
+        let list = sends.entry(id).or_default();
+        list.retain(|t| t.elapsed() < Duration::from_secs(900));
+        if list.len() >= 3 {
+            return Ok(StatusCode::NO_CONTENT);
+        }
+        list.push(Instant::now());
+    }
+    let code = reset_code();
+    sqlx::query(
+        "INSERT INTO password_resets (user_id, code_hash, expires_at, tries) VALUES (?, ?, ?, 0)
+         ON CONFLICT(user_id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, tries = 0",
+    )
+    .bind(id)
+    .bind(hash_token(&code_key(&code)))
+    .bind(now_ms() + 30 * 60 * 1000)
+    .execute(&st.db)
+    .await?;
+    let server = st.cfg.name.clone();
+    let body = format!(
+        "Hi {name},\n\n\
+         Someone asked to reset the password of your Natter account \"{username}\" on {server}. If that was \
+         you, enter this code on Natter's sign-in screen, under \"Forgot password?\":\n\n    {code}\n\n\
+         It works for 30 minutes. If it wasn't you, ignore this e-mail: your password stays as it is.\n\n\
+         Natter at {server}\n"
+    );
+    tokio::spawn(async move {
+        let Some(mailer) = &st.mailer else { return };
+        if let Err(e) = mailer.send(&email, &format!("Your Natter reset code: {code}"), body).await {
+            tracing::warn!("reset e-mail for user {id} not sent: {e:#}");
+        }
+    });
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The code from that e-mail and a new password: sets it, signs out every other device and signs this one in.
+pub async fn reset_with_code(State(st): State<St>, Json(req): Json<ResetWithCode>) -> R<Json<AuthResp>> {
+    check_password(&req.new_password)?;
+    let wrong = || bad("that code is wrong or has expired: ask for a new one");
+    let Some((id, username, ..)) = local_account(&st, &req.login).await? else {
+        return Err(wrong());
+    };
+    let row: Option<(String, i64, i64)> =
+        sqlx::query_as("SELECT code_hash, expires_at, tries FROM password_resets WHERE user_id = ?")
+            .bind(id)
+            .fetch_optional(&st.db)
+            .await?;
+    let Some((hash, expires, tries)) = row else { return Err(wrong()) };
+    if expires < now_ms() || tries >= 5 {
+        sqlx::query("DELETE FROM password_resets WHERE user_id = ?").bind(id).execute(&st.db).await?;
+        return Err(wrong());
+    }
+    if hash_token(&code_key(&req.code)) != hash {
+        sqlx::query("UPDATE password_resets SET tries = tries + 1 WHERE user_id = ?").bind(id).execute(&st.db).await?;
+        return Err(wrong());
+    }
+    let new = hash_password(req.new_password).await?;
+    sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?").bind(new).bind(id).execute(&st.db).await?;
+    sqlx::query("DELETE FROM password_resets WHERE user_id = ?").bind(id).execute(&st.db).await?;
+    st.login_fails.lock().unwrap().remove(&username);
+    end_sessions(&st, id, 0, true).await?;
+    let token = create_session(&st, id, req.device, None).await?;
+    Ok(Json(AuthResp { token, user: db::user(&st.db, id).await? }))
+}
+
+/// Your e-mail for password resets (empty removes it), confirmed with your password.
+pub async fn set_email(State(st): State<St>, auth: Auth, Json(req): Json<SetEmail>) -> R<StatusCode> {
+    let (hash, nc): (String, Option<String>) =
+        sqlx::query_as("SELECT password_hash, nc_user_id FROM users WHERE id = ?")
+            .bind(auth.user)
+            .fetch_one(&st.db)
+            .await?;
+    if nc.is_some() {
+        return Err(bad("your password is reset in Nextcloud"));
+    }
+    if !verify_password(req.password, hash).await {
+        return Err(forbidden("current password is wrong"));
+    }
+    let email = match req.email.trim() {
+        "" => None,
+        e => Some(email_key(e).ok_or_else(|| bad("that e-mail address doesn't look right"))?),
+    };
+    let res = sqlx::query("UPDATE users SET email = ? WHERE id = ?").bind(&email).bind(auth.user).execute(&st.db).await;
+    match res {
+        Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+            Err(conflict("that e-mail address belongs to another account"))
+        }
+        r => {
+            r?;
+            Ok(StatusCode::NO_CONTENT)
+        }
+    }
+}
+
+/// Easy to read out and type: "k7mp-q2xr-9htf" (no 0/o, 1/l/i), about 59 bits.
+fn temp_password() -> String {
+    const CHARS: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+    let mut out = String::new();
+    for i in 0..12 {
+        if i > 0 && i % 4 == 0 {
+            out.push('-');
+        }
+        out.push(CHARS[rand::random::<u32>() as usize % CHARS.len()] as char);
+    }
+    out
+}
+
 /// Delete your own account, like Discord: your password confirms it (or `confirm` on a Nextcloud session), and it is
 /// refused while you own a space. Your messages (with their files and Nextcloud links), other uploads, memberships,
 /// reactions, pings, read markers, Daily Word games, settings and sessions go.
@@ -428,7 +631,7 @@ pub async fn delete_me(
     // "deleted-…" has a '-', which usernames can't, so nobody can take it; '!' marks a hash nothing matches.
     sqlx::query(
         "UPDATE users SET username = ?, display_name = 'Deleted User', password_hash = '!deleted', avatar_id = NULL,
-         about = '', custom_status = NULL, admin = 0, settings = '{}', nc_user_id = NULL WHERE id = ?",
+         about = '', custom_status = NULL, admin = 0, settings = '{}', nc_user_id = NULL, email = NULL WHERE id = ?",
     )
     .bind(format!("deleted-{me}"))
     .bind(me)

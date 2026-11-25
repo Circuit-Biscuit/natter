@@ -6,6 +6,7 @@ mod db;
 mod embeds;
 mod games;
 mod gateway;
+mod mail;
 mod messages;
 mod nextcloud;
 mod sfu;
@@ -52,6 +53,9 @@ pub struct Config {
     pub autojoin_space: Option<Id>,
     /// KLIPY app key for the GIF picker (`NATTER_KLIPY_KEY`).
     pub klipy_key: Option<String>,
+    /// Where password reset e-mails go out (`NATTER_SMTP_URL`, see `mail.rs`), and from whom (`NATTER_SMTP_FROM`).
+    pub smtp_url: Option<String>,
+    pub smtp_from: Option<String>,
 }
 
 impl Config {
@@ -99,6 +103,8 @@ impl Config {
                 .map(|v| v.parse())
                 .transpose()?,
             klipy_key: var("NATTER_KLIPY_KEY"),
+            smtp_url: var("NATTER_SMTP_URL"),
+            smtp_from: var("NATTER_SMTP_FROM"),
         })
     }
 }
@@ -109,8 +115,11 @@ pub struct AppState {
     pub hub: gateway::Hub,
     pub voice: voice::Voice,
     pub nc: Option<nextcloud::Nc>,
+    pub mailer: Option<mail::Mailer>,
     ids: Mutex<(i64, i64)>,
     login_fails: Mutex<HashMap<String, Vec<Instant>>>,
+    /// Reset e-mails sent per account lately (a few per quarter hour).
+    reset_sends: Mutex<HashMap<Id, Vec<Instant>>>,
     send_budget: Mutex<HashMap<Id, (f64, Instant)>>,
 }
 
@@ -237,14 +246,23 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         )?),
         None => None,
     };
+    let mailer = mail::Mailer::new(cfg.smtp_url.as_deref(), cfg.smtp_from.as_deref())?;
+    if let Some(m) = &mailer {
+        match m.check().await {
+            Ok(()) => tracing::info!("password reset e-mail is on"),
+            Err(e) => tracing::warn!("NATTER_SMTP_URL: {e:#} (reset e-mails will fail until it works)"),
+        }
+    }
     let st: St = Arc::new(AppState {
         cfg: cfg.clone(),
         db,
         hub: gateway::Hub::default(),
         voice,
         nc,
+        mailer,
         ids: Mutex::new((0, 0)),
         login_fails: Mutex::default(),
+        reset_sends: Mutex::default(),
         send_budget: Mutex::default(),
     });
     db::upgrade_roles(&st.db, || st.id())
@@ -264,6 +282,9 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .route("/api/auth/register", post(auth::register))
         .route("/api/auth/login", post(auth::login))
         .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/forgot", post(auth::forgot_password))
+        .route("/api/auth/reset", post(auth::reset_with_code))
+        .route("/api/me/email", put(auth::set_email))
         .route("/api/auth/nextcloud", post(nextcloud::login_start))
         .route("/api/auth/nextcloud/poll", post(nextcloud::login_poll))
         .route("/api/nextcloud/files", get(nextcloud::files))
@@ -272,6 +293,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .route("/api/me/sessions", get(auth::sessions))
         .route("/api/me/sessions/{id}", delete(auth::revoke_session))
         .route("/api/me/password", put(auth::change_password))
+        .route("/api/users/{id}/password", post(auth::reset_password))
         .route("/api/me/settings", put(auth::put_settings))
         .route(
             "/api/uploads",

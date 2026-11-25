@@ -37,6 +37,7 @@ pub fn ModalHost() -> impl IntoView {
                 Modal::SpaceProfile(sp) => view! { <SpaceProfile space=sp/> }.into_any(),
                 Modal::WordGame(sp) => view! { <super::word::WordGame space=sp/> }.into_any(),
                 Modal::GoLive => view! { <super::call::GoLive/> }.into_any(),
+                Modal::ResetPassword(u) => view! { <ResetPassword user=u/> }.into_any(),
                 Modal::Confirm { title, body, ok, action } => view! { <Confirm title=title body=body ok=ok action=action/> }.into_any(),
             };
             view! {
@@ -107,6 +108,46 @@ fn Confirm(title: String, body: String, ok: String, action: crate::store::Action
             <button class="btn link" on:click=|_| close()>"Cancel"</button>
             <button class="btn danger" autofocus=true on:click=move |_| { close(); action(); }>{ok}</button>
         </div>
+    }
+}
+
+/// A server admin gives someone a new, temporary password (theirs is lost). The server signs them out everywhere;
+/// the admin passes the password on, once.
+#[component]
+fn ResetPassword(user: Id) -> impl IntoView {
+    let s = store();
+    let name = s.user(user).map(|u| u.display_name).unwrap_or_default();
+    let temp = RwSignal::new(None::<String>);
+    let error = RwSignal::new(None::<String>);
+    let busy = RwSignal::new(false);
+    let reset = move |_| {
+        busy.set(true);
+        spawn_local(async move {
+            match api::call::<_, TempPassword>("POST", &format!("/api/users/{user}/password"), &serde_json::json!({})).await {
+                Ok(t) => temp.set(Some(t.password)),
+                Err(e) => error.set(Some(e.message)),
+            }
+            busy.set(false);
+        });
+    };
+    let copy = move |_| {
+        util::copy_text(&temp.get_untracked().unwrap_or_default());
+        store().toast("Password copied", false);
+    };
+    view! {
+        <h2>{format!("Reset {name}'s password")}</h2>
+        <Show when=move || temp.get().is_some() fallback=move || view! {
+            <p class="modal-text">"For when they've lost theirs. You get a new, temporary password to give them, and they're signed out everywhere until they sign in with it."</p>
+            {move || error.get().map(|e| view! { <div class="form-error">{e}</div> })}
+            <div class="modal-foot">
+                <button class="btn link" on:click=|_| close()>"Cancel"</button>
+                <button class="btn danger" disabled=move || busy.get() on:click=reset>"Reset password"</button>
+            </div>
+        }>
+            <p class="modal-text">"Send them this password. They sign in with their username and it, then can pick their own in Settings › My account. It isn't shown again."</p>
+            <div class="temp-password"><code>{move || temp.get()}</code><button class="btn" on:click=copy>"Copy"</button></div>
+            <div class="modal-foot"><button class="btn primary" on:click=|_| close()>"Done"</button></div>
+        </Show>
     }
 }
 

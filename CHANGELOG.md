@@ -4,6 +4,15 @@
 
 ### New
 
+- **Forgot password?** On the sign-in screen: enter your username or e-mail and Natter e-mails you a code (it works
+  for 30 minutes). Type it in with a new password and you're signed in, and signed out everywhere else. For this,
+  Natter accounts can add an e-mail address when they sign up or in Settings › My account (your password confirms
+  it; nobody else sees it). Servers turn it on with their own mail account: `NATTER_SMTP_URL` and
+  `NATTER_SMTP_FROM` (docs/DEPLOY.md). Accounts that sign in with Nextcloud reset their password in Nextcloud.
+- **Server admins can reset a password**: right-click someone › Reset Password… gives you a temporary password to
+  pass on, once, and signs them out everywhere. Works on every server, mail or not.
+- **Show password:** every password box has an eye that shows what you typed, so a typo at sign-up can't lock you
+  out unseen.
 - **AI noise suppression.** Settings › Voice & video › Noise suppression is now Off / Standard / **Strong (AI)**,
   and Strong is the default. It runs your microphone through RNNoise, a small neural network made for calls, on
   your own device (nothing leaves it): keyboard and mouse clicks, fans, traffic and background chatter are taken

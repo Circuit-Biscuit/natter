@@ -62,6 +62,28 @@ fn AccountTab() -> impl IntoView {
     let old = RwSignal::new(String::new());
     let new = RwSignal::new(String::new());
     let msg = RwSignal::new(None::<(bool, String)>);
+    let (show_old, show_new, show_del) = (RwSignal::new(false), RwSignal::new(false), RwSignal::new(false));
+    // E-mail for password resets.
+    let email_in = RwSignal::new(s.email.get_untracked().unwrap_or_default());
+    let email_pw = RwSignal::new(String::new());
+    let show_epw = RwSignal::new(false);
+    let email_msg = RwSignal::new(None::<(bool, String)>);
+    let save_email = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        let body = SetEmail { email: email_in.get_untracked(), password: email_pw.get_untracked() };
+        spawn_local(async move {
+            match api::call::<_, ()>("PUT", "/api/me/email", &body).await {
+                Ok(()) => {
+                    let saved = email_key(&body.email);
+                    email_msg.set(Some((true, if saved.is_some() { "Saved.".into() } else { "Removed.".into() })));
+                    email_in.set(saved.clone().unwrap_or_default());
+                    store().email.set(saved);
+                    email_pw.set(String::new());
+                }
+                Err(e) => email_msg.set(Some((false, e.message))),
+            }
+        });
+    };
     let change = move |e: leptos::ev::SubmitEvent| {
         e.prevent_default();
         let body = ChangePassword { old_password: old.get_untracked(), new_password: new.get_untracked() };
@@ -116,11 +138,24 @@ fn AccountTab() -> impl IntoView {
         }>
             <h3>"Change password"</h3>
             <form class="form narrow" on:submit=change>
-                <label>"Current password"<input type="password" required=true autocomplete="current-password" prop:value=move || old.get() on:input=move |e| old.set(event_target_value(&e))/></label>
-                <label>"New password"<input type="password" required=true minlength="8" autocomplete="new-password" prop:value=move || new.get() on:input=move |e| new.set(event_target_value(&e))/></label>
+                <label>"Current password"<div class="pw"><input type=super::pw_type(show_old) required=true autocomplete="current-password" prop:value=move || old.get() on:input=move |e| old.set(event_target_value(&e))/><super::Reveal shown=show_old/></div></label>
+                <label>"New password"<div class="pw"><input type=super::pw_type(show_new) required=true minlength="8" autocomplete="new-password" prop:value=move || new.get() on:input=move |e| new.set(event_target_value(&e))/><super::Reveal shown=show_new/></div></label>
                 {move || msg.get().map(|(ok, m)| view! { <div class=if ok { "form-ok" } else { "form-error" }>{m}</div> })}
                 <button class="btn primary" type="submit">"Change password"</button>
             </form>
+            <Show when=move || s.info.with(|i| i.as_ref().is_some_and(|i| i.email_reset))>
+                <h3>"E-mail for password resets"</h3>
+                <p class="muted small">{move || match s.email.get() {
+                    Some(e) => format!("If you lose your password, a code to reset it goes to {e}. Nobody else sees this address."),
+                    None => "Add one, and you can reset a lost password yourself. Nobody else sees it.".to_string(),
+                }}</p>
+                <form class="form narrow" on:submit=save_email>
+                    <label>"E-mail"<input type="email" maxlength="254" autocomplete="email" placeholder="you@example.com" prop:value=move || email_in.get() on:input=move |e| email_in.set(event_target_value(&e))/></label>
+                    <label>"Current password"<div class="pw"><input type=super::pw_type(show_epw) required=true autocomplete="current-password" prop:value=move || email_pw.get() on:input=move |e| email_pw.set(event_target_value(&e))/><super::Reveal shown=show_epw/></div></label>
+                    {move || email_msg.get().map(|(ok, m)| view! { <div class=if ok { "form-ok" } else { "form-error" }>{m}</div> })}
+                    <button class="btn primary" type="submit">{move || if email_in.get().trim().is_empty() && s.email.get().is_some() { "Remove e-mail" } else { "Save e-mail" }}</button>
+                </form>
+            </Show>
         </Show>
         <h3>"Server"</h3>
         <p class="muted">{move || {
@@ -142,8 +177,8 @@ fn AccountTab() -> impl IntoView {
                     <p class="modal-text">"Your messages, files, reactions and profile are deleted from this server and you are signed out everywhere. Others will see \"Deleted User\" in old DMs. This can't be undone."</p>
                     <form class="form" on:submit=delete>
                         <Show when=move || !s.nextcloud_session.get()>
-                            <label>"Password"<input type="password" required=true node_ref=pw_input autocomplete="current-password"
-                                prop:value=move || del_pw.get() on:input=move |e| del_pw.set(event_target_value(&e))/></label>
+                            <label>"Password"<div class="pw"><input type=super::pw_type(show_del) required=true node_ref=pw_input autocomplete="current-password"
+                                prop:value=move || del_pw.get() on:input=move |e| del_pw.set(event_target_value(&e))/><super::Reveal shown=show_del/></div></label>
                         </Show>
                         {move || del_err.get().map(|m| view! { <div class="form-error">{m}</div> })}
                         <div class="modal-foot">

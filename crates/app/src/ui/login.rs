@@ -70,6 +70,14 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let busy = RwSignal::new(false);
     let nc_waiting = RwSignal::new(None::<NcLoginStart>);
     let show_local = RwSignal::new(false);
+    let show_pw = RwSignal::new(false);
+    let email = RwSignal::new(String::new());
+    // Forgot password: 0 = not now, 1 = ask for a code, 2 = enter the code and a new password.
+    let forgot = RwSignal::new(0u8);
+    let code = RwSignal::new(String::new());
+    let new_pw = RwSignal::new(String::new());
+    let show_new = RwSignal::new(false);
+    let email_reset = move || info.get().is_some_and(|i| i.email_reset);
     // Came with an invite to a server that lets invited people make a Natter account.
     let can_join_without_nc = move || {
         !invite.get().is_empty() && info.get().is_some_and(|i| i.registration != Registration::Closed)
@@ -123,6 +131,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                     display_name: Some(display.get_untracked()).filter(|d| !d.trim().is_empty()),
                     invite: Some(invite_code(&invite.get_untracked())).filter(|c| !c.is_empty()),
                     device: Some(device_name()),
+                    email: Some(email.get_untracked()).filter(|e| !e.trim().is_empty()),
                 };
                 api::call("POST", "/api/auth/register", &body).await
             } else {
@@ -143,6 +152,56 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                 Err(e) => error.set(Some(e.message)),
             }
         });
+    };
+
+    let forgot_submit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        if busy.get_untracked() {
+            return;
+        }
+        error.set(None);
+        busy.set(true);
+        let step = forgot.get_untracked();
+        spawn_local(async move {
+            let login = username.get_untracked().trim().to_string();
+            if step == 1 {
+                let r = api::call::<_, ()>("POST", "/api/auth/forgot", &ForgotPassword { login }).await;
+                busy.set(false);
+                match r {
+                    Ok(()) => {
+                        code.set(String::new());
+                        forgot.set(2);
+                    }
+                    Err(e) => error.set(Some(e.message)),
+                }
+            } else {
+                let body = ResetWithCode {
+                    login,
+                    code: code.get_untracked(),
+                    new_password: new_pw.get_untracked(),
+                    device: Some(device_name()),
+                };
+                let r = api::call::<_, AuthResp>("POST", "/api/auth/reset", &body).await;
+                busy.set(false);
+                match r {
+                    Ok(auth) => {
+                        forgot.set(0);
+                        finish(auth, on_done, invite_code(&invite.get_untracked()));
+                    }
+                    Err(e) => error.set(Some(e.message)),
+                }
+            }
+        });
+    };
+    let open_forgot = move |e: leptos::ev::MouseEvent| {
+        e.prevent_default();
+        error.set(None);
+        forgot.set(1);
+    };
+    let back = move |e: leptos::ev::MouseEvent| {
+        e.prevent_default();
+        error.set(None);
+        forgot.set(0);
     };
 
     let nextcloud = move |_| {
@@ -265,7 +324,42 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                 </button>
                             }
                         })}
-                        <Show when=move || show_local.get() || info.get().is_some_and(|i| i.nextcloud.is_none())>
+                        <Show when=move || forgot.get() != 0 && (show_local.get() || info.get().is_some_and(|i| i.nextcloud.is_none()))>
+                            <form class="form" on:submit=forgot_submit>
+                                <div class="login-title small">"Reset your password"</div>
+                                <Show when=email_reset fallback=|| view! {
+                                    <p class="login-hint left">"This server can't send e-mail. Ask one of its admins: they can give you a temporary password."</p>
+                                }>
+                                    <Show when=move || forgot.get() == 1 fallback=move || view! {
+                                        <p class="login-hint left">"If that account has an e-mail address, a code is on its way. It works for 30 minutes; check your spam folder too."</p>
+                                        <label>"Code from the e-mail"
+                                            <input required=true autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"
+                                                prop:value=move || code.get() on:input=move |e| code.set(event_target_value(&e))/>
+                                        </label>
+                                        <label>"New password"
+                                            <div class="pw">
+                                                <input type=super::pw_type(show_new) required=true minlength="8" autocomplete="new-password"
+                                                    prop:value=move || new_pw.get() on:input=move |e| new_pw.set(event_target_value(&e))/>
+                                                <super::Reveal shown=show_new/>
+                                            </div>
+                                        </label>
+                                        {move || error.get().map(|e| view! { <div class="form-error">{e}</div> })}
+                                        <button class="btn primary wide" type="submit" disabled=move || busy.get()>"Set password and sign in"</button>
+                                        <a href="#" class="small" on:click=move |e| { e.prevent_default(); error.set(None); forgot.set(1); }>"Send a new code"</a>
+                                    }>
+                                        <p class="login-hint left">"We'll e-mail you a code, if your account has an e-mail address."</p>
+                                        <label>"Username or e-mail"
+                                            <input required=true autocomplete="username" autocapitalize="none" spellcheck="false"
+                                                prop:value=move || username.get() on:input=move |e| username.set(event_target_value(&e))/>
+                                        </label>
+                                        {move || error.get().map(|e| view! { <div class="form-error">{e}</div> })}
+                                        <button class="btn primary wide" type="submit" disabled=move || busy.get()>"E-mail me a code"</button>
+                                    </Show>
+                                </Show>
+                                <a href="#" class="small" on:click=back>"Back to sign in"</a>
+                            </form>
+                        </Show>
+                        <Show when=move || forgot.get() == 0 && (show_local.get() || info.get().is_some_and(|i| i.nextcloud.is_none()))>
                             <form class="form" on:submit=submit>
                                 <div class="tabs">
                                     <button type="button" class:active=move || !mode_register.get() on:click=move |_| mode_register.set(false)>"Sign in"</button>
@@ -282,11 +376,23 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                         <input maxlength="100" prop:value=move || display.get() on:input=move |e| display.set(event_target_value(&e))/>
                                     </label>
                                 </Show>
+                                <Show when=move || mode_register.get() && email_reset()>
+                                    <label><span>"E-mail " <span class="muted">"(optional, only to reset a lost password)"</span></span>
+                                        <input type="email" maxlength="254" autocomplete="email" autocapitalize="none" spellcheck="false"
+                                            prop:value=move || email.get() on:input=move |e| email.set(event_target_value(&e))/>
+                                    </label>
+                                </Show>
                                 <label>"Password"
-                                    <input type="password" required=true minlength=move || if mode_register.get() { "8" } else { "1" }
-                                        autocomplete=move || if mode_register.get() { "new-password" } else { "current-password" }
-                                        prop:value=move || password.get() on:input=move |e| password.set(event_target_value(&e))/>
+                                    <div class="pw">
+                                        <input type=super::pw_type(show_pw) required=true minlength=move || if mode_register.get() { "8" } else { "1" }
+                                            autocomplete=move || if mode_register.get() { "new-password" } else { "current-password" }
+                                            prop:value=move || password.get() on:input=move |e| password.set(event_target_value(&e))/>
+                                        <super::Reveal shown=show_pw/>
+                                    </div>
                                 </label>
+                                <Show when=move || !mode_register.get()>
+                                    <a href="#" class="forgot-link" on:click=open_forgot>"Forgot password?"</a>
+                                </Show>
                                 <Show when=move || mode_register.get() && info.get().is_some_and(|i| i.registration == Registration::Invite && !i.first_run)>
                                     <label>"Invite link or code"
                                         <input required=true placeholder="https://…/invite/AbC123" prop:value=move || invite.get()

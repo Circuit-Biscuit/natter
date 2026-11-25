@@ -574,3 +574,21 @@ fn step_channel(down: bool, unread_only: bool) {
         }
     }
 }
+
+/// The eye in a password box: shows what's typed, so a typo can't slip in unseen (a mistyped password at sign-up
+/// locks you out). Sits in a `.pw` wrapper next to an input whose type follows `shown`.
+#[component]
+pub fn Reveal(shown: RwSignal<bool>) -> impl IntoView {
+    let label = move || if shown.get() { "Hide password" } else { "Show password" };
+    view! {
+        <button type="button" class="reveal" class:on=move || shown.get() title=label aria-label=label
+            aria-pressed=move || shown.get().to_string() on:click=move |_| shown.update(|v| *v = !*v)>
+            {move || if shown.get() { view! { <icons::Icon name="eye-off" size=18/> }.into_any() } else { view! { <icons::Icon name="eye" size=18/> }.into_any() }}
+        </button>
+    }
+}
+
+/// "password" or, with the eye on, "text".
+pub fn pw_type(shown: RwSignal<bool>) -> impl Fn() -> &'static str + Copy {
+    move || if shown.get() { "text" } else { "password" }
+}

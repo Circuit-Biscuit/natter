@@ -158,6 +158,9 @@ async fn full_flow() {
         nextcloud_folder: "Natter".into(),
         autojoin_space: None,
         klipy_key: Some("klipy-test".into()),
+        // Reset e-mails land in a folder as .eml files.
+        smtp_url: Some(format!("file://{}", data.join("mail").display())),
+        smtp_from: Some("Natter <natter@example.org>".into()),
     };
     let (app, _st) = natter_server::build(cfg).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -176,6 +179,7 @@ async fn full_flow() {
     assert_eq!(info["nextcloud"].as_str(), Some(nc_base.as_str()));
     assert!(info["klipy_key"].is_null(), "the GIF key is for signed-in users only");
     assert_eq!(info["camera_kbps"], 1000, "apps show the camera limit");
+    assert_eq!(info["email_reset"], true, "apps offer Forgot password?");
     let (s, a) = call(
         &app,
         "POST",
@@ -973,6 +977,75 @@ async fn full_flow() {
     assert_eq!(in_thread, json!([]));
     let (s, _) = call(&app, "POST", "/api/auth/login", None, Some(json!({"username": "bob", "password": "hunter2hunter2"}))).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+    // Lost password: a server admin gives a local account a temporary one, and it's signed out everywhere.
+    let (s, c) = call(&app, "POST", "/api/auth/register", None, Some(json!({"username": "carol", "password": "hunter2hunter2", "invite": code}))).await;
+    assert_eq!(s, StatusCode::OK, "{c}");
+    let (t5, u5) = (c["token"].as_str().unwrap().to_string(), c["user"]["id"].as_i64().unwrap());
+    let reset = |t: &str, u: i64| {
+        let (t, app) = (t.to_string(), app.clone());
+        async move { call(&app, "POST", &format!("/api/users/{u}/password"), Some(&t), None).await }
+    };
+    assert_eq!(reset(&t5, u1).await.0, StatusCode::FORBIDDEN, "server admins only");
+    let (s, r) = reset(&t1, u5).await;
+    assert_eq!(s, StatusCode::OK, "{r}");
+    let temp = r["password"].as_str().unwrap().to_string();
+    assert_eq!(temp.len(), 14, "{temp}");
+    let (s, _) = call(&app, "GET", "/api/me/sessions", Some(&t5), None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let login = |pw: &str| {
+        let (pw, app) = (pw.to_string(), app.clone());
+        async move { call(&app, "POST", "/api/auth/login", None, Some(json!({"username": "carol", "password": pw}))).await.0 }
+    };
+    assert_eq!(login("hunter2hunter2").await, StatusCode::UNAUTHORIZED);
+    assert_eq!(login(&temp).await, StatusCode::OK);
+    // Not yourself, not a Nextcloud account, not a deleted one.
+    assert_eq!(reset(&t1, u1).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(reset(&t1, again["user"]["id"].as_i64().unwrap()).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(reset(&t1, u2).await.0, StatusCode::NOT_FOUND);
+
+    // Forgot password: an e-mail address (confirmed with the password) gets a code that resets it.
+    let (_, c) = call(&app, "POST", "/api/auth/login", None, Some(json!({"username": "carol", "password": temp}))).await;
+    let t6 = c["token"].as_str().unwrap().to_string();
+    let set_email = |pw: &str| {
+        let (pw, t, app) = (pw.to_string(), t6.clone(), app.clone());
+        async move { call(&app, "PUT", "/api/me/email", Some(&t), Some(json!({"email": " Carol@Example.org", "password": pw}))).await.0 }
+    };
+    assert_eq!(set_email("hunter2hunter2").await, StatusCode::FORBIDDEN);
+    assert_eq!(set_email(&temp).await, StatusCode::NO_CONTENT);
+    let forgot = |login: &str| {
+        let (login, app) = (login.to_string(), app.clone());
+        async move { call(&app, "POST", "/api/auth/forgot", None, Some(json!({"login": login}))).await.0 }
+    };
+    assert_eq!(forgot("nobody@example.org").await, StatusCode::NO_CONTENT, "same answer for unknown accounts");
+    assert_eq!(forgot("carol@example.org").await, StatusCode::NO_CONTENT);
+    let mail_dir = data.join("mail");
+    let mut mail = String::new();
+    for _ in 0..50 {
+        if let Some(f) = std::fs::read_dir(&mail_dir).ok().and_then(|mut d| d.next()) {
+            mail = std::fs::read_to_string(f.unwrap().path()).unwrap();
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(mail.contains("To: carol@example.org"), "{mail}");
+    let code = mail.lines().find_map(|l| l.trim().strip_prefix("Subject: Your Natter reset code: ")).expect("code in the subject").to_string();
+    assert_eq!(code.len(), 9, "{code}");
+    let reset_code = |c: &str, pw: &str| {
+        let (c, pw, app) = (c.to_string(), pw.to_string(), app.clone());
+        async move {
+            call(&app, "POST", "/api/auth/reset", None, Some(json!({"login": "Carol", "code": c, "new_password": pw}))).await
+        }
+    };
+    assert_eq!(reset_code("AAAA-AAAA", "carols-new-one").await.0, StatusCode::BAD_REQUEST);
+    let (s, r) = reset_code(&format!(" {} ", code.to_lowercase()), "carols-new-one").await;
+    assert_eq!(s, StatusCode::OK, "{r}");
+    assert!(r["token"].is_string());
+    assert_eq!(reset_code(&code, "another-one-1").await.0, StatusCode::BAD_REQUEST, "a code works once");
+    assert_eq!(login(&temp).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(login("carols-new-one").await, StatusCode::OK);
+    let (s, _) = call(&app, "GET", "/api/me/sessions", Some(&t6), None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "the reset signed the others out");
 
     let _ = std::fs::remove_dir_all(data);
 }

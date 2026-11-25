@@ -199,6 +199,10 @@ pub fn user_menu(user: Id, space: Option<Id>) -> Vec<Option<MenuItem>> {
     v.push(None);
     v.push(Some(MenuItem::new("Copy Username", move || util::copy_text(&username2))));
     v.push(Some(MenuItem::new("Copy User ID", move || util::copy_text(&user.to_string()))));
+    // Server admins can give someone a temporary password (for a lost one).
+    if user != me && !u.bot && s.me.with_untracked(|m| m.as_ref().is_some_and(|m| m.admin)) {
+        v.push(Some(MenuItem::new("Reset Password…", move || store().modal.set(Some(Modal::ResetPassword(user)))).danger()));
+    }
     if let Some(sp) = space {
         let member = s.member(sp, user);
         let outranks = s.outranks(sp, user);

@@ -695,6 +695,9 @@ pub struct Ready {
     /// This session signed in through Nextcloud, so it can share files from there.
     #[serde(default)]
     pub nextcloud: bool,
+    /// Your e-mail for password resets, if you gave one (nobody else sees it).
+    #[serde(default)]
+    pub email: Option<String>,
 }
 
 /// Client -> server. Serialized as `{"op": "...", "d": ...}`.
@@ -740,6 +743,10 @@ pub struct ServerInfo {
     /// camera quality settings; the server enforces it in the SDP either way.
     #[serde(default)]
     pub camera_kbps: u32,
+    /// This server can e-mail password reset codes (`NATTER_SMTP_URL`): apps offer "Forgot password?" and ask for
+    /// an e-mail address.
+    #[serde(default)]
+    pub email_reset: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -749,6 +756,33 @@ pub struct RegisterReq {
     pub display_name: Option<String>,
     pub invite: Option<String>,
     pub device: Option<String>,
+    /// For password resets (only where the server can send e-mail).
+    #[serde(default)]
+    pub email: Option<String>,
+}
+
+/// `POST /api/auth/forgot`: e-mail a reset code to the account with this username or e-mail. The answer is the
+/// same whether or not there is one, so nobody learns which accounts exist.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForgotPassword {
+    pub login: String,
+}
+
+/// `POST /api/auth/reset`: the code from that e-mail and a new password; signs you in (and out everywhere else).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResetWithCode {
+    pub login: String,
+    pub code: String,
+    pub new_password: String,
+    pub device: Option<String>,
+}
+
+/// `PUT /api/me/email`: your e-mail for password resets; empty removes it. Your password confirms it, so a stolen
+/// session can't point resets somewhere else.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetEmail {
+    pub email: String,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -782,6 +816,12 @@ pub struct UpdateMe {
     pub status: Option<Status>,
     /// `Some("")` clears it.
     pub custom_status: Option<String>,
+}
+
+/// `POST /api/users/{id}/password` (server admins): the new, temporary password, shown to the admin once.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TempPassword {
+    pub password: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1048,6 +1088,20 @@ pub fn username_key(typed: &str) -> String {
     typed.trim().replace(['İ', 'ı'], "i").to_lowercase().replace('\u{307}', "")
 }
 
+/// An e-mail address as stored (trimmed, lower-case), or `None` if it doesn't look like one.
+pub fn email_key(typed: &str) -> Option<String> {
+    let e = typed.trim().to_lowercase();
+    let (local, domain) = e.split_once('@')?;
+    let ok = !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !domain.contains('@')
+        && e.len() <= 254
+        && !e.chars().any(|c| c.is_whitespace() || c == ',' || c == '<' || c == '>');
+    ok.then_some(e)
+}
+
 /// Usernames: 2-32 of a-z, 0-9, `_` and `.`.
 pub fn valid_username(name: &str) -> bool {
     (2..=32).contains(&name.len())
@@ -1141,6 +1195,10 @@ mod tests {
         assert!(valid_username("alice.k_2"));
         assert!(!valid_username("Alice"));
         assert!(!valid_username("a"));
+        assert_eq!(email_key(" Ada@Example.ORG ").as_deref(), Some("ada@example.org"));
+        for bad in ["ada", "ada@", "@example.org", "ada@example", "ada@.org", "a da@example.org", "a@b@example.org"] {
+            assert_eq!(email_key(bad), None, "{bad}");
+        }
         for typed in [" Asilİstanbullu ", "AsilIstanbullu", "asılistanbullu", "asili\u{307}stanbullu"] {
             assert_eq!(username_key(typed), "asilistanbullu", "{typed:?}");
         }
