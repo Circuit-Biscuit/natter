@@ -144,10 +144,10 @@ fn AccountTab() -> impl IntoView {
                 <button class="btn primary" type="submit">"Change password"</button>
             </form>
             <Show when=move || s.info.with(|i| i.as_ref().is_some_and(|i| i.email_reset))>
-                <h3>"E-mail for password resets"</h3>
+                <h3>"E-mail"</h3>
                 <p class="muted small">{move || match s.email.get() {
-                    Some(e) => format!("If you lose your password, a code to reset it goes to {e}. Nobody else sees this address."),
-                    None => "Add one, and you can reset a lost password yourself. Nobody else sees it.".to_string(),
+                    Some(e) => format!("You can sign in with {e} instead of your username, and if you lose your password, a code to reset it goes there. Nobody else sees this address."),
+                    None => "Add one, and you can reset a lost password yourself (and sign in with it). Nobody else sees it.".to_string(),
                 }}</p>
                 <form class="form narrow" on:submit=save_email>
                     <label>"E-mail"<input type="email" maxlength="254" autocomplete="email" placeholder="you@example.com" prop:value=move || email_in.get() on:input=move |e| email_in.set(event_target_value(&e))/></label>

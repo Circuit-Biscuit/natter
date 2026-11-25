@@ -48,6 +48,11 @@ The log says `password reset e-mail is on` at startup, or why the mail server di
 offer no e-mail reset. Either way a server admin can give someone a temporary password: right-click them ›
 **Reset Password…**.
 
+**When someone can't sign in:** the log says why, for every try: `journalctl -u natter | grep -E "sign-in|reset code"`
+shows `no account has that username` (they're typing another name), `<username> (by e-mail): wrong password`,
+`<username> signed in`, `reset code e-mailed to <username>`, `wrong code for <username>` and so on. It names an
+account only when it exists, and never logs a password or what was typed for an account that doesn't.
+
 `chmod 600 /etc/natter.env`. The data folder holds the database (with Nextcloud app passwords of signed-in sessions)
 and local uploads — keep it `700`, owned by `natter`.
 

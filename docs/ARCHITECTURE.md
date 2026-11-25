@@ -186,7 +186,10 @@ One UDP port, one thread, many [`str0m`](https://github.com/algesten/str0m) `Rtc
 
 ### Routes
 
-Public: `GET /api/info` · `POST /api/auth/register` · `POST /api/auth/login` · `POST /api/auth/forgot`
+Public: `GET /api/info` · `POST /api/auth/register` · `POST /api/auth/login` (`LoginReq`; `username` may be the
+account's e-mail address instead, since usernames never contain `@`; 10 failed tries per account per 10 minutes, and
+every outcome is logged at info: no such account, wrong password, signed in, naming the account only when it exists,
+never a password) · `POST /api/auth/forgot`
 (`ForgotPassword` → 204, the same whether or not the account exists; e-mails a code, at most 3 per account per 15
 minutes) · `POST /api/auth/reset` (`ResetWithCode` → `AuthResp`; the code lasts 30 minutes and 5 tries, is stored
 hashed, works once, and the reset signs out every other device) · `POST /api/auth/nextcloud` ·

@@ -1047,5 +1047,15 @@ async fn full_flow() {
     let (s, _) = call(&app, "GET", "/api/me/sessions", Some(&t6), None).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED, "the reset signed the others out");
 
+    // The e-mail address signs in too, in any case; a wrong password or an unknown address doesn't.
+    let by_email = |e: &str, pw: &str| {
+        let (e, pw, app) = (e.to_string(), pw.to_string(), app.clone());
+        async move { call(&app, "POST", "/api/auth/login", None, Some(json!({"username": e, "password": pw}))).await.0 }
+    };
+    assert_eq!(by_email(" CAROL@example.org", "carols-new-one").await, StatusCode::OK);
+    assert_eq!(by_email("carol@example.org", "not-her-password").await, StatusCode::UNAUTHORIZED);
+    assert_eq!(by_email("nobody@example.org", "carols-new-one").await, StatusCode::UNAUTHORIZED);
+    assert_eq!(by_email("carol@", "carols-new-one").await, StatusCode::UNAUTHORIZED);
+
     let _ = std::fs::remove_dir_all(data);
 }

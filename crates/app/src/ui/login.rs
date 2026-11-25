@@ -367,8 +367,10 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                         disabled=move || info.get().is_some_and(|i| i.registration == Registration::Closed && !i.first_run)
                                         on:click=move |_| mode_register.set(true)>"Create account"</button>
                                 </div>
-                                <label>"Username"
-                                    <input autocomplete="username" autocapitalize="none" spellcheck="false" required=true minlength="2" maxlength="32"
+                                // Accounts with an e-mail address can sign in with it too.
+                                <label>{move || if !mode_register.get() && email_reset() { "Username or e-mail" } else { "Username" }}
+                                    <input autocomplete="username" autocapitalize="none" spellcheck="false" required=true minlength="2"
+                                        maxlength=move || if mode_register.get() { "32" } else { "254" }
                                         prop:value=move || username.get() on:input=move |e| username.set(event_target_value(&e))/>
                                 </label>
                                 <Show when=move || mode_register.get()>
@@ -377,7 +379,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                     </label>
                                 </Show>
                                 <Show when=move || mode_register.get() && email_reset()>
-                                    <label><span>"E-mail " <span class="muted">"(optional, only to reset a lost password)"</span></span>
+                                    <label><span>"E-mail " <span class="muted">"(optional: to reset a lost password, or sign in with)"</span></span>
                                         <input type="email" maxlength="254" autocomplete="email" autocapitalize="none" spellcheck="false"
                                             prop:value=move || email.get() on:input=move |e| email.set(event_target_value(&e))/>
                                     </label>

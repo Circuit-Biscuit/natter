@@ -239,41 +239,50 @@ pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<J
     }))
 }
 
+/// Signs in with a username or the account's e-mail address (usernames never contain '@'). Every outcome goes to the
+/// log with its reason, so "I can't sign in" can be told apart: no such account, or a wrong password. The log names
+/// an account only when it exists, and never holds what was typed otherwise, or a password.
 pub async fn login(State(st): State<St>, Json(req): Json<LoginReq>) -> R<Json<AuthResp>> {
-    let username = username_key(&req.username);
+    let via = login_kind(&req.username);
+    let q = if via == "e-mail" {
+        sqlx::query_as("SELECT id, username, password_hash, nc_user_id IS NOT NULL FROM users WHERE email = ?")
+            .bind(email_key(&req.username).unwrap_or_default())
+    } else {
+        sqlx::query_as("SELECT id, username, password_hash, nc_user_id IS NOT NULL FROM users WHERE username = ?")
+            .bind(username_key(&req.username))
+    };
+    let row: Option<(Id, String, String, bool)> = q.fetch_optional(&st.db).await?;
+    // Failed tries count per account, whichever name it was signed in with.
+    let key = row.as_ref().map_or_else(|| username_key(&req.username), |r| r.1.clone());
     {
         let mut fails = st.login_fails.lock().unwrap();
-        let list = fails.entry(username.clone()).or_default();
+        let list = fails.entry(key.clone()).or_default();
         list.retain(|t| t.elapsed() < Duration::from_secs(600));
         if list.len() >= 10 {
+            match &row {
+                Some((_, username, ..)) => tracing::info!("sign-in refused for {username}: too many failed tries"),
+                None => tracing::info!("sign-in refused: too many failed tries for an unknown {via}"),
+            }
             return Err(ApiErr::new(
                 StatusCode::TOO_MANY_REQUESTS,
                 "too many attempts, try again in a few minutes",
             ));
         }
     }
-    let row: Option<(Id, String)> =
-        sqlx::query_as("SELECT id, password_hash FROM users WHERE username = ?")
-            .bind(&username)
-            .fetch_optional(&st.db)
-            .await?;
-    let ok = match &row {
-        Some((_, hash)) => verify_password(req.password, hash.clone()).await,
-        None => false,
+    let fail = |why: String| {
+        tracing::info!("sign-in failed: {why}");
+        st.login_fails.lock().unwrap().entry(key.clone()).or_default().push(Instant::now());
+        ApiErr::new(StatusCode::UNAUTHORIZED, "wrong username or password")
     };
-    let Some((id, _)) = row.filter(|_| ok) else {
-        st.login_fails
-            .lock()
-            .unwrap()
-            .entry(username)
-            .or_default()
-            .push(Instant::now());
-        return Err(ApiErr::new(
-            StatusCode::UNAUTHORIZED,
-            "wrong username or password",
-        ));
+    let Some((id, username, hash, nextcloud)) = row else {
+        return Err(fail(format!("no account has that {via}")));
     };
+    let why = if nextcloud { "wrong password (the account signs in with Nextcloud)" } else { "wrong password" };
+    if !verify_password(req.password, hash).await {
+        return Err(fail(format!("{username} (by {via}): {why}")));
+    }
     st.login_fails.lock().unwrap().remove(&username);
+    tracing::info!("{username} signed in (by {via})");
     let token = create_session(&st, id, req.device, None).await?;
     Ok(Json(AuthResp {
         token,
@@ -403,6 +412,7 @@ pub async fn reset_password(
     // Their failed tries don't hold the new password back.
     st.login_fails.lock().unwrap().remove(&username);
     end_sessions(&st, user, 0, true).await?;
+    tracing::info!("server admin {} gave {username} a temporary password", auth.user);
     Ok(Json(TempPassword { password }))
 }
 
@@ -440,7 +450,12 @@ pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPasswor
     if st.mailer.is_none() {
         return Err(not_found("e-mail reset on this server (ask one of its admins to reset your password)"));
     }
-    let Some((id, username, name, Some(email))) = local_account(&st, &req.login).await? else {
+    let Some((id, username, name, email)) = local_account(&st, &req.login).await? else {
+        tracing::info!("reset code not sent: no local account has that {}", login_kind(&req.login));
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    let Some(email) = email else {
+        tracing::info!("reset code not sent: {username} has no e-mail address");
         return Ok(StatusCode::NO_CONTENT);
     };
     {
@@ -448,6 +463,7 @@ pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPasswor
         let list = sends.entry(id).or_default();
         list.retain(|t| t.elapsed() < Duration::from_secs(900));
         if list.len() >= 3 {
+            tracing::info!("reset code not sent to {username}: 3 went out in the last 15 minutes");
             return Ok(StatusCode::NO_CONTENT);
         }
         list.push(Instant::now());
@@ -472,8 +488,9 @@ pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPasswor
     );
     tokio::spawn(async move {
         let Some(mailer) = &st.mailer else { return };
-        if let Err(e) = mailer.send(&email, &format!("Your Natter reset code: {code}"), body).await {
-            tracing::warn!("reset e-mail for user {id} not sent: {e:#}");
+        match mailer.send(&email, &format!("Your Natter reset code: {code}"), body).await {
+            Ok(()) => tracing::info!("reset code e-mailed to {username}"),
+            Err(e) => tracing::warn!("reset e-mail for {username} not sent: {e:#}"),
         }
     });
     Ok(StatusCode::NO_CONTENT)
@@ -482,31 +499,42 @@ pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPasswor
 /// The code from that e-mail and a new password: sets it, signs out every other device and signs this one in.
 pub async fn reset_with_code(State(st): State<St>, Json(req): Json<ResetWithCode>) -> R<Json<AuthResp>> {
     check_password(&req.new_password)?;
-    let wrong = || bad("that code is wrong or has expired: ask for a new one");
+    let wrong = |why: String| {
+        tracing::info!("reset code rejected: {why}");
+        bad("that code is wrong or has expired: ask for a new one")
+    };
     let Some((id, username, ..)) = local_account(&st, &req.login).await? else {
-        return Err(wrong());
+        return Err(wrong(format!("no local account has that {}", login_kind(&req.login))));
     };
     let row: Option<(String, i64, i64)> =
         sqlx::query_as("SELECT code_hash, expires_at, tries FROM password_resets WHERE user_id = ?")
             .bind(id)
             .fetch_optional(&st.db)
             .await?;
-    let Some((hash, expires, tries)) = row else { return Err(wrong()) };
+    let Some((hash, expires, tries)) = row else {
+        return Err(wrong(format!("{username} has no code (none sent, or already used)")));
+    };
     if expires < now_ms() || tries >= 5 {
         sqlx::query("DELETE FROM password_resets WHERE user_id = ?").bind(id).execute(&st.db).await?;
-        return Err(wrong());
+        return Err(wrong(format!("{username}'s code expired or was tried 5 times")));
     }
     if hash_token(&code_key(&req.code)) != hash {
         sqlx::query("UPDATE password_resets SET tries = tries + 1 WHERE user_id = ?").bind(id).execute(&st.db).await?;
-        return Err(wrong());
+        return Err(wrong(format!("wrong code for {username}")));
     }
     let new = hash_password(req.new_password).await?;
     sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?").bind(new).bind(id).execute(&st.db).await?;
     sqlx::query("DELETE FROM password_resets WHERE user_id = ?").bind(id).execute(&st.db).await?;
     st.login_fails.lock().unwrap().remove(&username);
     end_sessions(&st, id, 0, true).await?;
+    tracing::info!("{username} set a new password with an e-mailed code");
     let token = create_session(&st, id, req.device, None).await?;
     Ok(Json(AuthResp { token, user: db::user(&st.db, id).await? }))
+}
+
+/// What someone typed to name their account, for the log (never the text itself).
+fn login_kind(login: &str) -> &'static str {
+    if login.contains('@') { "e-mail" } else { "username" }
 }
 
 /// Your e-mail for password resets (empty removes it), confirmed with your password.

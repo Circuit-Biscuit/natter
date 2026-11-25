@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### New
+
+- **Sign in with your e-mail address.** If your account has one, it works in the username box too, in any case. The
+  server takes it from every app version; this version's sign-in screen says "Username or e-mail".
+
+### For people who run or build Natter
+
+- The server log now says why each sign-in failed: no account has that username or e-mail, or a wrong password
+  (and when it worked), plus every reset code sent, rejected or used and every admin password reset. It names an
+  account only when it exists and never logs passwords. `journalctl -u natter | grep -E "sign-in|reset code"`
+  (docs/DEPLOY.md).
+
 ## [0.12.0] — 2026-11-25
 
 ### New

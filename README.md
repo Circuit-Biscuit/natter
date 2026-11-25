@@ -57,8 +57,8 @@ backend" connects every participant to every other, which falls apart beyond fou
 - **Stream quality you control** — Go Live presets (Text & detail, Balanced, Smooth motion) or your own resolution, frame rate and bitrate, and whether to keep it sharp or smooth when the network is tight; change any of it while live, see exactly what goes out and what holds it back, and hover a share to see what you receive. Camera resolution, frame rate and bitrate too.
 - **Push to talk** — even while Natter is in the background (desktop app) — or voice activity, with echo cancellation and gain control.
 - **AI noise suppression** (RNNoise, on your device): keyboard clicks, fans and background chatter don't reach the call.
-- **Lost passwords:** "Forgot password?" e-mails a reset code once the server has SMTP set up, and a server admin
-  can always hand out a temporary password.
+- **Lost passwords:** "Forgot password?" e-mails a reset code once the server has SMTP set up (that e-mail address
+  signs in too), and a server admin can always hand out a temporary password.
 - **One UDP port** for all call media, encrypted in transit (DTLS-SRTP). Calls reconnect by themselves after a network change.
 
 ## Made for Nextcloud
