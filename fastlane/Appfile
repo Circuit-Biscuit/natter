@@ -1,2 +1,2 @@
-# Google Play package of the Android app (desktop keeps com.circuitbiscuit.natter).
-package_name("com.CircuitBiscuit.natter")
+# Google Play package of the Android app (the same ID as on desktop).
+package_name("com.circuitbiscuit.laklak")

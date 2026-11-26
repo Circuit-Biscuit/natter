@@ -1,9 +1,9 @@
-# Natter architecture
+# Laklak architecture
 
 ```
- ┌──────────── natter-desktop (Tauri 2, Rust) ────────────┐        ┌────────── natter-server (Rust) ──────────┐
+ ┌──────────── laklak-desktop (Tauri 2, Rust) ────────────┐        ┌────────── laklak-server (Rust) ──────────┐
  │ tray · notifications · push-to-talk · single instance │        │ axum HTTP API ── SQLite (WAL, FTS5)       │
- │  ┌────────── natter-app (Leptos → WASM) ───────────┐  │ HTTPS  │      │                                    │
+ │  ┌────────── laklak-app (Leptos → WASM) ───────────┐  │ HTTPS  │      │                                    │
  │  │ UI · store · REST client · gateway client       │──┼───────►│ /api/*        REST, JSON, Bearer token     │
  │  │ glue.js: WebRTC in the system webview           │──┼─ WSS ─►│ /gateway      live events (WebSocket)      │
  │  └─────────────────────────────────────────────────┘  │        │ /files/*      uploads (capability URLs)    │
@@ -13,10 +13,10 @@
 
 | Crate | Path | What |
 |---|---|---|
-| `natter-proto` | `crates/proto` | Every wire type (REST bodies, gateway events, ids). Compiled into server and app, so they cannot drift. |
-| `natter-server` | `crates/server` | One binary: HTTP API, WebSocket gateway, SQLite storage, file store, SFU for calls. Optionally serves the web build of the app. |
-| `natter-app` | `crates/app` | The whole UI, in Rust (Leptos, client-side rendered, compiled to WASM by `trunk`). Runs in the desktop shell or any browser. |
-| `natter-desktop` | `crates/desktop` | Tauri 2 shell around the app: native window, tray, notifications, global push-to-talk, single instance, installers. |
+| `laklak-proto` | `crates/proto` | Every wire type (REST bodies, gateway events, ids). Compiled into server and app, so they cannot drift. |
+| `laklak-server` | `crates/server` | One binary: HTTP API, WebSocket gateway, SQLite storage, file store, SFU for calls. Optionally serves the web build of the app. |
+| `laklak-app` | `crates/app` | The whole UI, in Rust (Leptos, client-side rendered, compiled to WASM by `trunk`). Runs in the desktop shell or any browser. |
+| `laklak-desktop` | `crates/desktop` | Tauri 2 shell around the app: native window, tray, notifications, global push-to-talk, single instance, installers. |
 
 ## Server
 
@@ -24,30 +24,30 @@
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NATTER_BIND` | `0.0.0.0:8080` | HTTP listen address (put TLS in front: Caddy / nginx) |
-| `NATTER_DATA` | `./natter-data` | Data directory: `natter.db` + `files/` |
-| `NATTER_NAME` | `Natter` | Server name shown on the sign-in screen |
-| `NATTER_REGISTRATION` | `invite` | `open` · `invite` (a valid invite code is needed) · `closed`. The first account can always be created and becomes admin. |
-| `NATTER_MAX_UPLOAD_MB` | `100` | Upload size limit |
-| `NATTER_MEDIA_PORT` | `50000` | UDP port for all call media |
-| `NATTER_CAMERA_KBPS` | `1000` | Most a camera sends in a call, kbit/s (`b=AS`/`b=TIAS` in the SDP the server hands out); `0` = no cap |
-| `NATTER_GAME_UTC_OFFSET` | `60` | Daily Word's time zone, minutes ahead of UTC: when the day's word changes and when the 09:00 summary goes out |
-| `NATTER_PUBLIC_IP` | auto (outbound interface) | IP announced to call clients; set it to the public IP on a server |
-| `NATTER_WEB_DIR` | unset | Serve the built app (`crates/app/dist`) at `/` |
-| `NATTER_NEXTCLOUD_URL` | unset | Nextcloud to sign in with and store files in, e.g. `https://cloud.example.com` |
-| `NATTER_NEXTCLOUD_GROUP` | unset | Only members of this Nextcloud group may sign in with Nextcloud |
-| `NATTER_NEXTCLOUD_FOLDER` | `Natter` | Folder in each user's Nextcloud that receives their uploads |
-| `NATTER_AUTOJOIN_SPACE` | unset | Space id every Nextcloud user joins on first sign-in (the company space) |
-| `NATTER_SMTP_URL` | unset | Mail account for password reset codes: `smtps://user:password@host:465` or `smtp://…:587?tls=required`; `file:///folder` writes `.eml` files instead (testing) |
-| `NATTER_SMTP_FROM` | unset | Sender of those e-mails, e.g. `Natter <chat@example.com>` (needed with `NATTER_SMTP_URL`) |
-| `RUST_LOG` | `natter_server=info` | Log filter |
+| `LAKLAK_BIND` | `0.0.0.0:8080` | HTTP listen address (put TLS in front: Caddy / nginx) |
+| `LAKLAK_DATA` | `./laklak-data` | Data directory: `laklak.db` + `files/` |
+| `LAKLAK_NAME` | `Laklak` | Server name shown on the sign-in screen |
+| `LAKLAK_REGISTRATION` | `invite` | `open` · `invite` (a valid invite code is needed) · `closed`. The first account can always be created and becomes admin. |
+| `LAKLAK_MAX_UPLOAD_MB` | `100` | Upload size limit |
+| `LAKLAK_MEDIA_PORT` | `50000` | UDP port for all call media |
+| `LAKLAK_CAMERA_KBPS` | `1000` | Most a camera sends in a call, kbit/s (`b=AS`/`b=TIAS` in the SDP the server hands out); `0` = no cap |
+| `LAKLAK_GAME_UTC_OFFSET` | `60` | Daily Word's time zone, minutes ahead of UTC: when the day's word changes and when the 09:00 summary goes out |
+| `LAKLAK_PUBLIC_IP` | auto (outbound interface) | IP announced to call clients; set it to the public IP on a server |
+| `LAKLAK_WEB_DIR` | unset | Serve the built app (`crates/app/dist`) at `/` |
+| `LAKLAK_NEXTCLOUD_URL` | unset | Nextcloud to sign in with and store files in, e.g. `https://cloud.example.com` |
+| `LAKLAK_NEXTCLOUD_GROUP` | unset | Only members of this Nextcloud group may sign in with Nextcloud |
+| `LAKLAK_NEXTCLOUD_FOLDER` | `Laklak` | Folder in each user's Nextcloud that receives their uploads |
+| `LAKLAK_AUTOJOIN_SPACE` | unset | Space id every Nextcloud user joins on first sign-in (the company space) |
+| `LAKLAK_SMTP_URL` | unset | Mail account for password reset codes: `smtps://user:password@host:465` or `smtp://…:587?tls=required`; `file:///folder` writes `.eml` files instead (testing) |
+| `LAKLAK_SMTP_FROM` | unset | Sender of those e-mails, e.g. `Laklak <chat@example.com>` (needed with `LAKLAK_SMTP_URL`) |
+| `RUST_LOG` | `laklak_server=info` | Log filter |
 
 ### Storage
 
 SQLite in WAL mode via `sqlx`, migrations embedded in the binary (`crates/server/migrations`). Message search is an FTS5
 external-content table kept in sync by triggers. Uploads live in `files/<token>`; metadata in `uploads`.
 
-Ids are `natter_proto::Id`: `(ms since 2026-01-01) << 10 | seq`, generated in-process, time-ordered (pagination and
+Ids are `laklak_proto::Id`: `(ms since 2026-01-01) << 10 | seq`, generated in-process, time-ordered (pagination and
 "unread since" are id comparisons), and below 2^53.
 
 ### Auth
@@ -72,7 +72,7 @@ CORS allows any origin: tokens travel in the `Authorization` header, never in co
 ### Gateway
 
 `GET /gateway?token=…` upgrades to a WebSocket. Frames are JSON text: server events `{"t": "...", "d": ...}`
-(`natter_proto::Event`), client ops `{"op": "...", "d": ...}` (`natter_proto::Op`).
+(`laklak_proto::Event`), client ops `{"op": "...", "d": ...}` (`laklak_proto::Op`).
 
 1. Server sends `Hello { heartbeat_ms }`, then `Ready` with the complete state the app needs (you, every user you share a
    space or DM with, spaces with channels and members, DMs, read states, presences, voice states, settings).
@@ -115,24 +115,24 @@ with `X-Content-Type-Options: nosniff`, and SVG is never inline.
 
 ### Nextcloud
 
-Natter runs next to a Nextcloud and uses it for **who people are** and **where files live**. Chat, presence and calls stay
-in Natter's own server, which is what keeps them fast.
+Laklak runs next to a Nextcloud and uses it for **who people are** and **where files live**. Chat, presence and calls stay
+in Laklak's own server, which is what keeps them fast.
 
 **Sign in with Nextcloud** (any Nextcloud, using its standard [Login Flow v2](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html)):
 
-1. App → `POST /api/auth/nextcloud` → server starts a flow at `{nc}/index.php/login/v2` (User-Agent `Natter`, so the
-   app password shows up as "Natter" under the user's Nextcloud security settings) → returns `NcLoginStart`.
+1. App → `POST /api/auth/nextcloud` → server starts a flow at `{nc}/index.php/login/v2` (User-Agent `Laklak`, so the
+   app password shows up as "Laklak" under the user's Nextcloud security settings) → returns `NcLoginStart`.
 2. The app opens `login_url` in the system browser. The user signs in to Nextcloud as always (for us: Stalwart).
 3. App polls `POST /api/auth/nextcloud/poll { flow }` every 2 s → `null` until approved, then `AuthResp`. The server
    polls Nextcloud, gets `{loginName, appPassword}`, verifies them with `GET {nc}/ocs/v2.php/cloud/user` (checks
-   `NATTER_NEXTCLOUD_GROUP`), then creates or updates the Natter user linked by Nextcloud user id: username from the id,
-   display name and custom avatar from Nextcloud (refreshed at every sign-in). New users join `NATTER_AUTOJOIN_SPACE`.
-   Nextcloud sign-in ignores `NATTER_REGISTRATION` (Nextcloud already vouches for the person).
-4. The app password is kept with that Natter session (server DB, never sent to the app) so the server can store files
+   `LAKLAK_NEXTCLOUD_GROUP`), then creates or updates the Laklak user linked by Nextcloud user id: username from the id,
+   display name and custom avatar from Nextcloud (refreshed at every sign-in). New users join `LAKLAK_AUTOJOIN_SPACE`.
+   Nextcloud sign-in ignores `LAKLAK_REGISTRATION` (Nextcloud already vouches for the person).
+4. The app password is kept with that Laklak session (server DB, never sent to the app) so the server can store files
    for the user. Signing out or revoking the session deletes the app password in Nextcloud too.
 
 **Files.** When the uploading session is a Nextcloud session, `POST /api/uploads` streams the file into
-`{NATTER_NEXTCLOUD_FOLDER}/{space or "Direct messages"}/{name}` in the sender's Nextcloud (WebDAV `PUT`, never overwriting:
+`{LAKLAK_NEXTCLOUD_FOLDER}/{space or "Direct messages"}/{name}` in the sender's Nextcloud (WebDAV `PUT`, never overwriting:
 `name (2).ext`), creates a read-only public link share, and returns an `Attachment` whose `url` is the share's direct
 download URL and `link` the share page. Images get their dimensions read before upload. If Nextcloud refuses (quota,
 link sharing disabled) the file is stored locally instead, so sending never fails because of Nextcloud. Deleting the
@@ -162,7 +162,7 @@ One UDP port, one thread, many [`str0m`](https://github.com/algesten/str0m) `Rtc
 * Speaking indicators are computed in the app from audio levels; nothing goes over the network.
 * Noise suppression (Settings › Voice & video): "Standard" is the browser's `noiseSuppression` constraint, which
   only tames steady hum. "Strong" (the default) turns that off and runs the mic through RNNoise instead:
-  `crates/denoise` (nnnoiseless, plain `extern "C"` exports, no imports) is built to `natter_denoise.wasm` by a
+  `crates/denoise` (nnnoiseless, plain `extern "C"` exports, no imports) is built to `laklak_denoise.wasm` by a
   Trunk pre-build hook, and `denoise.js`, an AudioWorklet in its own 48 kHz AudioContext, cleans 10 ms frames
   (adds ~10 ms). The cleaned track is what the call, the speaking meter and mute use; stopping it stops the mic.
   Both files load with `?v=<version>`; if anything fails, the call gets the plain mic.
@@ -171,7 +171,7 @@ One UDP port, one thread, many [`str0m`](https://github.com/algesten/str0m) `Rtc
 
 * Code: `crates/server/src/` — `lib.rs` (config, state, router), `auth.rs`, `gateway.rs` (hub, presence, Ready),
   `spaces.rs`, `messages.rs` (also uploads/files/search), `voice.rs` + `sfu.rs`, `nextcloud.rs`, `db.rs`; schema in
-  `migrations/`. Test: `cargo test -p natter-server` (one end-to-end test with a fake Nextcloud).
+  `migrations/`. Test: `cargo test -p laklak-server` (one end-to-end test with a fake Nextcloud).
 * `POST /api/uploads` takes an optional `X-Channel-Id` header; Nextcloud sessions use it to pick the folder
   (space name or `Direct messages`; without it, `Uploads`). `X-Filename` may be percent-encoded UTF-8.
 * 429 bodies carry `retry_after_ms` (`ApiError`).
@@ -271,20 +271,20 @@ installer URL and minisign signature per platform (`windows-x86_64`, `linux-x86_
 makes when `createUpdaterArtifacts` is on.
 
 - At launch, before the window shows, the shell checks (6 s timeout per request). If a newer version downloads in
-  time, it installs at once. Windows runs the NSIS installer in passive mode, which starts the new Natter with the
+  time, it installs at once. Windows runs the NSIS installer in passive mode, which starts the new Laklak with the
   same arguments, so a tray start stays in the tray. macOS and Linux replace the app and restart.
 - While running, the app calls `check_update` a minute after start and then every 6 h. The shell downloads in the
   background (no timeout) and keeps the bytes. The app then shows **Update** in the title bar, which calls
-  `install_update`. If Natter is in a call, it asks first.
+  `install_update`. If Laklak is in a call, it asks first.
 - Android has no updater. The app reads `api.github.com/repos/…/releases/latest`, compares `tag_name` with its own
   version and shows a banner linking to the `.apk` asset.
-- Development builds (`debug_assertions`) never update, so test copies can't replace an installed Natter.
+- Development builds (`debug_assertions`) never update, so test copies can't replace an installed Laklak.
 
 ## Roles and permissions
 
 Discord-style. A space has `everyone_permissions` (`@everyone`) and any number of roles (`RoleDef`: name, colour,
 emoji, position, permission bits, hoist). A member may do what `@everyone` may plus what each of their roles may
-(`perm::effective`); Administrator, and owning the space, means everything. The bits live in `natter_proto::perm`
+(`perm::effective`); Administrator, and owning the space, means everything. The bits live in `laklak_proto::perm`
 with names and descriptions for settings screens, and the same `Space::permissions` / `Space::rank` run on the
 server (as two small queries in `db::perms`) and in the app (to show only what you may use).
 
@@ -327,7 +327,7 @@ picture, as in Discord.
 
 ### GIFs
 
-`app/src/ui/gif.rs`. The server only hands out the KLIPY app key (`ServerInfo.klipy_key` from `NATTER_KLIPY_KEY`,
+`app/src/ui/gif.rs`. The server only hands out the KLIPY app key (`ServerInfo.klipy_key` from `LAKLAK_KLIPY_KEY`,
 in `Ready`, so to signed-in people only; the public `/api/info` leaves it out);
 the app calls `api.klipy.com` itself, because KLIPY's terms require requests and media loads to come from the user's
 app, and keep results in their order. The picker shows category tiles (fetched once per run), Trending, Favorites
@@ -342,7 +342,7 @@ and re-checked (at most 4), 3 s to connect, 5 s in all, 512 KiB of HTML at most.
 
 ### Daily Word
 
-`games.rs`, with the shared rules in `natter_proto::word` (scoring with repeated letters, hard mode, Turkish
+`games.rs`, with the shared rules in `laklak_proto::word` (scoring with repeated letters, hard mode, Turkish
 case folding). Word lists are compiled in from `crates/server/words/` (`{lang}_answers.txt`, `{lang}_allowed.txt`,
 `{lang}_extra_allowed.txt`). At start-up each language's answers are shuffled with a random seed made once per
 server and kept in `game_meta`, so day *n* is answer *n* of that order and nobody can work it out from the repo. Day

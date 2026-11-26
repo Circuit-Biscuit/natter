@@ -1,4 +1,4 @@
-//! Natter app shell: Tauri 2 around the Rust/WASM UI, for desktop (Windows, macOS, Linux) and Android.
+//! Laklak app shell: Tauri 2 around the Rust/WASM UI, for desktop (Windows, macOS, Linux) and Android.
 //!
 //! Desktop adds what a browser tab can't: tray icon with close-to-tray, OS notifications, an unread badge on
 //! the taskbar and tray, global keybinds, starting with the computer, one running instance, a window that
@@ -11,11 +11,11 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use tauri_plugin_opener::OpenerExt;
 
-/// Passed by the OS when Natter starts with the computer.
+/// Passed by the OS when Laklak starts with the computer.
 #[cfg(desktop)]
 const AUTOSTART_ARG: &str = "--autostart";
 
-/// The close button hides Natter to the tray (default) instead of quitting.
+/// The close button hides Laklak to the tray (default) instead of quitting.
 struct CloseToTray(AtomicBool);
 
 /// A square RGBA image drawn by the UI (it has fonts; the badge number needs them).
@@ -56,7 +56,7 @@ fn toggle(app: &AppHandle) {
     }
 }
 
-/// OS notification (silent: the app plays its own sound); flashes the taskbar when Natter isn't in front.
+/// OS notification (silent: the app plays its own sound); flashes the taskbar when Laklak isn't in front.
 #[tauri::command]
 fn notify(app: AppHandle, title: String, body: String, flash: Option<bool>) {
     let n = app.notification();
@@ -93,14 +93,14 @@ fn set_badge(app: AppHandle, count: u32, tray: Option<Icon>, overlay: Option<Ico
                 let _ = w.set_badge_count((count > 0).then_some(i64::from(count)));
             }
         }
-        if let Some(t) = app.tray_by_id("natter") {
+        if let Some(t) = app.tray_by_id("laklak") {
             if let Some(img) = tray.and_then(Icon::image) {
                 let _ = t.set_icon(Some(img));
             }
             let tip = match count {
-                0 => "Natter".to_string(),
-                1 => "Natter — 1 unread mention".into(),
-                n => format!("Natter — {n} unread mentions"),
+                0 => "Laklak".to_string(),
+                1 => "Laklak — 1 unread mention".into(),
+                n => format!("Laklak — {n} unread mentions"),
             };
             let _ = t.set_tooltip(Some(tip));
         }
@@ -137,9 +137,9 @@ struct Bind {
 }
 
 /// Global keybinds (push-to-talk among them): each becomes a system-wide hotkey, and the app gets
-/// `keybind` events ({action, down}) even while Natter is in the background. "Show / hide Natter" is
+/// `keybind` events ({action, down}) even while Laklak is in the background. "Show / hide Laklak" is
 /// handled here. Returns the key combos that couldn't be registered (another app holds them).
-// ponytail: an OS hotkey reserves the combo system-wide while Natter runs; a raw keyboard hook would
+// ponytail: an OS hotkey reserves the combo system-wide while Laklak runs; a raw keyboard hook would
 // share it but needs Input Monitoring permission on macOS.
 #[tauri::command]
 fn set_keybinds(app: AppHandle, binds: Vec<Bind>) -> Vec<String> {
@@ -201,7 +201,7 @@ fn start_minimized_flag(app: &AppHandle) -> Option<std::path::PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join("start-minimized"))
 }
 
-/// Start Natter with the computer (or not), and whether it then stays in the tray. True when it worked.
+/// Start Laklak with the computer (or not), and whether it then stays in the tray. True when it worked.
 #[tauri::command]
 fn set_launch(app: AppHandle, autostart: bool, minimized: bool) -> bool {
     #[cfg(desktop)]
@@ -229,16 +229,16 @@ fn set_launch(app: AppHandle, autostart: bool, minimized: bool) -> bool {
 // ---------------------------------------------------------------- updates (desktop)
 //
 // Releases on GitHub carry a signed `latest.json` (see .github/workflows/release.yml). At launch, before the
-// window shows, a newer Natter installs straight away and restarts. Nothing is open yet, so nothing gets cut off.
-// While Natter runs, the UI asks every few hours; a newer version then downloads in the background and the
-// title bar offers "Update". Natter never restarts on its own while running, because a call may be on.
+// window shows, a newer Laklak installs straight away and restarts. Nothing is open yet, so nothing gets cut off.
+// While Laklak runs, the UI asks every few hours; a newer version then downloads in the background and the
+// title bar offers "Update". Laklak never restarts on its own while running, because a call may be on.
 
 /// A downloaded update waiting for the title bar's "Update" button.
 #[cfg(desktop)]
 #[derive(Default)]
 struct PendingUpdate(std::sync::Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>);
 
-/// A newer release, if there is one. Development builds and test copies never replace the installed Natter.
+/// A newer release, if there is one. Development builds and test copies never replace the installed Laklak.
 #[cfg(desktop)]
 async fn find_update(app: &AppHandle, timeout: std::time::Duration) -> Option<tauri_plugin_updater::Update> {
     use tauri_plugin_updater::UpdaterExt;
@@ -250,8 +250,8 @@ async fn find_update(app: &AppHandle, timeout: std::time::Duration) -> Option<ta
     updater.check().await.ok()?
 }
 
-/// Windows: the installer takes over (a small progress bar) and starts the new Natter; this process exits.
-/// macOS / Linux: the files are replaced in place, then Natter restarts. Returns only if it failed.
+/// Windows: the installer takes over (a small progress bar) and starts the new Laklak; this process exits.
+/// macOS / Linux: the files are replaced in place, then Laklak restarts. Returns only if it failed.
 #[cfg(desktop)]
 fn apply_update(app: &AppHandle, update: &tauri_plugin_updater::Update, bytes: &[u8]) {
     if update.install(bytes).is_ok() {
@@ -325,7 +325,7 @@ pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
     let builder = builder
-        // A second launch just brings the running Natter forward.
+        // A second launch just brings the running Laklak forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show(app)))
         // Size and position only: whether the window shows is decided at startup (tray start), and the frame is
         // always ours (state saved by 0.5 and older says "decorated", which would bring the Windows title bar back).
@@ -364,7 +364,7 @@ pub fn run() {
             {
                 tray(_app)?;
                 // The window starts hidden (tauri.conf.json). A waiting update installs first; then show the
-                // window, unless we started with the computer and the user wants Natter to wait in the tray.
+                // window, unless we started with the computer and the user wants Laklak to wait in the tray.
                 let app = _app.handle().clone();
                 let quiet = std::env::args().any(|a| a == AUTOSTART_ARG) && start_minimized_flag(&app).is_some_and(|f| f.exists());
                 tauri::async_runtime::spawn(async move {
@@ -377,7 +377,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, ev| {
-            // Closing the window keeps Natter running in the tray (calls and notifications continue),
+            // Closing the window keeps Laklak running in the tray (calls and notifications continue),
             // unless that's switched off in Settings › System.
             #[cfg(desktop)]
             if let tauri::WindowEvent::CloseRequested { api, .. } = ev
@@ -394,18 +394,18 @@ pub fn run() {
             let _ = (window, ev);
         })
         .run(tauri::generate_context!())
-        .expect("Natter failed to start");
+        .expect("Laklak failed to start");
 }
 
 #[cfg(desktop)]
 fn tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-    let open = MenuItem::with_id(app, "open", "Open Natter", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Natter", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Laklak", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Laklak", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
-    let mut tray = TrayIconBuilder::with_id("natter")
-        .tooltip("Natter")
+    let mut tray = TrayIconBuilder::with_id("laklak")
+        .tooltip("Laklak")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| match ev.id().as_ref() {

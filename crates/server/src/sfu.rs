@@ -14,7 +14,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
-use natter_proto::{Id, TrackKind};
+use laklak_proto::{Id, TrackKind};
 use serde::Deserialize;
 use str0m::bwe::{Bitrate, BweKind};
 use str0m::change::{SdpAnswer, SdpOffer, SdpPendingOffer};

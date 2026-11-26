@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Natter",
+  "productName": "Laklak",
   "version": "0.12.0",
-  "mainBinaryName": "Natter",
-  "identifier": "com.circuitbiscuit.natter",
+  "mainBinaryName": "Laklak",
+  "identifier": "com.circuitbiscuit.laklak",
   "build": {
     "frontendDist": "../app/dist",
     "devUrl": "http://localhost:1420",
@@ -15,7 +15,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Natter",
+        "title": "Laklak",
         "width": 1280,
         "height": 800,
         "minWidth": 940,
@@ -38,7 +38,7 @@
     "copyright": "© Circuit Biscuit",
     "category": "SocialNetworking",
     "shortDescription": "Chat, voice and video for teams — with your Nextcloud",
-    "longDescription": "Natter is a fast, Discord-style team chat with voice and video calls, built in Rust, that signs you in and stores your files with your own Nextcloud.",
+    "longDescription": "Laklak is a fast, Discord-style team chat with voice and video calls, built in Rust, that signs you in and stores your files with your own Nextcloud.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "windows": { "nsis": { "installMode": "currentUser" } },
     "macOS": { "minimumSystemVersion": "11.0", "infoPlist": "Info.plist" }
@@ -46,7 +46,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5MDQ2RUVGRDk4N0MxQUYKUldTdndZZlo3MjRFU1hzaWpJSU1Wd3ZNZUlxb1lySTRtZ0MzOFpZVEpiU0l4bzZEUDJJdjhUS0cK",
-      "endpoints": ["https://github.com/Circuit-Biscuit/natter/releases/latest/download/latest.json"]
+      "endpoints": ["https://github.com/Circuit-Biscuit/laklak/releases/latest/download/latest.json"]
     }
   }
 }

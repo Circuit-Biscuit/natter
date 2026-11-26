@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The Natter window may listen to shell events (push-to-talk), call its own commands, and move, minimise, maximise and close itself from its own title bar.",
+  "description": "The Laklak window may listen to shell events (push-to-talk), call its own commands, and move, minimise, maximise and close itself from its own title bar.",
   "windows": ["main"],
   "permissions": [
     "core:default",

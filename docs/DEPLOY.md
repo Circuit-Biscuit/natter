@@ -1,4 +1,4 @@
-# Deploying Natter
+# Deploying Laklak
 
 One binary, one data folder, one HTTPS host name, one UDP port — with or without a Nextcloud. These steps target
 Ubuntu 24.04 with Apache (for example next to an existing Nextcloud); a Caddy variant follows.
@@ -6,74 +6,74 @@ Ubuntu 24.04 with Apache (for example next to an existing Nextcloud); a Caddy va
 ## 1. Install
 
 ```sh
-sudo useradd --system --home /var/lib/natter --create-home natter
-sudo tar -xzf natter-server-<version>-linux-x86_64.tar.gz -C /opt   # → /opt/natter/{natter-server,web/}
+sudo useradd --system --home /var/lib/laklak --create-home laklak
+sudo tar -xzf laklak-server-<version>-linux-x86_64.tar.gz -C /opt   # → /opt/laklak/{laklak-server,web/}
 ```
 
-## 2. Configure — `/etc/natter.env`
+## 2. Configure — `/etc/laklak.env`
 
 ```sh
-NATTER_BIND=127.0.0.1:8080
-NATTER_DATA=/var/lib/natter
-NATTER_WEB_DIR=/opt/natter/web
-NATTER_NAME=Example Co
-NATTER_REGISTRATION=closed            # people sign in with Nextcloud; no local sign-ups
-NATTER_NEXTCLOUD_URL=https://cloud.example.com
-NATTER_NEXTCLOUD_GROUP=staff          # optional: only this Nextcloud group may sign in
-NATTER_PUBLIC_IP=203.0.113.10         # the address call media is announced on
-NATTER_MEDIA_PORT=50000
-# NATTER_AUTOJOIN_SPACE=<space id>    # set after creating the company space (right-click it › Copy Space ID)
-# NATTER_KLIPY_KEY=<app key>          # optional: turns on the GIF picker (see below)
-# NATTER_SMTP_URL=smtps://chat%40example.com:<password>@mail.example.com:465   # optional: "Forgot password?" e-mails
-# NATTER_SMTP_FROM=Natter <chat@example.com>
-RUST_LOG=natter_server=info
+LAKLAK_BIND=127.0.0.1:8080
+LAKLAK_DATA=/var/lib/laklak
+LAKLAK_WEB_DIR=/opt/laklak/web
+LAKLAK_NAME=Example Co
+LAKLAK_REGISTRATION=closed            # people sign in with Nextcloud; no local sign-ups
+LAKLAK_NEXTCLOUD_URL=https://cloud.example.com
+LAKLAK_NEXTCLOUD_GROUP=staff          # optional: only this Nextcloud group may sign in
+LAKLAK_PUBLIC_IP=203.0.113.10         # the address call media is announced on
+LAKLAK_MEDIA_PORT=50000
+# LAKLAK_AUTOJOIN_SPACE=<space id>    # set after creating the company space (right-click it › Copy Space ID)
+# LAKLAK_KLIPY_KEY=<app key>          # optional: turns on the GIF picker (see below)
+# LAKLAK_SMTP_URL=smtps://chat%40example.com:<password>@mail.example.com:465   # optional: "Forgot password?" e-mails
+# LAKLAK_SMTP_FROM=Laklak <chat@example.com>
+RUST_LOG=laklak_server=info
 ```
 
-**Without Nextcloud**, leave out the `NATTER_NEXTCLOUD_*` lines and set `NATTER_REGISTRATION=invite` (people need
-an invite link to make an account) or `open` (anyone who reaches the page may sign up). People then use Natter
+**Without Nextcloud**, leave out the `LAKLAK_NEXTCLOUD_*` lines and set `LAKLAK_REGISTRATION=invite` (people need
+an invite link to make an account) or `open` (anyone who reaches the page may sign up). People then use Laklak
 accounts with a username and password, and every file is stored in the data folder. Everything else works the same.
 
-**GIFs:** create a free app key at [partner.klipy.com](https://partner.klipy.com) and set `NATTER_KLIPY_KEY`. A new
+**GIFs:** create a free app key at [partner.klipy.com](https://partner.klipy.com) and set `LAKLAK_KLIPY_KEY`. A new
 key is in testing mode (100 requests an hour for everyone together); ask for production access in KLIPY's panel once
 it works. Every server needs its own key. The apps talk to KLIPY directly (KLIPY's terms require that), so the server
 gives the key to signed-in users (never to the public `/api/info`), as in any app with a GIF picker. Blocked words and single GIFs are set in KLIPY's panel.
 
-**Password reset e-mails:** Natter accounts (not Nextcloud ones) can add an e-mail address, and then reset a lost
-password themselves with a code sent there, once the server can send mail. Set `NATTER_SMTP_URL` to your mail
+**Password reset e-mails:** Laklak accounts (not Nextcloud ones) can add an e-mail address, and then reset a lost
+password themselves with a code sent there, once the server can send mail. Set `LAKLAK_SMTP_URL` to your mail
 account: `smtps://user:password@mail.example.com:465` (TLS from the start) or
 `smtp://user:password@mail.example.com:587?tls=required` (STARTTLS). Write an `@` in the user name as `%40` and any
-other special character in the password URL-encoded too. `NATTER_SMTP_FROM` is the sender people see, like
-`Natter <chat@example.com>`; most mail servers want it to be the account you sign in with or one of its aliases.
+other special character in the password URL-encoded too. `LAKLAK_SMTP_FROM` is the sender people see, like
+`Laklak <chat@example.com>`; most mail servers want it to be the account you sign in with or one of its aliases.
 The log says `password reset e-mail is on` at startup, or why the mail server didn't answer. Without SMTP the apps
 offer no e-mail reset. Either way a server admin can give someone a temporary password: right-click them ›
 **Reset Password…**.
 
-**When someone can't sign in:** the log says why, for every try: `journalctl -u natter | grep -E "sign-in|reset code"`
+**When someone can't sign in:** the log says why, for every try: `journalctl -u laklak | grep -E "sign-in|reset code"`
 shows `no account has that username` (they're typing another name), `<username> (by e-mail): wrong password`,
 `<username> signed in`, `reset code e-mailed to <username>`, `wrong code for <username>` and so on. It names an
 account only when it exists, and never logs a password or what was typed for an account that doesn't.
 
-`chmod 600 /etc/natter.env`. The data folder holds the database (with Nextcloud app passwords of signed-in sessions)
-and local uploads — keep it `700`, owned by `natter`.
+`chmod 600 /etc/laklak.env`. The data folder holds the database (with Nextcloud app passwords of signed-in sessions)
+and local uploads — keep it `700`, owned by `laklak`.
 
-## 3. systemd — `/etc/systemd/system/natter.service`
+## 3. systemd — `/etc/systemd/system/laklak.service`
 
 ```ini
 [Unit]
-Description=Natter chat server
+Description=Laklak chat server
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=natter
-EnvironmentFile=/etc/natter.env
-ExecStart=/opt/natter/natter-server
+User=laklak
+EnvironmentFile=/etc/laklak.env
+ExecStart=/opt/laklak/laklak-server
 Restart=always
 RestartSec=2
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/natter
+ReadWritePaths=/var/lib/laklak
 PrivateTmp=true
 
 [Install]
@@ -81,9 +81,9 @@ WantedBy=multi-user.target
 ```
 
 ```sh
-sudo systemctl daemon-reload && sudo systemctl enable --now natter
+sudo systemctl daemon-reload && sudo systemctl enable --now laklak
 curl -s http://127.0.0.1:8080/health
-sudo ufw allow 50000/udp comment 'Natter call media'
+sudo ufw allow 50000/udp comment 'Laklak call media'
 ```
 
 ## 4. HTTPS with Apache (`chat.example.com`)
@@ -103,7 +103,7 @@ sudo a2enmod proxy proxy_http proxy_wstunnel headers
     RewriteRule ^/gateway(.*) ws://127.0.0.1:8080/gateway$1 [P,L]
     ProxyPass        / http://127.0.0.1:8080/
     ProxyPassReverse / http://127.0.0.1:8080/
-    # Uploads up to NATTER_MAX_UPLOAD_MB
+    # Uploads up to LAKLAK_MAX_UPLOAD_MB
     LimitRequestBody 0
     ProxyTimeout 600
 </VirtualHost>
@@ -121,41 +121,41 @@ chat.example.com {
 
 ## 5. Nextcloud side (only if you use one)
 
-Nothing to install. Natter uses Nextcloud's standard client APIs:
+Nothing to install. Laklak uses Nextcloud's standard client APIs:
 
-* **Login Flow v2** — on by default. Each Natter device shows up as an app password named "Natter" under the user's
-  *Settings › Security*; signing out of Natter deletes it.
-* **Files** — WebDAV into each user's `Natter/` folder.
+* **Login Flow v2** — on by default. Each Laklak device shows up as an app password named "Laklak" under the user's
+  *Settings › Security*; signing out of Laklak deletes it.
+* **Files** — WebDAV into each user's `Laklak/` folder.
 * **Public link shares** — *Administration › Sharing › Allow users to share via link* must be on. If links require a
-  password or expiry by policy, Natter falls back to storing that file on the Natter server.
+  password or expiry by policy, Laklak falls back to storing that file on the Laklak server.
 
 ## 6. First run
 
 1. Open `https://chat.example.com` (or the desktop app) and **Sign in with Nextcloud** — or, without Nextcloud,
    **Create account** (the first account needs no invite). The first person becomes the server admin.
-2. Create the company space, copy its id (right-click › Copy Space ID), set `NATTER_AUTOJOIN_SPACE`, restart.
+2. Create the company space, copy its id (right-click › Copy Space ID), set `LAKLAK_AUTOJOIN_SPACE`, restart.
    Everyone who signs in afterwards lands in it. Without Nextcloud, invite people from the space instead
    (right-click › Invite People) and send them the link.
 
 ## Backups
 
-Everything lives in `NATTER_DATA`. A consistent copy while running:
+Everything lives in `LAKLAK_DATA`. A consistent copy while running:
 
 ```sh
-sqlite3 /var/lib/natter/natter.db ".backup '/backup/natter-$(date +%F).db'"
-rsync -a /var/lib/natter/files/ /backup/natter-files/
+sqlite3 /var/lib/laklak/laklak.db ".backup '/backup/laklak-$(date +%F).db'"
+rsync -a /var/lib/laklak/files/ /backup/laklak-files/
 ```
 
 Files sent by Nextcloud users are in their Nextcloud and covered by its backup.
 
 ## Upgrades
 
-Replace `/opt/natter`, `systemctl restart natter`. Database migrations run automatically at start. Connected apps
+Replace `/opt/laklak`, `systemctl restart laklak`. Database migrations run automatically at start. Connected apps
 reconnect by themselves (calls in progress reconnect too).
 
 ## Releasing
 
-This part is for whoever publishes Natter's apps. Desktop installers and the server bundle are built by GitHub
+This part is for whoever publishes Laklak's apps. Desktop installers and the server bundle are built by GitHub
 Actions; the Android app is built on your own computer, because its signing key never goes to GitHub.
 
 1. Add a `## [x.y.z]` section to [CHANGELOG.md](../CHANGELOG.md), run
@@ -168,7 +168,7 @@ Actions; the Android app is built on your own computer, because its signing key 
    powershell -ExecutionPolicy Bypass -File scripts\android-release.ps1
    ```
 
-   It builds the web UI, then the signed universal APK and the app bundle (`target\android\Natter_x.y.z.apk` and
+   It builds the web UI, then the signed universal APK and the app bundle (`target\android\Laklak_x.y.z.apk` and
    `.aab`), attaches the APK to the draft (so it's in `SHA256SUMS.txt`), and uploads the bundle to Google Play's
    **internal testing** track. Play's "What's new" is made from the headlines of the changelog section.
    Options: `-Track alpha` (closed testing), `-Status draft` (upload without rolling out), `-SkipGitHub`,
@@ -226,7 +226,7 @@ for one developer.
 
 | Symptom | Fix |
 |---|---|
-| Calls stay on "Connecting…" | UDP 50000 blocked, or `NATTER_PUBLIC_IP` is not the address clients reach. Check `call media on udp …` in `journalctl -u natter`. |
+| Calls stay on "Connecting…" | UDP 50000 blocked, or `LAKLAK_PUBLIC_IP` is not the address clients reach. Check `call media on udp …` in `journalctl -u laklak`. |
 | "Connection lost" banner flickers | The proxy isn't upgrading `/gateway` to a WebSocket (see the RewriteRule above). |
-| Nextcloud sign-in says "not allowed" | The user isn't in `NATTER_NEXTCLOUD_GROUP`. |
-| Attachments land on the Natter server, not in Nextcloud | Link sharing is off or restricted; see step 5. |
+| Nextcloud sign-in says "not allowed" | The user isn't in `LAKLAK_NEXTCLOUD_GROUP`. |
+| Attachments land on the Laklak server, not in Nextcloud | Link sharing is off or restricted; see step 5. |

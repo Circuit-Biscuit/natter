@@ -74,7 +74,7 @@ pub fn Icon(name: &'static str, #[prop(optional)] size: Option<u32>) -> impl Int
     }
 }
 
-/// The Natter mark (speech bubble with a voice wave), for the Home button and sign-in screen.
+/// The Laklak mark (speech bubble with a voice wave), for the Home button and sign-in screen.
 #[component]
 pub fn Logo(#[prop(optional)] size: Option<u32>) -> impl IntoView {
     let size = size.unwrap_or(28);

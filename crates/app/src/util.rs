@@ -1,6 +1,6 @@
 //! Small helpers: time, formatting, storage, colors.
 
-use natter_proto::{Id, Millis};
+use laklak_proto::{Id, Millis};
 use wasm_bindgen::JsCast;
 
 pub fn now() -> Millis {
@@ -276,7 +276,7 @@ mod tests {
         assert_eq!(emoticons(":) hi :D\n<3"), "🙂 hi 😃\n❤️");
         assert_eq!(emoticons("https://x.org a:b (:) :)."), "https://x.org a:b (:) :).");
         assert_eq!(emoticons("`:)` ```\n:(\n``` ;)"), "`:)` ```\n:(\n``` 😉");
-        assert_eq!(split_channel_link("https://a.b/natter/channels/1/22"), Some(("https://a.b/natter", 22)));
+        assert_eq!(split_channel_link("https://a.b/laklak/channels/1/22"), Some(("https://a.b/laklak", 22)));
         assert_eq!(split_channel_link("/channels/1/22/"), Some(("", 22)));
         assert_eq!(split_channel_link("https://a.b/channels/x/22"), None);
     }

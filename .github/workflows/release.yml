@@ -55,7 +55,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.v.outputs.version }}
         run: |
-          gh release view "v$VERSION" >/dev/null 2>&1 ||             gh release create "v$VERSION" --draft --title "Natter $VERSION" --notes "Building…" --target "$GITHUB_SHA"
+          gh release view "v$VERSION" >/dev/null 2>&1 ||             gh release create "v$VERSION" --draft --title "Laklak $VERSION" --notes "Building…" --target "$GITHUB_SHA"
 
   desktop:
     name: Desktop (${{ matrix.name }})
@@ -124,19 +124,19 @@ jobs:
         with:
           tool: trunk
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: cargo build --release --locked -p natter-server --target x86_64-unknown-linux-musl
+      - run: cargo build --release --locked -p laklak-server --target x86_64-unknown-linux-musl
       - run: trunk build --release
         working-directory: crates/app
       - run: |
-          mkdir -p natter
-          cp target/x86_64-unknown-linux-musl/release/natter-server natter/
-          cp -r crates/app/dist natter/web
-          cp docs/DEPLOY.md natter/
-          tar -czf "natter-server-$VERSION-linux-x86_64.tar.gz" natter
+          mkdir -p laklak
+          cp target/x86_64-unknown-linux-musl/release/laklak-server laklak/
+          cp -r crates/app/dist laklak/web
+          cp docs/DEPLOY.md laklak/
+          tar -czf "laklak-server-$VERSION-linux-x86_64.tar.gz" laklak
       - name: Upload to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v$VERSION" natter-server-*.tar.gz --clobber
+        run: gh release upload "v$VERSION" laklak-server-*.tar.gz --clobber
 
   publish:
     name: Publish release

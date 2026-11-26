@@ -1,5 +1,5 @@
 [package]
-name = "natter-desktop"
+name = "laklak-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ repository.workspace = true
 
 # A library too, because Tauri's Android/iOS builds load the app as a shared library.
 [lib]
-name = "natter_desktop_lib"
+name = "laklak_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]

@@ -1,6 +1,6 @@
 target/
 target-*/
-natter-data/
+laklak-data/
 crates/app/dist/
 *.db
 *.db-*

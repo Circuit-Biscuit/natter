@@ -11,7 +11,7 @@
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
-use natter_proto::{Channel, Embed, EmbedKind, Event, Id};
+use laklak_proto::{Channel, Embed, EmbedKind, Event, Id};
 use reqwest::Url;
 
 use crate::{St, db, now_ms};
@@ -19,7 +19,7 @@ use crate::{St, db, now_ms};
 /// At most this many previews per message.
 pub const MAX_EMBEDS: usize = 4;
 const MAX_BODY: usize = 512 * 1024;
-const UA: &str = "Mozilla/5.0 (compatible; NatterBot/1.0; link previews)";
+const UA: &str = "Mozilla/5.0 (compatible; LaklakBot/1.0; link previews)";
 /// Re-fetch a URL after a day; retry failures after an hour.
 const FRESH_MS: i64 = 86_400_000;
 const RETRY_MS: i64 = 3_600_000;

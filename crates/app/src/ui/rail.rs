@@ -1,7 +1,7 @@
 //! The far-left rail: Home (direct messages), unread DMs, spaces, and "add a space".
 
 use leptos::prelude::*;
-use natter_proto::{Id, Space};
+use laklak_proto::{Id, Space};
 
 use super::icons::{Icon, Logo};
 use super::{Avatar, menu};
@@ -17,7 +17,7 @@ pub fn Rail() -> impl IntoView {
             <div class="rail-item" class:active=home_active title="Direct Messages">
                 <span class="pill"></span>
                 <button class="rail-btn rail-home" on:click=move |_| {
-                    util::storage_remove("natter.space");
+                    util::storage_remove("laklak.space");
                     open_space(None);
                 }><Logo size=28/></button>
             </div>
@@ -63,7 +63,7 @@ fn SpaceButton(space: Space) -> impl IntoView {
             on:contextmenu=move |e| s.open_menu(&e, menu::space_menu(id))>
             <span class="pill"></span>
             <button class="rail-btn space" on:click=move |_| {
-                util::storage_set("natter.space", &id.to_string());
+                util::storage_set("laklak.space", &id.to_string());
                 open_space(Some(id));
             }>
                 {match icon {

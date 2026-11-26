@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::{Channel, ChannelKind, Event, Id, Status, UpdateChannel, VoiceState, perm};
+use laklak_proto::{Channel, ChannelKind, Event, Id, Status, UpdateChannel, VoiceState, perm};
 use wasm_bindgen::JsCast;
 
 use super::icons::Icon;
@@ -98,7 +98,7 @@ impl Dnd {
         move |e| {
             if let Some(dt) = e.data_transfer() {
                 // Firefox only starts a drag that carries data.
-                let _ = dt.set_data("application/x-natter-channel", &id.to_string());
+                let _ = dt.set_data("application/x-laklak-channel", &id.to_string());
                 dt.set_effect_allowed("move");
             }
             self.dragging.set(Some(id));

@@ -1,4 +1,4 @@
-package com.CircuitBiscuit.natter
+package com.circuitbiscuit.laklak
 
 import android.os.Build
 import android.os.Bundle
@@ -12,15 +12,15 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
   }
 
-  // Runs before the first page load, so `window.NatterAndroid` is there from the start.
+  // Runs before the first page load, so `window.LaklakAndroid` is there from the start.
   override fun onWebViewCreate(webView: WebView) {
-    webView.addJavascriptInterface(AppInfo(this), "NatterAndroid")
+    webView.addJavascriptInterface(AppInfo(this), "LaklakAndroid")
   }
 }
 
 /** What the app (glue.js `androidInstaller`) may ask the Android side. Kept by proguard-rules.pro. */
 class AppInfo(private val activity: MainActivity) {
-  /** The store that installed Natter: "com.android.vending" for Google Play, "" for a sideloaded APK. */
+  /** The store that installed Laklak: "com.android.vending" for Google Play, "" for a sideloaded APK. */
   @JavascriptInterface
   fun installer(): String = try {
     val pm = activity.packageManager

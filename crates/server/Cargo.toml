@@ -1,6 +1,6 @@
 [package]
-name = "natter-server"
-description = "Natter server: HTTP API, WebSocket gateway, SQLite storage and call SFU in one binary"
+name = "laklak-server"
+description = "Laklak server: HTTP API, WebSocket gateway, SQLite storage and call SFU in one binary"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ futures-util = "0.3.34"
 httpdate = "1"
 hex = "0.4.3"
 imagesize = "0.15.0"
-natter-proto = { path = "../proto" }
+laklak-proto = { path = "../proto" }
 percent-encoding = "2.3"
 rand = "0.10.4"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "form", "query"] }

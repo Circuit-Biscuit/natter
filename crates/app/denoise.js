@@ -1,5 +1,5 @@
 // "Strong" noise suppression, in the browser's audio thread: RNNoise (crates/denoise, built to
-// natter_denoise.wasm) cleans the microphone in 10 ms frames at 48 kHz. glue.js (`denoised`) puts this
+// laklak_denoise.wasm) cleans the microphone in 10 ms frames at 48 kHz. glue.js (`denoised`) puts this
 // between the mic and the call, and hands over the module's bytes; it has no imports.
 const N = 480;
 
@@ -51,4 +51,4 @@ class Denoise extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor("natter-denoise", Denoise);
+registerProcessor("laklak-denoise", Denoise);

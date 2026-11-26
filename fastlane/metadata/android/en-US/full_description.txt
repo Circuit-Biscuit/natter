@@ -1,6 +1,6 @@
-Natter is team chat that feels instant: spaces with text and voice channels, threads, direct messages and calls, on a server you control.
+Laklak is team chat that feels instant: spaces with text and voice channels, threads, direct messages and calls, on a server you control.
 
-Messages appear the moment you press send, and never post twice, even on a shaky connection. Calls run through Natter's own media server, so they stay smooth with more than a handful of people.
+Messages appear the moment you press send, and never post twice, even on a shaky connection. Calls run through Laklak's own media server, so they stay smooth with more than a handful of people.
 
 CHAT
 • Spaces with text, voice and announcement channels in collapsible categories
@@ -18,9 +18,9 @@ VOICE AND VIDEO
 • Noise suppression, echo cancellation and automatic gain
 
 YOUR SERVER, YOUR DATA
-• Natter is free, open-source software (AGPL-3.0). The server is one program and one data folder.
+• Laklak is free, open-source software (AGPL-3.0). The server is one program and one data folder.
 • Works with Nextcloud: sign in with your Nextcloud account, and your files stay in your own cloud.
-• No Nextcloud? Natter has its own accounts: your team sends you an invite link.
+• No Nextcloud? Laklak has its own accounts: your team sends you an invite link.
 
 AND MORE
 • Daily Word: a five-letter word game in English or Turkish, with team standings
@@ -29,4 +29,4 @@ AND MORE
 
 No ads. No tracking. Your messages stay on the server you choose.
 
-To use Natter you need the address of a Natter server, for example from your team. Want to run your own? Everything you need is at github.com/Circuit-Biscuit/natter
+To use Laklak you need the address of a Laklak server, for example from your team. Want to run your own? Everything you need is at github.com/Circuit-Biscuit/laklak

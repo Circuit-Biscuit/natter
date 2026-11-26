@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Natter uses your microphone for voice calls.</string>
+  <string>Laklak uses your microphone for voice calls.</string>
   <key>NSCameraUsageDescription</key>
-  <string>Natter uses your camera for video calls.</string>
+  <string>Laklak uses your camera for video calls.</string>
 </dict>
 </plist>

@@ -10,7 +10,7 @@ use axum::extract::{Path, State};
 use axum::http::{Method, Request, StatusCode};
 use axum::routing::{any, delete, get, post};
 use futures_util::StreamExt;
-use natter_proto::{Event, Id, Registration, perm};
+use laklak_proto::{Event, Id, Registration, perm};
 use serde_json::{Value, json};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tower::ServiceExt;
@@ -140,9 +140,9 @@ async fn eventually(nc: &FakeNc, line: &str) {
 
 #[tokio::test]
 async fn full_flow() {
-    let data = std::env::temp_dir().join(format!("natter-test-{}", rand::random::<u64>()));
+    let data = std::env::temp_dir().join(format!("laklak-test-{}", rand::random::<u64>()));
     let (nc_base, nc) = fake_nextcloud().await;
-    let cfg = natter_server::Config {
+    let cfg = laklak_server::Config {
         bind: "127.0.0.1:0".parse().unwrap(),
         data: data.clone(),
         name: "Test".into(),
@@ -155,14 +155,14 @@ async fn full_flow() {
         web_dir: None,
         nextcloud_url: Some(nc_base.clone()),
         nextcloud_group: Some("staff".into()),
-        nextcloud_folder: "Natter".into(),
+        nextcloud_folder: "Laklak".into(),
         autojoin_space: None,
         klipy_key: Some("klipy-test".into()),
         // Reset e-mails land in a folder as .eml files.
         smtp_url: Some(format!("file://{}", data.join("mail").display())),
-        smtp_from: Some("Natter <natter@example.org>".into()),
+        smtp_from: Some("Laklak <laklak@example.org>".into()),
     };
-    let (app, _st) = natter_server::build(cfg).await.unwrap();
+    let (app, _st) = laklak_server::build(cfg).await.unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn({
@@ -263,10 +263,10 @@ async fn full_flow() {
     assert_eq!(ready.spaces.len(), 1);
     assert!(ready.users.iter().any(|u| u.id == u1));
     assert!(!ready.nextcloud);
-    // A Natter account on a server next to a Nextcloud can't browse or share Nextcloud files.
+    // A Laklak account on a server next to a Nextcloud can't browse or share Nextcloud files.
     let (s, _) = call(&app, "GET", "/api/nextcloud/files?path=/", Some(&t2), None).await;
     assert_eq!(s, StatusCode::FORBIDDEN);
-    let (s, _) = call(&app, "POST", "/api/nextcloud/share", Some(&t2), Some(json!({"path": "/Natter/x.txt"}))).await;
+    let (s, _) = call(&app, "POST", "/api/nextcloud/share", Some(&t2), Some(json!({"path": "/Laklak/x.txt"}))).await;
     assert_eq!(s, StatusCode::FORBIDDEN);
 
     // A mention, sent twice with the same nonce, lands once and pings once.
@@ -850,7 +850,7 @@ async fn full_flow() {
         nc.log
             .lock()
             .unwrap()
-            .contains(&"PUT alice/Natter/Uploads/dot one.png".to_string())
+            .contains(&"PUT alice/Laklak/Uploads/dot one.png".to_string())
     );
     let (_, dm) = call(
         &app,
@@ -1029,7 +1029,7 @@ async fn full_flow() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     assert!(mail.contains("To: carol@example.org"), "{mail}");
-    let code = mail.lines().find_map(|l| l.trim().strip_prefix("Subject: Your Natter reset code: ")).expect("code in the subject").to_string();
+    let code = mail.lines().find_map(|l| l.trim().strip_prefix("Subject: Your Laklak reset code: ")).expect("code in the subject").to_string();
     assert_eq!(code.len(), 9, "{code}");
     let reset_code = |c: &str, pw: &str| {
         let (c, pw, app) = (c.to_string(), pw.to_string(), app.clone());

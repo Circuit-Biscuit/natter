@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::{Id, VoiceUpdate};
+use laklak_proto::{Id, VoiceUpdate};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 

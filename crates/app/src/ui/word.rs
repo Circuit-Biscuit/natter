@@ -3,8 +3,8 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::Id;
-use natter_proto::word::{self, Mark, Overview, Status};
+use laklak_proto::Id;
+use laklak_proto::word::{self, Mark, Overview, Status};
 
 use super::Avatar;
 use super::icons::Icon;
@@ -55,10 +55,10 @@ pub fn WordGame(space: Option<Id>) -> impl IntoView {
     let s = store();
     let browser_tr = util::window().navigator().language().is_some_and(|l| l.starts_with("tr"));
     let lang = RwSignal::new(
-        util::storage_get("natter.word.lang").filter(|l| l == "en" || l == "tr").unwrap_or_else(|| if browser_tr { "tr" } else { "en" }.into()),
+        util::storage_get("laklak.word.lang").filter(|l| l == "en" || l == "tr").unwrap_or_else(|| if browser_tr { "tr" } else { "en" }.into()),
     );
-    let colorblind = RwSignal::new(util::storage_get("natter.word.colorblind").is_some_and(|v| v == "1"));
-    let hard = RwSignal::new(util::storage_get("natter.word.hard").is_some_and(|v| v == "1"));
+    let colorblind = RwSignal::new(util::storage_get("laklak.word.colorblind").is_some_and(|v| v == "1"));
+    let hard = RwSignal::new(util::storage_get("laklak.word.hard").is_some_and(|v| v == "1"));
     let data = RwSignal::new(None::<Overview>);
     let input = RwSignal::new(String::new());
     let note = RwSignal::new(None::<String>);
@@ -86,7 +86,7 @@ pub fn WordGame(space: Option<Id>) -> impl IntoView {
     Effect::new(move |prev: Option<String>| {
         let l = lang.get();
         if prev.is_some_and(|p| p != l) {
-            util::storage_set("natter.word.lang", &l);
+            util::storage_set("laklak.word.lang", &l);
             data.set(None);
             load();
         }
@@ -310,12 +310,12 @@ pub fn WordGame(space: Option<Id>) -> impl IntoView {
                         <label class="check" title="Revealed hints must be used in later guesses (set before your first guess)">
                             <input type="checkbox" prop:checked=move || hard.get()
                                 prop:disabled=move || data.with(|d| d.as_ref().is_some_and(|o| !o.today.guesses.is_empty()))
-                                on:change=move |e| { let v = event_target_checked(&e); hard.set(v); util::storage_set("natter.word.hard", if v { "1" } else { "0" }); }/>
+                                on:change=move |e| { let v = event_target_checked(&e); hard.set(v); util::storage_set("laklak.word.hard", if v { "1" } else { "0" }); }/>
                             "Hard mode"
                         </label>
                         <label class="check">
                             <input type="checkbox" prop:checked=move || colorblind.get()
-                                on:change=move |e| { let v = event_target_checked(&e); colorblind.set(v); util::storage_set("natter.word.colorblind", if v { "1" } else { "0" }); }/>
+                                on:change=move |e| { let v = event_target_checked(&e); colorblind.set(v); util::storage_set("laklak.word.colorblind", if v { "1" } else { "0" }); }/>
                             "High-contrast colours"
                         </label>
                     </div>

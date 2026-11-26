@@ -1,14 +1,14 @@
 //! Link previews under messages: YouTube (thumbnail, then the player in place), page cards, pictures, videos.
 
 use leptos::prelude::*;
-use natter_proto::{ChannelKind, Embed, EmbedKind, Id};
+use laklak_proto::{ChannelKind, Embed, EmbedKind, Id};
 
 use super::Avatar;
 use super::icons::Icon;
 use crate::store::{Modal, open_channel, store};
 use crate::{desktop, voice};
 
-/// Links in previews open in the browser, never inside Natter.
+/// Links in previews open in the browser, never inside Laklak.
 fn open(url: String) -> impl Fn(leptos::ev::MouseEvent) + Clone {
     move |e: leptos::ev::MouseEvent| {
         e.prevent_default();

@@ -9,7 +9,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
-use natter_proto::{Event, Id, Op, Presence, Ready, ServerInfo, Status};
+use laklak_proto::{Event, Id, Op, Presence, Ready, ServerInfo, Status};
 use serde::Deserialize;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 

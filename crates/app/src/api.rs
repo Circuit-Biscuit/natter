@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use natter_proto::{ApiError, Attachment};
+use laklak_proto::{ApiError, Attachment};
 use serde::{Serialize, de::DeserializeOwned};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -17,7 +17,7 @@ pub fn set_server(base: &str) {
     CONF.with(|c| c.borrow_mut().0 = base.trim().trim_end_matches('/').to_string());
 }
 
-/// Where the web app was served from (works under a sub-path like `/natter/`); empty in the desktop app,
+/// Where the web app was served from (works under a sub-path like `/laklak/`); empty in the desktop app,
 /// which asks for a server address instead.
 pub fn default_server() -> String {
     if crate::desktop::is_tauri() {
@@ -141,7 +141,7 @@ pub async fn act(method: &str, path: &str) -> Result<(), Error> {
 }
 
 /// Upload a file. `channel` tells the server which Nextcloud folder it belongs in.
-pub async fn upload(blob: &web_sys::Blob, filename: &str, channel: Option<natter_proto::Id>) -> Result<Attachment, Error> {
+pub async fn upload(blob: &web_sys::Blob, filename: &str, channel: Option<laklak_proto::Id>) -> Result<Attachment, Error> {
     let ty = blob.type_();
     let ty = if ty.is_empty() { "application/octet-stream".to_string() } else { ty };
     let name = js_sys::encode_uri_component(filename).as_string().unwrap_or_default();

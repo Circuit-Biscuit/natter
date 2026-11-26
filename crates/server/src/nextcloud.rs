@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use natter_proto::{Attachment, AuthResp, Event, Id, NcFile, NcLoginPoll, NcLoginStart, NcShare};
+use laklak_proto::{Attachment, AuthResp, Event, Id, NcFile, NcLoginPoll, NcLoginStart, NcShare};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::{Method, RequestBuilder};
 use serde::Deserialize;
@@ -80,7 +80,7 @@ impl Nc {
         autojoin: Option<Id>,
     ) -> anyhow::Result<Nc> {
         let http = reqwest::Client::builder()
-            .user_agent("Natter")
+            .user_agent("Laklak")
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
             .build()?;
@@ -384,7 +384,7 @@ pub async fn login_poll(
     })))
 }
 
-/// Natter username for a Nextcloud account: its id, or (for OIDC hash ids) the e-mail's local part.
+/// Laklak username for a Nextcloud account: its id, or (for OIDC hash ids) the e-mail's local part.
 fn username_base(uid: &str, email: Option<&str>, display: &str) -> String {
     let hashy = uid.len() >= 32 && uid.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-');
     let src = if !hashy {
@@ -942,8 +942,8 @@ mod tests {
             "bob"
         );
         assert_eq!(
-            enc_path("/Natter/My Space/a b.png"),
-            "Natter/My%20Space/a%20b.png"
+            enc_path("/Laklak/My Space/a b.png"),
+            "Laklak/My%20Space/a%20b.png"
         );
         assert!(
             check_path("/a/../b").is_err()

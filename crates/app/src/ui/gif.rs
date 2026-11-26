@@ -2,7 +2,7 @@
 //! Picking a GIF sends its link as a message of its own, which every app shows as just the GIF.
 //!
 //! The GIFs come from KLIPY (Google closed Tenor's API in June 2026). KLIPY's terms shape this: the app calls KLIPY
-//! itself (the server only hands out the app key, `NATTER_KLIPY_KEY`), results stay in KLIPY's order, the search
+//! itself (the server only hands out the app key, `LAKLAK_KLIPY_KEY`), results stay in KLIPY's order, the search
 //! box says "Search KLIPY", and each send is reported to KLIPY's share endpoint. No user id is sent to KLIPY.
 
 use std::cell::RefCell;

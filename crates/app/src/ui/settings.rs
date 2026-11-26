@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::*;
+use laklak_proto::*;
 
 use super::Avatar;
 use super::icons::Icon;
@@ -10,7 +10,7 @@ use crate::store::{Keybind, Modal, store};
 use crate::{api, desktop, sound, util, voice};
 
 /// The apps' privacy policy (Google Play wants it reachable from inside the app).
-const PRIVACY_URL: &str = "https://circuit-biscuit.com/privacy/natter/";
+const PRIVACY_URL: &str = "https://circuit-biscuit.com/privacy/laklak/";
 
 #[component]
 pub fn UserSettings() -> impl IntoView {
@@ -36,7 +36,7 @@ pub fn UserSettings() -> impl IntoView {
                 <button on:click=|_| store().modal.set(Some(Modal::Shortcuts))>"Keyboard shortcuts"</button>
                 <div class="settings-sep"></div>
                 <button class="danger" on:click=|_| crate::store::sign_out()><Icon name="logout" size=16/>" Sign out"</button>
-                <div class="settings-version">{format!("Natter {}", env!("CARGO_PKG_VERSION"))}</div>
+                <div class="settings-version">{format!("Laklak {}", env!("CARGO_PKG_VERSION"))}</div>
             </nav>
             <section class="settings-body scroll">
                 <button class="settings-close icon-btn" title="Close (Esc)" on:click=|_| store().modal.set(None)><Icon name="x"/></button>
@@ -397,7 +397,7 @@ fn AppearanceTab() -> impl IntoView {
         </div>
         {(!desktop::is_android()).then(|| view! {
             <h3>"App icon"</h3>
-            <p class="muted small">{if desktop::is_desktop() { "Natter's icon on the taskbar and in the tray." } else { "Natter's icon on this browser tab." }}</p>
+            <p class="muted small">{if desktop::is_desktop() { "Laklak's icon on the taskbar and in the tray." } else { "Laklak's icon on this browser tab." }}</p>
             <div class="tile-row">
                 {APP_ICONS.into_iter().map(|(id, label)| view! {
                     <button class="app-icon-pick" title=label aria-label=label
@@ -463,7 +463,7 @@ fn NotificationsTab() -> impl IntoView {
     let test = move |_| {
         sound::play(sound::Sound::Message, st.with_untracked(|x| x.sounds));
         desktop::request_notification_permission();
-        desktop::notify("Natter", "This is what a notification looks like.", None);
+        desktop::notify("Laklak", "This is what a notification looks like.", None);
     };
     view! {
         <h2>"Notifications"</h2>
@@ -477,9 +477,9 @@ fn NotificationsTab() -> impl IntoView {
             on:change=move |_| s.update_settings(|x| x.notify_all = false)/>"Only direct messages and @mentions"</label>
         <p class="muted small">"Muted channels and spaces stay quiet either way (right-click one to mute it). Do Not Disturb silences everything."</p>
         <h3>"Badges"</h3>
-        {switch("Unread badge", "A red number on Natter's icon for mentions and direct messages, a red dot for anything else unread.",
+        {switch("Unread badge", "A red number on Laklak's icon for mentions and direct messages, a red dot for anything else unread.",
             move || st.with(|x| x.badge), move |on| s.update_settings(|x| x.badge = on))}
-        {desktop::is_desktop().then(|| switch("Flash the taskbar", "When a notification arrives while Natter isn't in front.",
+        {desktop::is_desktop().then(|| switch("Flash the taskbar", "When a notification arrives while Laklak isn't in front.",
             move || st.with(|x| x.flash), move |on| s.update_settings(|x| x.flash = on)))}
         <h3>"Sounds"</h3>
         {switch("Sounds", "New messages, people joining and leaving calls, mute and unmute.",
@@ -521,9 +521,9 @@ fn KeybindsTab() -> impl IntoView {
     view! {
         <h2>"Keybinds"</h2>
         <p class="muted">{if desktop::is_desktop() {
-            "Your keybinds work everywhere, even while Natter is in the background or in the tray."
+            "Your keybinds work everywhere, even while Laklak is in the background or in the tray."
         } else {
-            "In the browser, keybinds work while Natter has focus. In the desktop app they work everywhere."
+            "In the browser, keybinds work while Laklak has focus. In the desktop app they work everywhere."
         }}</p>
         <button class="btn primary" on:click=add><Icon name="plus" size=16/>" Add a keybind"</button>
         {move || prefs.with(|p| p.keybinds.clone()).into_iter().enumerate().map(|(i, b)| {
@@ -592,7 +592,7 @@ fn SystemTab() -> impl IntoView {
     };
     view! {
         <h2>"System"</h2>
-        {switch("Open Natter when your computer starts", "", move || autostart.get(), apply)}
+        {switch("Open Laklak when your computer starts", "", move || autostart.get(), apply)}
         <div class="sub-setting" class:disabled=move || !autostart.get()>
             {switch("Start minimized", "Start in the tray, out of your way.", move || prefs.with(|p| p.start_minimized), move |on| {
                 prefs.update(|p| p.start_minimized = on);
@@ -600,7 +600,7 @@ fn SystemTab() -> impl IntoView {
                 if autostart.get_untracked() { apply(true); }
             })}
         </div>
-        {switch("Minimize to tray", "Closing the window keeps Natter running in the tray, so calls and notifications carry on.",
+        {switch("Minimize to tray", "Closing the window keeps Laklak running in the tray, so calls and notifications carry on.",
             move || prefs.with(|p| p.close_to_tray), move |on| {
                 prefs.update(|p| p.close_to_tray = on);
                 s.save_prefs();
@@ -752,7 +752,7 @@ fn VoiceTab() -> impl IntoView {
                     }>
                     {move || if recording.get() { "Press a key…".to_string() } else { prefs.with(|p| p.ptt_key.clone()) }}
                 </button>
-                <span class="muted small">{if desktop::is_tauri() { "Works even when Natter is in the background." } else { "In the browser it only works while Natter has focus." }}</span>
+                <span class="muted small">{if desktop::is_tauri() { "Works even when Laklak is in the background." } else { "In the browser it only works while Laklak has focus." }}</span>
             </div>
         </Show>
         <h3>"Noise suppression"</h3>

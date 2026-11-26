@@ -1,8 +1,8 @@
-//! Sign-in: pick a server, then Nextcloud, an existing Natter account, or a new one.
+//! Sign-in: pick a server, then Nextcloud, an existing Laklak account, or a new one.
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::*;
+use laklak_proto::*;
 
 use super::icons::{Icon, Logo};
 use crate::{api, desktop, gateway, util};
@@ -23,23 +23,23 @@ fn device_name() -> String {
         "Unknown OS"
     };
     let app = match (desktop::is_tauri(), ua.contains("Android")) {
-        (true, true) => "Natter for Android",
-        (true, false) => "Natter Desktop",
-        _ => "Natter Web",
+        (true, true) => "Laklak for Android",
+        (true, false) => "Laklak Desktop",
+        _ => "Laklak Web",
     };
     format!("{app} on {os}")
 }
 
 /// Signed in: remember it, accept a pending invite (Nextcloud sign-ins skip the sign-up form), go online.
 fn finish(auth: AuthResp, on_done: Callback<()>, invite: String) {
-    util::storage_set("natter.token", &auth.token);
-    util::storage_set("natter.server", &api::server());
+    util::storage_set("laklak.token", &auth.token);
+    util::storage_set("laklak.server", &api::server());
     api::set_token(Some(auth.token));
     desktop::request_notification_permission();
     spawn_local(async move {
         if !invite.is_empty() {
             if let Ok(sp) = api::call::<_, Space>("POST", &format!("/api/invites/{}", api::enc(&invite)), &serde_json::json!({})).await {
-                util::storage_set("natter.space", &sp.id.to_string());
+                util::storage_set("laklak.space", &sp.id.to_string());
             }
             let base = format!("{}/", api::default_server());
             let _ = util::window().history().map(|h| h.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&base)));
@@ -57,7 +57,7 @@ fn invite_code(s: &str) -> String {
 #[component]
 pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let in_app = desktop::is_tauri();
-    let server = RwSignal::new(util::storage_get("natter.server").unwrap_or_else(api::default_server));
+    let server = RwSignal::new(util::storage_get("laklak.server").unwrap_or_else(api::default_server));
     let editing_server = RwSignal::new(in_app && server.get_untracked().is_empty());
     let info = RwSignal::new(None::<ServerInfo>);
     let info_error = RwSignal::new(None::<String>);
@@ -78,7 +78,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let new_pw = RwSignal::new(String::new());
     let show_new = RwSignal::new(false);
     let email_reset = move || info.get().is_some_and(|i| i.email_reset);
-    // Came with an invite to a server that lets invited people make a Natter account.
+    // Came with an invite to a server that lets invited people make a Laklak account.
     let can_join_without_nc = move || {
         !invite.get().is_empty() && info.get().is_some_and(|i| i.registration != Registration::Closed)
     };
@@ -105,7 +105,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                     editing_server.set(false);
                 }
                 Err(e) => {
-                    info_error.set(Some(if e.status == 0 { "No Natter server answered at that address.".into() } else { e.message }));
+                    info_error.set(Some(if e.status == 0 { "No Laklak server answered at that address.".into() } else { e.message }));
                     editing_server.set(true);
                 }
             }
@@ -126,7 +126,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
         spawn_local(async move {
             let r: Result<AuthResp, api::Error> = if register {
                 let body = RegisterReq {
-                    username: natter_proto::username_key(&username.get_untracked()),
+                    username: laklak_proto::username_key(&username.get_untracked()),
                     password: password.get_untracked(),
                     display_name: Some(display.get_untracked()).filter(|d| !d.trim().is_empty()),
                     invite: Some(invite_code(&invite.get_untracked())).filter(|c| !c.is_empty()),
@@ -136,7 +136,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                 api::call("POST", "/api/auth/register", &body).await
             } else {
                 let body = LoginReq {
-                    username: natter_proto::username_key(&username.get_untracked()),
+                    username: laklak_proto::username_key(&username.get_untracked()),
                     password: password.get_untracked(),
                     device: Some(device_name()),
                 };
@@ -250,7 +250,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
     view! {
         <div class="login">
             <div class="login-card">
-                <div class="login-brand"><Logo size=56/><span>"Natter"</span></div>
+                <div class="login-brand"><Logo size=56/><span>"Laklak"</span></div>
                 <Show when=move || editing_server.get() fallback=move || view! {
                     <div class="login-server">
                         <div>
@@ -275,7 +275,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                     </div>
                 }>
                     <form class="form" on:submit=move |e| { e.prevent_default(); load_info(); }>
-                        <div class="login-title">"Connect to your Natter server"</div>
+                        <div class="login-title">"Connect to your Laklak server"</div>
                         <label>"Server address"
                             <input type="url" placeholder="https://chat.example.com" required=true autofocus=true
                                 prop:value=move || server.get()
@@ -315,11 +315,11 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                     if open && can_join_without_nc() { mode_register.set(true); }
                                 }>
                                     {move || if show_local.get() {
-                                        "Hide Natter account sign-in"
+                                        "Hide Laklak account sign-in"
                                     } else if can_join_without_nc() {
-                                        "No Nextcloud account? Use a Natter account"
+                                        "No Nextcloud account? Use a Laklak account"
                                     } else {
-                                        "Use a Natter account instead"
+                                        "Use a Laklak account instead"
                                     }}
                                 </button>
                             }

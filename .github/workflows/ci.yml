@@ -22,6 +22,6 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: trunk
-      - run: cargo test --locked -p natter-proto -p natter-server -p natter-app -p natter-denoise
+      - run: cargo test --locked -p laklak-proto -p laklak-server -p laklak-app -p laklak-denoise
       - run: trunk build --release
         working-directory: crates/app

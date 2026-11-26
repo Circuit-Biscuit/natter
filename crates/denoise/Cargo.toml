@@ -1,5 +1,5 @@
 [package]
-name = "natter-denoise"
+name = "laklak-denoise"
 description = "AI noise suppression for calls: RNNoise (nnnoiseless) as a small wasm module for an AudioWorklet"
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [lib]
-# cdylib: natter_denoise.wasm, built by the app's Trunk hook and loaded by crates/app/denoise.js.
+# cdylib: laklak_denoise.wasm, built by the app's Trunk hook and loaded by crates/app/denoise.js.
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

@@ -1,7 +1,7 @@
 # Google Play for the Android app. `scripts/android-release.ps1` builds the APK + bundle and calls `play`;
 # the other lanes run on their own:
 #
-#   fastlane android play aab:target/android/Natter_1.2.3.aab track:internal
+#   fastlane android play aab:target/android/Laklak_1.2.3.aab track:internal
 #   fastlane android promote from:internal to:production       # ask before anything reaches production
 #   fastlane android listing                                   # store texts and pictures from fastlane/metadata
 #
@@ -19,7 +19,7 @@ platform :android do
   before_all do
     if ENV["PLAY_SERVICE_ACCOUNT"] && !ENV["SUPPLY_JSON_KEY"]
       gcloud = ENV["APPDATA"] ? File.join(ENV["APPDATA"], "gcloud") : File.join(Dir.home, ".config", "gcloud")
-      @play_credentials = File.join(Dir.tmpdir, "natter-play-#{Process.pid}.json")
+      @play_credentials = File.join(Dir.tmpdir, "laklak-play-#{Process.pid}.json")
       File.write(@play_credentials, JSON.generate(
         type: "impersonated_service_account",
         service_account_impersonation_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" \

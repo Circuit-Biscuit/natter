@@ -45,9 +45,9 @@ $version = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version = "([^"]+
 $v = $version.Split('.') | ForEach-Object { [int]$_ }
 $versionCode = $v[0] * 1000000 + $v[1] * 1000 + $v[2]   # Tauri's own formula, so the APK and the bundle agree
 $out = "target\android"
-$apk = "$out\Natter_$version.apk"
-$aab = "$out\Natter_$version.aab"
-Write-Host "Natter $version (versionCode $versionCode)"
+$apk = "$out\Laklak_$version.apk"
+$aab = "$out\Laklak_$version.aab"
+Write-Host "Laklak $version (versionCode $versionCode)"
 
 if (-not $SkipBuild) {
     foreach ($name in "ANDROID_HOME", "NDK_HOME", "JAVA_HOME") {
@@ -86,7 +86,7 @@ if (-not $SkipGitHub) {
 if (-not $SkipPlay) {
     # "What's new" on Google Play (500 characters at most): the headline of each "New"/"Changed"/"Fixed" item.
     $section = [regex]::Match((Get-Content CHANGELOG.md -Raw -Encoding UTF8), "(?s)## \[$([regex]::Escape($version))\][^\n]*\n(.*?)(?=\n## \[|$)").Groups[1].Value
-    $more = "`nAll changes: github.com/Circuit-Biscuit/natter/releases"
+    $more = "`nAll changes: github.com/Circuit-Biscuit/laklak/releases"
     $notes = ""
     foreach ($m in [regex]::Matches($section, '(?m)^- \*\*(.+?)\*\*')) {
         $item = [char]0x2022 + " " + ($m.Groups[1].Value -replace '[`*_]', '').TrimEnd('.', ':') + "`n"

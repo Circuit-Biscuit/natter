@@ -3233,6 +3233,85 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4933f3f57a8e9d9da04db23fb153356ecaf00cbd14aee46279c33dc80925c37"
 
 [[package]]
+name = "laklak-app"
+version = "0.12.0"
+dependencies = [
+ "console_error_panic_hook",
+ "emojis",
+ "gloo-timers",
+ "js-sys",
+ "laklak-proto",
+ "leptos",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "laklak-denoise"
+version = "0.12.0"
+dependencies = [
+ "nnnoiseless",
+]
+
+[[package]]
+name = "laklak-desktop"
+version = "0.12.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+]
+
+[[package]]
+name = "laklak-proto"
+version = "0.12.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "laklak-server"
+version = "0.12.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "axum",
+ "futures-util",
+ "hex",
+ "httpdate",
+ "imagesize",
+ "laklak-proto",
+ "lettre",
+ "percent-encoding",
+ "rand 0.10.4",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "str0m",
+ "tokio",
+ "tokio-tungstenite",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3674,85 +3753,6 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "natter-app"
-version = "0.12.0"
-dependencies = [
- "console_error_panic_hook",
- "emojis",
- "gloo-timers",
- "js-sys",
- "leptos",
- "natter-proto",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "natter-denoise"
-version = "0.12.0"
-dependencies = [
- "nnnoiseless",
-]
-
-[[package]]
-name = "natter-desktop"
-version = "0.12.0"
-dependencies = [
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tauri-plugin-window-state",
-]
-
-[[package]]
-name = "natter-proto"
-version = "0.12.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "natter-server"
-version = "0.12.0"
-dependencies = [
- "anyhow",
- "argon2",
- "axum",
- "futures-util",
- "hex",
- "httpdate",
- "imagesize",
- "lettre",
- "natter-proto",
- "percent-encoding",
- "rand 0.10.4",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "sqlx",
- "str0m",
- "tokio",
- "tokio-tungstenite",
- "tower",
- "tower-http 0.7.1",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

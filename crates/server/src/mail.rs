@@ -1,8 +1,8 @@
 //! Outgoing e-mail: password reset codes, through the server's own mail account.
 //!
-//! `NATTER_SMTP_URL` says where: `smtps://user:password@mail.example.com:465` (TLS from the start) or
+//! `LAKLAK_SMTP_URL` says where: `smtps://user:password@mail.example.com:465` (TLS from the start) or
 //! `smtp://user:password@mail.example.com:587?tls=required` (STARTTLS); write an `@` in the user name as `%40`.
-//! `NATTER_SMTP_FROM` is the sender, like `Natter <chat@example.com>`. `file:///some/folder` writes each mail there
+//! `LAKLAK_SMTP_FROM` is the sender, like `Laklak <chat@example.com>`. `file:///some/folder` writes each mail there
 //! as an `.eml` file instead of sending it (for trying things out). Without these the apps offer no e-mail reset;
 //! a server admin can still give someone a temporary password.
 
@@ -26,17 +26,17 @@ impl Mailer {
     pub fn new(url: Option<&str>, from: Option<&str>) -> anyhow::Result<Option<Mailer>> {
         let Some(url) = url else { return Ok(None) };
         let from: Mailbox = from
-            .context("NATTER_SMTP_URL needs NATTER_SMTP_FROM, like \"Natter <chat@example.com>\"")?
+            .context("LAKLAK_SMTP_URL needs LAKLAK_SMTP_FROM, like \"Laklak <chat@example.com>\"")?
             .parse()
-            .context("NATTER_SMTP_FROM isn't an e-mail address, like \"Natter <chat@example.com>\"")?;
+            .context("LAKLAK_SMTP_FROM isn't an e-mail address, like \"Laklak <chat@example.com>\"")?;
         let via = match url.strip_prefix("file://") {
             Some(dir) => {
-                std::fs::create_dir_all(dir).with_context(|| format!("NATTER_SMTP_URL: can't create {dir}"))?;
+                std::fs::create_dir_all(dir).with_context(|| format!("LAKLAK_SMTP_URL: can't create {dir}"))?;
                 Via::File(AsyncFileTransport::new(dir))
             }
             None => Via::Smtp(
                 AsyncSmtpTransport::<Tokio1Executor>::from_url(url)
-                    .context("NATTER_SMTP_URL isn't an SMTP URL like smtps://user:password@mail.example.com:465")?
+                    .context("LAKLAK_SMTP_URL isn't an SMTP URL like smtps://user:password@mail.example.com:465")?
                     .build(),
             ),
         };

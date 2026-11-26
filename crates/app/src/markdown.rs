@@ -5,7 +5,7 @@
 //! text can never inject markup or script into the app.
 
 use leptos::prelude::*;
-use natter_proto::Id;
+use laklak_proto::Id;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Inline {
@@ -495,7 +495,7 @@ fn one(i: Inline, space: Option<Id>) -> AnyView {
             view! {
                 <span class="mention" on:click=move |_| crate::store::open_channel(id)>
                     {move || match s.channel(id) {
-                        Some(c) if c.kind == natter_proto::ChannelKind::Voice => format!("🔊 {}", c.name),
+                        Some(c) if c.kind == laklak_proto::ChannelKind::Voice => format!("🔊 {}", c.name),
                         Some(c) => format!("#{}", c.name),
                         None => "#unknown".into(),
                     }}

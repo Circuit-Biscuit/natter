@@ -1,4 +1,4 @@
-// Natter's only JavaScript: WebRTC media, synthesized sounds, and the Tauri bridge.
+// Laklak's only JavaScript: WebRTC media, synthesized sounds, and the Tauri bridge.
 // Everything else — state, UI, networking — is Rust (src/). Rust calls these through wasm-bindgen.
 
 // ------------------------------------------------------------------ calls
@@ -66,17 +66,17 @@ async function getMic() {
   return opts.noise === "strong" ? denoised(raw) : raw;
 }
 
-// "Strong" noise suppression: the mic goes through RNNoise (denoise.js + natter_denoise.wasm, next to the app,
+// "Strong" noise suppression: the mic goes through RNNoise (denoise.js + laklak_denoise.wasm, next to the app,
 // in their own 48 kHz audio context) and the cleaned track is what the call, the meters and mute use. Stopping
 // it stops the mic too. If anything here fails, the call just gets the plain mic.
 let dnWasm = null;
 async function denoised(raw) {
   try {
     const v = "?v=" + opts.v; // a new release never pairs a cached worklet with a new module
-    dnWasm = dnWasm || (await (await fetch("natter_denoise.wasm" + v)).arrayBuffer());
+    dnWasm = dnWasm || (await (await fetch("laklak_denoise.wasm" + v)).arrayBuffer());
     const ctx = new AudioContext({ sampleRate: 48000 });
     await ctx.audioWorklet.addModule("denoise.js" + v);
-    const node = new AudioWorkletNode(ctx, "natter-denoise", { processorOptions: { wasm: dnWasm }, outputChannelCount: [1] });
+    const node = new AudioWorkletNode(ctx, "laklak-denoise", { processorOptions: { wasm: dnWasm }, outputChannelCount: [1] });
     const dest = ctx.createMediaStreamDestination();
     ctx.createMediaStreamSource(new MediaStream([raw])).connect(node).connect(dest);
     if (ctx.state === "suspended") await ctx.resume();
@@ -607,7 +607,7 @@ export async function tauriInvoke(cmd, argsJson) {
   try {
     return await window.__TAURI__.core.invoke(cmd, JSON.parse(argsJson));
   } catch (e) {
-    console.warn("natter desktop:", cmd, e);
+    console.warn("laklak desktop:", cmd, e);
     return null;
   }
 }
@@ -620,7 +620,7 @@ export function tauriListen(event, cb) {
 export function windowAction(action) {
   const w = isTauri() && window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow();
   if (!w) return;
-  (action === "min" ? w.minimize() : action === "max" ? w.toggleMaximize() : w.close()).catch((e) => console.warn("natter window:", e));
+  (action === "min" ? w.minimize() : action === "max" ? w.toggleMaximize() : w.close()).catch((e) => console.warn("laklak window:", e));
 }
 
 export function isAndroid() {
@@ -630,7 +630,7 @@ export function isAndroid() {
 // The Android app's installer (MainActivity.kt): "com.android.vending" when it came from Google Play.
 export function androidInstaller() {
   try {
-    return (window.NatterAndroid && window.NatterAndroid.installer()) || "";
+    return (window.LaklakAndroid && window.LaklakAndroid.installer()) || "";
   } catch (e) {
     return "";
   }
@@ -751,7 +751,7 @@ export async function showBadge(name, count, dot) {
       setFavicon((await renderIcon(name, 64, count, dot)).toDataURL());
     }
   } catch (e) {
-    console.warn("natter badge:", e);
+    console.warn("laklak badge:", e);
   }
 }
 
@@ -763,6 +763,6 @@ export async function showAppIcon(name) {
       await window.__TAURI__.core.invoke("set_app_icon", { icon: { rgba: pixels(c), size: 128 } });
     }
   } catch (e) {
-    console.warn("natter icon:", e);
+    console.warn("laklak icon:", e);
   }
 }

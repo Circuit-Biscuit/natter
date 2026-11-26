@@ -4,7 +4,7 @@
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::*;
+use laklak_proto::*;
 
 use super::icons::Icon;
 use super::{emoji, gif};

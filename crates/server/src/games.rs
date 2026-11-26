@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Query, State};
-use natter_proto::word::{self, GuessReq, Mark, Overview, Player, Standing, Stats, Status, Today};
-use natter_proto::{Event, Id, MessageKind};
+use laklak_proto::word::{self, GuessReq, Mark, Overview, Player, Standing, Stats, Status, Today};
+use laklak_proto::{Event, Id, MessageKind};
 use serde::Deserialize;
 
 use crate::auth::Auth;

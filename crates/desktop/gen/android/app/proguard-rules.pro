@@ -20,7 +20,7 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# MainActivity.kt: window.NatterAndroid in the webview.
--keep class com.CircuitBiscuit.natter.AppInfo {
+# MainActivity.kt: window.LaklakAndroid in the webview.
+-keep class com.circuitbiscuit.laklak.AppInfo {
   @android.webkit.JavascriptInterface public <methods>;
 }

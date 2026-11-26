@@ -4,20 +4,27 @@
 
 ### New
 
+- **Natter is now Laklak.** The new name is everywhere: the app, the window, the e-mails, the downloads
+  (`Laklak_<version>_…`) and the GitHub repository (`Circuit-Biscuit/laklak`). It's a clean break with no
+  migration: the app ID is now `com.circuitbiscuit.laklak` on every platform, so Laklak installs as a new app next
+  to Natter (sign in again, then uninstall Natter), and the app keeps its settings under new `laklak.*` keys, so
+  they start fresh. Servers are set up again too: the settings are now `LAKLAK_*` (were `NATTER_*`), the data
+  folder `./laklak-data` with `laklak.db`, the default Nextcloud folder `Laklak`, and docs/DEPLOY.md uses
+  `laklak.service`, `/etc/laklak.env` and `/opt/laklak`.
 - **Sign in with your e-mail address.** If your account has one, it works in the username box too, in any case. The
   server takes it from every app version; this version's sign-in screen says "Username or e-mail".
 - **Watch a stream in one click.** In a voice channel's member list, the **LIVE** badge next to someone sharing
   their screen turns into **WATCH** under the pointer: click it to join (if you aren't in the call yet) and see
   their screen big. The camera icon next to someone with their camera on does the same for their camera.
 - **Fill window** in calls: the button next to full screen makes the call (and a stream you're watching) fill
-  the whole Natter window, sidebars out of the way, without going full screen. Click it again or press Esc to
+  the whole Laklak window, sidebars out of the way, without going full screen. Click it again or press Esc to
   go back.
 
 ### Fixed
 
 - The web app could keep showing an older version after the server was updated (so "Forgot password?" was
   missing in the browser while the desktop app had it): browsers kept the app's start page from before the
-  update. The server now has them check for a newer one each time they open Natter; a refresh of an open tab
+  update. The server now has them check for a newer one each time they open Laklak; a refresh of an open tab
   picks it up.
 - The call's full-screen button now also takes you out of full screen, and shows which one it will do, also
   after you left full screen with Esc.
@@ -25,11 +32,11 @@
   bar and invisible or offline a ring, everywhere a status shows (member list, your panel, profiles, the status
   menu). Screen readers read the status out.
 
-### For people who run or build Natter
+### For people who run or build Laklak
 
 - The server log now says why each sign-in failed: no account has that username or e-mail, or a wrong password
   (and when it worked), plus every reset code sent, rejected or used and every admin password reset. It names an
-  account only when it exists and never logs passwords. `journalctl -u natter | grep -E "sign-in|reset code"`
+  account only when it exists and never logs passwords. `journalctl -u laklak | grep -E "sign-in|reset code"`
   (docs/DEPLOY.md).
 
 ## [0.12.0] — 2026-11-25

@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/logo.svg" width="112" alt="Natter logo">
+<img src="assets/logo.svg" width="112" alt="Laklak logo">
 
-# Natter
+# Laklak
 
 **Team chat, voice and video — fast like Discord, at home on your own Nextcloud.**
 
@@ -14,11 +14,11 @@ A self-hosted chat server with apps for Windows, macOS, Linux and Android — bu
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20macOS%20·%20Linux%20·%20Android%20·%20Web-444)](#downloads)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#feature-status)
 
-<img src="docs/screenshot-chat.png" width="100%" alt="Natter: space rail, channel list, a conversation with mentions, replies and reactions, and the member list">
+<img src="docs/screenshot-chat.png" width="100%" alt="Laklak: space rail, channel list, a conversation with mentions, replies and reactions, and the member list">
 
 <sub><i>A space with text and voice channels: mentions, replies, reactions, Markdown and live presence.</i></sub>
 
-[Chat](#chat-that-feels-instant) · [Calls](#voice-and-video-that-scale) · [Nextcloud](#made-for-nextcloud) · [Shortcuts](#the-little-things) · [vs. Talk](#natter-and-nextcloud-talk) · [Downloads](#downloads) · [Run a server](#run-a-server) · [Build](#quick-start) · [Changelog](CHANGELOG.md)
+[Chat](#chat-that-feels-instant) · [Calls](#voice-and-video-that-scale) · [Nextcloud](#made-for-nextcloud) · [Shortcuts](#the-little-things) · [vs. Talk](#laklak-and-nextcloud-talk) · [Downloads](#downloads) · [Run a server](#run-a-server) · [Build](#quick-start) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -48,14 +48,14 @@ hiccups. A retried message can never post twice.
 
 <sub><i>A voice channel: camera tiles, speaking rings, and who's connected — also shown in the channel list.</i></sub>
 
-Calls go through Natter's own **SFU** (selective forwarding unit) built into the server. Everyone sends their audio
+Calls go through Laklak's own **SFU** (selective forwarding unit) built into the server. Everyone sends their audio
 and video once, and the server forwards it to everyone else. Nextcloud Talk without its separate "high-performance
 backend" connects every participant to every other, which falls apart beyond four or five people.
 
 - **Voice channels** you drop into and out of, Discord-style, and **calls in any DM** with ringing.
 - **Camera, screen sharing (with sound), mute, deafen**, speaking indicators, focus any tile, full screen.
 - **Stream quality you control** — Go Live presets (Text & detail, Balanced, Smooth motion) or your own resolution, frame rate and bitrate, and whether to keep it sharp or smooth when the network is tight; change any of it while live, see exactly what goes out and what holds it back, and hover a share to see what you receive. Camera resolution, frame rate and bitrate too.
-- **Push to talk** — even while Natter is in the background (desktop app) — or voice activity, with echo cancellation and gain control.
+- **Push to talk** — even while Laklak is in the background (desktop app) — or voice activity, with echo cancellation and gain control.
 - **AI noise suppression** (RNNoise, on your device): keyboard clicks, fans and background chatter don't reach the call.
 - **Lost passwords:** "Forgot password?" e-mails a reset code once the server has SMTP set up (that e-mail address
   signs in too), and a server admin can always hand out a temporary password.
@@ -63,15 +63,15 @@ backend" connects every participant to every other, which falls apart beyond fou
 
 ## Made for Nextcloud
 
-Natter runs next to your Nextcloud and uses it for **who people are** and **where files live**. Chat, presence and
-calls stay on Natter's own server, which is what keeps them fast.
+Laklak runs next to your Nextcloud and uses it for **who people are** and **where files live**. Chat, presence and
+calls stay on Laklak's own server, which is what keeps them fast.
 
 - **Sign in with Nextcloud** — one click opens your Nextcloud's login page (SSO, 2FA, everything you already use), then you're in. Names and pictures come from Nextcloud.
-- **Your files stay yours** — attachments are saved to your own Nextcloud (`Natter/<space>/`) and shared by read-only link. Delete the message and the share goes too; the file stays in your cloud.
+- **Your files stay yours** — attachments are saved to your own Nextcloud (`Laklak/<space>/`) and shared by read-only link. Delete the message and the share goes too; the file stays in your cloud.
 - **Share from Nextcloud** — browse your Nextcloud from the message box (**+ › Share from Nextcloud**) and attach any file.
-- **Any Nextcloud** — point `NATTER_NEXTCLOUD_URL` at your own Nextcloud; nothing has to be installed on the Nextcloud side.
+- **Any Nextcloud** — point `LAKLAK_NEXTCLOUD_URL` at your own Nextcloud; nothing has to be installed on the Nextcloud side.
 - **Company space for everyone** — new Nextcloud users can join your main space automatically; restrict sign-in to a Nextcloud group.
-- **No Nextcloud? No problem** — Natter has its own accounts and file storage too.
+- **No Nextcloud? No problem** — Laklak has its own accounts and file storage too.
 
 ## The little things
 
@@ -87,7 +87,7 @@ calls stay on Natter's own server, which is what keeps them fast.
 | **Ctrl + Shift + M / D** | Mute / deafen |
 | **`@silent` …** | Send without notifying anyone |
 
-On phones Natter switches to one screen at a time, like Discord's app: spaces and channels, then the chat, with
+On phones Laklak switches to one screen at a time, like Discord's app: spaces and channels, then the chat, with
 threads, members and search on top. Android's back button steps back through them; long-press a message for its menu.
 
 Also: drafts kept per channel; an unread badge with a real number on the taskbar, tray and browser tab; a choice of
@@ -107,14 +107,14 @@ morning at 09:00 the Daily Word bot posts yesterday's results there, tagging eve
 best. Stats (streaks, guess distribution) and week, month and all-time standings sit next to the board: a win is
 worth 6 points in one try down to 1 in six, and both languages count.
 
-## Natter and Nextcloud Talk
+## Laklak and Nextcloud Talk
 
-Natter started from a full read of [Nextcloud Talk](https://github.com/nextcloud/spreed)'s features (v26) — see
-[docs/FEATURES.md](docs/FEATURES.md) for the side-by-side. In short: Natter keeps Talk's essentials (conversations,
+Laklak started from a full read of [Nextcloud Talk](https://github.com/nextcloud/spreed)'s features (v26) — see
+[docs/FEATURES.md](docs/FEATURES.md) for the side-by-side. In short: Laklak keeps Talk's essentials (conversations,
 mentions, replies, reactions, edits, pins, read markers, notification levels, calls with screen sharing,
 permissions, Nextcloud identity and files) and changes how they're delivered:
 
-| | Nextcloud Talk | Natter |
+| | Nextcloud Talk | Laklak |
 |---|---|---|
 | Live updates | polling, or a separate Go signaling server | built-in WebSocket gateway, push only |
 | Calls | peer-to-peer mesh, or a separate Janus server | SFU built into the server, one UDP port |
@@ -158,11 +158,11 @@ permissions, Nextcloud identity and files) and changes how they're delivered:
 
 | Platform | File | Notes |
 |---|---|---|
-| **Windows** | `Natter_<version>_x64-setup.exe` | One click, no admin rights. Not code-signed yet: SmartScreen › **More info › Run anyway**. |
-| **macOS** (Apple Silicon + Intel) | `Natter_<version>_universal.dmg` | Drag to Applications. Not notarised yet: right-click › **Open** the first time. macOS 11+. |
-| **Linux** | `Natter_<version>_amd64.AppImage` / `.deb` | `chmod +x` the AppImage and run it. |
-| **Android** 7+ | `Natter_<version>.apk` | Allow "install unknown apps" for your browser once, then open the APK. |
-| **Server** | `natter-server-<version>-linux-x86_64.tar.gz` | Static binary plus the web app. |
+| **Windows** | `Laklak_<version>_x64-setup.exe` | One click, no admin rights. Not code-signed yet: SmartScreen › **More info › Run anyway**. |
+| **macOS** (Apple Silicon + Intel) | `Laklak_<version>_universal.dmg` | Drag to Applications. Not notarised yet: right-click › **Open** the first time. macOS 11+. |
+| **Linux** | `Laklak_<version>_amd64.AppImage` / `.deb` | `chmod +x` the AppImage and run it. |
+| **Android** 7+ | `Laklak_<version>.apk` | Allow "install unknown apps" for your browser once, then open the APK. |
+| **Server** | `laklak-server-<version>-linux-x86_64.tar.gz` | Static binary plus the web app. |
 
 On first start the app asks for your server's address (for example `https://chat.example.com`).
 
@@ -173,9 +173,9 @@ now) updates through Google Play.
 ## Run a server
 
 ```sh
-NATTER_NEXTCLOUD_URL=https://cloud.example.com \
-NATTER_PUBLIC_IP=203.0.113.10 \
-./natter-server
+LAKLAK_NEXTCLOUD_URL=https://cloud.example.com \
+LAKLAK_PUBLIC_IP=203.0.113.10 \
+./laklak-server
 ```
 
 Put HTTPS in front (Caddy or nginx), open UDP port 50000 for calls, and you're done. The first account becomes
@@ -189,7 +189,7 @@ Build from source with Rust 1.85 or newer plus `rustup target add wasm32-unknown
 
 ```sh
 git clone <this repository>
-cd natter
+cd laklak
 cd crates/app && trunk build --release && cd ../..   # the UI (Rust → WebAssembly)
 powershell -File scripts/dev.ps1                       # server + web app on http://localhost:8080
 cd crates/desktop && cargo tauri dev                   # the desktop app against it
@@ -200,7 +200,7 @@ On Linux install the webview libraries first: `sudo apt install libwebkit2gtk-4.
 Useful commands:
 
 ```sh
-cargo test -p natter-proto -p natter-server -p natter-app   # protocol, Markdown, full server test (HTTP, gateway, SFU join, fake Nextcloud)
+cargo test -p laklak-proto -p laklak-server -p laklak-app   # protocol, Markdown, full server test (HTTP, gateway, SFU join, fake Nextcloud)
 cd crates/desktop && cargo tauri build        # installers for this platform
 cd crates/desktop && cargo tauri android build --apk --target aarch64 --target armv7   # Android APK (needs the Android SDK + NDK; build the UI first)
 ```
@@ -246,7 +246,7 @@ the checksums too) and uploads the bundle to Google Play with fastlane. Setup an
 
 ## License and credits
 
-© Circuit Biscuit. Natter is free software under the [GNU Affero General Public License v3.0](LICENSE) or later:
+© Circuit Biscuit. Laklak is free software under the [GNU Affero General Public License v3.0](LICENSE) or later:
 use it, run it for your team, change it and share it. If you let people use a changed version over a network, offer
 them its source under the same licence.
 

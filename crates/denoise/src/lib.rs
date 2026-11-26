@@ -1,6 +1,6 @@
 //! "Strong" noise suppression for calls: RNNoise (Xiph's recurrent network, via its Rust port nnnoiseless).
 //!
-//! Built on its own to `natter_denoise.wasm` (no wasm-bindgen, no imports) because it runs in the browser's
+//! Built on its own to `laklak_denoise.wasm` (no wasm-bindgen, no imports) because it runs in the browser's
 //! audio thread, an AudioWorklet (`crates/app/denoise.js`), where the app's own module can't go. The worklet
 //! writes 480 samples (10 ms at 48 kHz, mono, scaled to the i16 range) to [`dn_input`], calls [`dn_process`]
 //! and reads the cleaned frame from [`dn_output`].

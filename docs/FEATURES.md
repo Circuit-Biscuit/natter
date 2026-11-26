@@ -1,14 +1,14 @@
-# Natter vs. Nextcloud Talk — feature map
+# Laklak vs. Nextcloud Talk — feature map
 
 Source: `nextcloud/spreed` at commit `f240551` (Talk 26.0.0-dev, 2026-11-20): `docs/capabilities.md`,
 `docs/constants.md` and the API docs (`conversation.md`, `chat.md`, `call.md`, `participant.md`, `reaction.md`,
 `poll.md`, `breakout-rooms.md`, `webinar.md`, `bots.md`). Talk's code was read for features only; none of it is used.
 
-✅ in Natter · 🔁 in Natter, done differently · ⬜ not yet · ➖ deliberately left out
+✅ in Laklak · 🔁 in Laklak, done differently · ⬜ not yet · ➖ deliberately left out
 
 ## Conversations
 
-| Talk | Natter | Notes |
+| Talk | Laklak | Notes |
 |---|---|---|
 | One-to-one conversations | ✅ DMs | reused, never duplicated |
 | Group conversations | 🔁 group DMs (up to 10) **and** spaces with channels | Discord model: a space holds many channels |
@@ -26,7 +26,7 @@ Source: `nextcloud/spreed` at commit `f240551` (Talk 26.0.0-dev, 2026-11-20): `d
 
 ## Chat
 
-| Talk | Natter | Notes |
+| Talk | Laklak | Notes |
 |---|---|---|
 | Send, Markdown messages | ✅ Discord-flavoured Markdown, rendered without HTML injection | |
 | Mentions (`@user`, `@all`, mention permissions) | ✅ `@user`, `@everyone`, `@here`, `#channel`; only admins ping everyone | |
@@ -52,7 +52,7 @@ Source: `nextcloud/spreed` at commit `f240551` (Talk 26.0.0-dev, 2026-11-20): `d
 
 ## Calls
 
-| Talk | Natter | Notes |
+| Talk | Laklak | Notes |
 |---|---|---|
 | Audio / video calls | ✅ | |
 | Screen sharing | ✅ with screen audio | |
@@ -70,7 +70,7 @@ Source: `nextcloud/spreed` at commit `f240551` (Talk 26.0.0-dev, 2026-11-20): `d
 
 ## Participants and permissions
 
-| Talk | Natter | Notes |
+| Talk | Laklak | Notes |
 |---|---|---|
 | Owner / moderator / user / guest | ✅ Discord-style roles with 17 permissions, @everyone defaults, hierarchy, private channels and per-channel overrides | guests ⬜ |
 | Promote, demote, transfer ownership | ✅ | |
@@ -81,9 +81,9 @@ Source: `nextcloud/spreed` at commit `f240551` (Talk 26.0.0-dev, 2026-11-20): `d
 
 ## Platform
 
-| Talk | Natter | Notes |
+| Talk | Laklak | Notes |
 |---|---|---|
-| Web app inside Nextcloud | 🔁 web app served by the Natter server | |
+| Web app inside Nextcloud | 🔁 web app served by the Laklak server | |
 | Desktop (Electron "Talk Desktop") | 🔁 Tauri shell + Rust UI | far smaller, native tray/notifications/PTT |
 | Mobile apps | ⬜ | web app works in mobile browsers |
 | Nextcloud login | ✅ Login Flow v2 (any Nextcloud, any SSO behind it) | |

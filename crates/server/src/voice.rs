@@ -9,7 +9,7 @@ use std::time::Instant;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use natter_proto::{
+use laklak_proto::{
     Event, Id, MessageKind, Millis, VoiceAnswer, VoiceJoin, VoiceState, VoiceUpdate, perm,
 };
 use str0m::bwe::Bitrate;

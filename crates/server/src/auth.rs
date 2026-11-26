@@ -9,7 +9,7 @@ use axum::extract::{FromRequestParts, Path, State};
 use axum::http::StatusCode;
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
-use natter_proto::{
+use laklak_proto::{
     AuthResp, ChangePassword, DeleteAccount, Event, ForgotPassword, Id, LoginReq, MAX_ABOUT_LEN, RegisterReq,
     ResetWithCode, SetEmail, email_key,
     Registration, ServerInfo, SessionInfo, Status, TempPassword, UpdateMe, User, username_key, valid_username,
@@ -481,14 +481,14 @@ pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPasswor
     let server = st.cfg.name.clone();
     let body = format!(
         "Hi {name},\n\n\
-         Someone asked to reset the password of your Natter account \"{username}\" on {server}. If that was \
-         you, enter this code on Natter's sign-in screen, under \"Forgot password?\":\n\n    {code}\n\n\
+         Someone asked to reset the password of your Laklak account \"{username}\" on {server}. If that was \
+         you, enter this code on Laklak's sign-in screen, under \"Forgot password?\":\n\n    {code}\n\n\
          It works for 30 minutes. If it wasn't you, ignore this e-mail: your password stays as it is.\n\n\
-         Natter at {server}\n"
+         Laklak at {server}\n"
     );
     tokio::spawn(async move {
         let Some(mailer) = &st.mailer else { return };
-        match mailer.send(&email, &format!("Your Natter reset code: {code}"), body).await {
+        match mailer.send(&email, &format!("Your Laklak reset code: {code}"), body).await {
             Ok(()) => tracing::info!("reset code e-mailed to {username}"),
             Err(e) => tracing::warn!("reset e-mail for {username} not sent: {e:#}"),
         }

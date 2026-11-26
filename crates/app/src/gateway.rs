@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 
 use leptos::prelude::*;
-use natter_proto::{Event, Id, Op};
+use laklak_proto::{Event, Id, Op};
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{CloseEvent, MessageEvent, WebSocket};
 

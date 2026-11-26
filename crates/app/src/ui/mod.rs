@@ -18,7 +18,7 @@ mod word;
 
 use leptos::ev;
 use leptos::prelude::*;
-use natter_proto::{ChannelKind, Id, Status};
+use laklak_proto::{ChannelKind, Id, Status};
 
 use crate::store::{Conn, Modal, Pane, Store, store};
 use crate::{api, desktop, gateway, util, voice};
@@ -32,8 +32,8 @@ pub fn App() -> impl IntoView {
     emoji::init();
     gif::init();
     composer::external();
-    api::set_server(&util::storage_get("natter.server").unwrap_or_else(api::default_server));
-    let token = util::storage_get("natter.token");
+    api::set_server(&util::storage_get("laklak.server").unwrap_or_else(api::default_server));
+    let token = util::storage_get("laklak.token");
     api::set_token(token.clone());
     voice::init();
     desktop::init();
@@ -100,15 +100,15 @@ pub fn App() -> impl IntoView {
 }
 
 /// Drag to move, double-click to maximise; minimise / maximise / close on the right, and "Update" once a
-/// newer Natter has downloaded.
+/// newer Laklak has downloaded.
 #[component]
 fn TitleBar() -> impl IntoView {
     let s = store();
     view! {
         <div class="titlebar" data-tauri-drag-region="">
-            <span class="titlebar-name" data-tauri-drag-region=""><icons::Logo size=14/>"Natter"</span>
+            <span class="titlebar-name" data-tauri-drag-region=""><icons::Logo size=14/>"Laklak"</span>
             {move || s.update.get().map(|(v, _)| view! {
-                <button class="titlebar-update" title=format!("Restart Natter to update to {v}") on:click=|_| desktop::install_update()>
+                <button class="titlebar-update" title=format!("Restart Laklak to update to {v}") on:click=|_| desktop::install_update()>
                     <Icon name="download" size=14/>"Update"
                 </button>
             })}
@@ -204,7 +204,7 @@ fn Shell() -> impl IntoView {
         s.settings.with(|st| st.show_members) && s.search.with(|r| r.is_none()) && s.thread.with(|t| t.is_none()) && has_members()
     };
     // Phones: swipe between the channel list, the chat and the member list.
-    let start = StoredValue::new(None::<(i32, i32, natter_proto::Millis)>);
+    let start = StoredValue::new(None::<(i32, i32, laklak_proto::Millis)>);
     let down = window_event_listener(ev::touchstart, move |e| {
         let one = e.touches().length() == 1 && s.mobile.get_untracked();
         start.set_value(e.touches().get(0).filter(|_| one && swipe_allowed(e.target())).map(|t| (t.client_x(), t.client_y(), util::now())));
@@ -276,7 +276,7 @@ fn ConnBanner() -> impl IntoView {
     }
 }
 
-/// Android: a newer Natter is out. The APK downloads in the browser; Android installs it after a tap.
+/// Android: a newer Laklak is out. The APK downloads in the browser; Android installs it after a tap.
 #[component]
 fn UpdateBanner() -> impl IntoView {
     let s = store();
@@ -285,7 +285,7 @@ fn UpdateBanner() -> impl IntoView {
         let apk = apk?;
         Some(view! {
             <div class="banner update">
-                {format!("Natter {v} is out.")}
+                {format!("Laklak {v} is out.")}
                 <button class="btn small" on:click=move |_| desktop::open_url(&apk)>"Download"</button>
                 <button class="icon-btn" title="Later" on:click=move |_| s.update.set(None)><Icon name="x" size=16/></button>
             </div>
@@ -552,7 +552,7 @@ fn global_handlers() {
 fn step_channel(down: bool, unread_only: bool) {
     let s = store();
     let nav = s.nav.get_untracked();
-    let list: Vec<natter_proto::Channel> = match nav.space {
+    let list: Vec<laklak_proto::Channel> = match nav.space {
         Some(sp) => sidebar::ordered_channels(&s.space(sp).map(|x| x.channels).unwrap_or_default())
             .into_iter()
             .filter(|c| c.kind == ChannelKind::Text)

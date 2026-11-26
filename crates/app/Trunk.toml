@@ -10,4 +10,4 @@ port = 1420
 [[hooks]]
 stage = "pre_build"
 command = "cargo"
-command_arguments = ["build", "--release", "-p", "natter-denoise", "--target", "wasm32-unknown-unknown"]
+command_arguments = ["build", "--release", "-p", "laklak-denoise", "--target", "wasm32-unknown-unknown"]

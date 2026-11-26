@@ -5,7 +5,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use natter_proto::{
+use laklak_proto::{
     Ban, BanReq, Channel, ChannelKind, CreateChannel, CreateDm, CreateInvite, CreateRole, CreateSpace,
     CreateThread, EPOCH_MS, Event, Id, Invite, InvitePreview, MAX_NAME_LEN, MAX_TOPIC_LEN,
     MessageKind, Overwrite, OverwriteKind, Presence, ReorderRoles, RoleDef, SetOverwrite, Space, Status,
@@ -559,7 +559,7 @@ pub async fn update_member(
     let (mine, my_rank) = db::my_perms(&st.db, space, auth.user).await?;
     let their_rank = rank_of(&st, space, target).await?;
     if req.role.is_some() {
-        return Err(bad("roles are given with PUT /api/spaces/{id}/members/{user}/roles/{role}; update Natter"));
+        return Err(bad("roles are given with PUT /api/spaces/{id}/members/{user}/roles/{role}; update Laklak"));
     }
     if let Some(nick) = &req.nickname {
         if target != auth.user && !(mine & perm::MANAGE_NICKNAMES != 0 && my_rank > their_rank) {

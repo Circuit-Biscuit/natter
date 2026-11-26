@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::*;
+use laklak_proto::*;
 
 use crate::store::{MenuItem, Modal, store};
 use crate::{api, util, voice};

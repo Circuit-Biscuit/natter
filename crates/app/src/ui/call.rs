@@ -5,7 +5,7 @@ use std::time::Duration;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::{Id, VoiceState};
+use laklak_proto::{Id, VoiceState};
 
 use super::Avatar;
 use super::icons::Icon;

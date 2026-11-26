@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-use natter_proto::{
+use laklak_proto::{
     Attachment, Channel, ChannelKind, Embed, Id, Member, Message, Overwrite, Reaction, ReadState, ReplyPreview, Role,
     RoleDef, Space, ThreadInfo, ThreadPreview, User, id_time, parse_user_mentions, perm,
 };

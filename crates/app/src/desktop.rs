@@ -1,7 +1,7 @@
 //! Native extras from the Tauri shell, with browser fallbacks so the same app runs on the web.
 
 use leptos::prelude::*;
-use natter_proto::Id;
+use laklak_proto::Id;
 use wasm_bindgen::prelude::*;
 
 use crate::store::store;
@@ -79,7 +79,7 @@ pub fn request_notification_permission() {
 /// the tab icon in a browser; the count also goes in the window title.
 pub fn set_badge(icon: &str, count: u32, dot: bool) {
     if let Some(doc) = util::window().document() {
-        doc.set_title(&if count > 0 { format!("({count}) Natter") } else { "Natter".into() });
+        doc.set_title(&if count > 0 { format!("({count}) Laklak") } else { "Laklak".into() });
     }
     if is_android() {
         return;
@@ -116,7 +116,7 @@ pub const KEYBIND_ACTIONS: [(&str, &str); 6] = [
     ("toggle_camera", "Toggle camera"),
     ("toggle_screen", "Toggle screen share"),
     ("leave_call", "Leave call"),
-    ("toggle_window", "Show / hide Natter"),
+    ("toggle_window", "Show / hide Laklak"),
 ];
 
 pub fn run_keybind(action: &str, down: bool) {
@@ -208,11 +208,11 @@ pub async fn autostart_enabled() -> bool {
 
 // ---------------------------------------------------------------- updates (desktop app and Android)
 
-/// Natter's public releases. Desktop updates come through the shell (signed `latest.json`); Android can't
+/// Laklak's public releases. Desktop updates come through the shell (signed `latest.json`); Android can't
 /// install apps by itself, so it links to the newest APK from here.
-const LATEST_RELEASE: &str = "https://api.github.com/repos/Circuit-Biscuit/natter/releases/latest";
+const LATEST_RELEASE: &str = "https://api.github.com/repos/Circuit-Biscuit/laklak/releases/latest";
 
-/// Look for a newer Natter a minute after start, then every six hours. The desktop shell downloads it in the
+/// Look for a newer Laklak a minute after start, then every six hours. The desktop shell downloads it in the
 /// background, then the title bar shows "Update"; on Android a banner links to the APK. The web app updates
 /// with its server, and Google Play updates the app it installed. (At launch the desktop shell has just
 /// checked by itself, hence the minute.)
@@ -267,14 +267,14 @@ fn newer(a: &str, b: &str) -> bool {
 pub fn install_update() {
     let go = || {
         wasm_bindgen_futures::spawn_local(async {
-            // On success Natter restarts and this never returns.
+            // On success Laklak restarts and this never returns.
             invoke("install_update", "{}").await;
             store().update.set(None);
-            store().toast("Couldn't install the update. Natter will try again later.", true);
+            store().toast("Couldn't install the update. Laklak will try again later.", true);
         });
     };
     if store().call.with_untracked(|c| c.channel.is_some()) {
-        store().confirm("Update now?", "Natter restarts to update, which ends your call.", "Restart and update", go);
+        store().confirm("Update now?", "Laklak restarts to update, which ends your call.", "Restart and update", go);
     } else {
         go();
     }

@@ -1,4 +1,4 @@
--- Natter schema v1. Ids are natter_proto::Id (time-ordered), times are unix ms.
+-- Laklak schema v1. Ids are laklak_proto::Id (time-ordered), times are unix ms.
 
 CREATE TABLE uploads (
     id           INTEGER PRIMARY KEY,

@@ -1,4 +1,4 @@
-//! natter-server: HTTP API, WebSocket gateway, SQLite storage and the call SFU, in one process.
+//! laklak-server: HTTP API, WebSocket gateway, SQLite storage and the call SFU, in one process.
 //! `main.rs` only reads the environment and calls [`serve`]. See `docs/ARCHITECTURE.md`.
 
 mod auth;
@@ -25,7 +25,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
-use natter_proto::{ApiError, EPOCH_MS, Id, Millis, Registration};
+use laklak_proto::{ApiError, EPOCH_MS, Id, Millis, Registration};
 use sqlx::SqlitePool;
 use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
@@ -42,9 +42,9 @@ pub struct Config {
     pub registration: Registration,
     pub max_upload: u64,
     pub media_port: u16,
-    /// Most a camera may send in a call, kbit/s (`NATTER_CAMERA_KBPS`, 0 = no cap).
+    /// Most a camera may send in a call, kbit/s (`LAKLAK_CAMERA_KBPS`, 0 = no cap).
     pub camera_kbps: u32,
-    /// Daily Word's time zone: minutes ahead of UTC (`NATTER_GAME_UTC_OFFSET`, default 60 = Central Europe).
+    /// Daily Word's time zone: minutes ahead of UTC (`LAKLAK_GAME_UTC_OFFSET`, default 60 = Central Europe).
     pub game_utc_offset_min: i64,
     pub public_ip: Option<IpAddr>,
     pub web_dir: Option<PathBuf>,
@@ -52,9 +52,9 @@ pub struct Config {
     pub nextcloud_group: Option<String>,
     pub nextcloud_folder: String,
     pub autojoin_space: Option<Id>,
-    /// KLIPY app key for the GIF picker (`NATTER_KLIPY_KEY`).
+    /// KLIPY app key for the GIF picker (`LAKLAK_KLIPY_KEY`).
     pub klipy_key: Option<String>,
-    /// Where password reset e-mails go out (`NATTER_SMTP_URL`, see `mail.rs`), and from whom (`NATTER_SMTP_FROM`).
+    /// Where password reset e-mails go out (`LAKLAK_SMTP_URL`, see `mail.rs`), and from whom (`LAKLAK_SMTP_FROM`).
     pub smtp_url: Option<String>,
     pub smtp_from: Option<String>,
 }
@@ -63,49 +63,49 @@ impl Config {
     pub fn from_env() -> anyhow::Result<Config> {
         let var = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
         Ok(Config {
-            bind: var("NATTER_BIND")
+            bind: var("LAKLAK_BIND")
                 .unwrap_or("0.0.0.0:8080".into())
                 .parse()?,
-            data: var("NATTER_DATA").unwrap_or("./natter-data".into()).into(),
-            name: var("NATTER_NAME").unwrap_or("Natter".into()),
-            registration: match var("NATTER_REGISTRATION").as_deref() {
+            data: var("LAKLAK_DATA").unwrap_or("./laklak-data".into()).into(),
+            name: var("LAKLAK_NAME").unwrap_or("Laklak".into()),
+            registration: match var("LAKLAK_REGISTRATION").as_deref() {
                 None | Some("invite") => Registration::Invite,
                 Some("open") => Registration::Open,
                 Some("closed") => Registration::Closed,
                 Some(v) => {
-                    anyhow::bail!("NATTER_REGISTRATION must be open, invite or closed, not {v:?}")
+                    anyhow::bail!("LAKLAK_REGISTRATION must be open, invite or closed, not {v:?}")
                 }
             },
-            max_upload: var("NATTER_MAX_UPLOAD_MB")
+            max_upload: var("LAKLAK_MAX_UPLOAD_MB")
                 .map(|v| v.parse::<u64>())
                 .transpose()?
                 .unwrap_or(100)
                 * 1024
                 * 1024,
-            media_port: var("NATTER_MEDIA_PORT")
+            media_port: var("LAKLAK_MEDIA_PORT")
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(50000),
             // ponytail: ~half the browser default (2.5 Mbit/s at 720p); simulcast if big calls ever need more.
-            camera_kbps: var("NATTER_CAMERA_KBPS")
+            camera_kbps: var("LAKLAK_CAMERA_KBPS")
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(1000),
-            game_utc_offset_min: var("NATTER_GAME_UTC_OFFSET")
+            game_utc_offset_min: var("LAKLAK_GAME_UTC_OFFSET")
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(60),
-            public_ip: var("NATTER_PUBLIC_IP").map(|v| v.parse()).transpose()?,
-            web_dir: var("NATTER_WEB_DIR").map(PathBuf::from),
-            nextcloud_url: var("NATTER_NEXTCLOUD_URL"),
-            nextcloud_group: var("NATTER_NEXTCLOUD_GROUP"),
-            nextcloud_folder: var("NATTER_NEXTCLOUD_FOLDER").unwrap_or("Natter".into()),
-            autojoin_space: var("NATTER_AUTOJOIN_SPACE")
+            public_ip: var("LAKLAK_PUBLIC_IP").map(|v| v.parse()).transpose()?,
+            web_dir: var("LAKLAK_WEB_DIR").map(PathBuf::from),
+            nextcloud_url: var("LAKLAK_NEXTCLOUD_URL"),
+            nextcloud_group: var("LAKLAK_NEXTCLOUD_GROUP"),
+            nextcloud_folder: var("LAKLAK_NEXTCLOUD_FOLDER").unwrap_or("Laklak".into()),
+            autojoin_space: var("LAKLAK_AUTOJOIN_SPACE")
                 .map(|v| v.parse())
                 .transpose()?,
-            klipy_key: var("NATTER_KLIPY_KEY"),
-            smtp_url: var("NATTER_SMTP_URL"),
-            smtp_from: var("NATTER_SMTP_FROM"),
+            klipy_key: var("LAKLAK_KLIPY_KEY"),
+            smtp_url: var("LAKLAK_SMTP_URL"),
+            smtp_from: var("LAKLAK_SMTP_FROM"),
         })
     }
 }
@@ -234,7 +234,7 @@ impl IntoResponse for ApiErr {
 /// Open the database, start the SFU and background jobs, and build the router.
 pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
     std::fs::create_dir_all(cfg.data.join("files"))?;
-    let db = db::open(&cfg.data.join("natter.db")).await?;
+    let db = db::open(&cfg.data.join("laklak.db")).await?;
     let (voice, sfu_events) = voice::Voice::start(&cfg)?;
     // Outbound HTTPS (Nextcloud) uses rustls with ring; installing twice is harmless.
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -251,7 +251,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
     if let Some(m) = &mailer {
         match m.check().await {
             Ok(()) => tracing::info!("password reset e-mail is on"),
-            Err(e) => tracing::warn!("NATTER_SMTP_URL: {e:#} (reset e-mails will fail until it works)"),
+            Err(e) => tracing::warn!("LAKLAK_SMTP_URL: {e:#} (reset e-mails will fail until it works)"),
         }
     }
     let st: St = Arc::new(AppState {
@@ -408,7 +408,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     let (app, st) = build(cfg).await?;
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(
-        "natter {VERSION} listening on http://{bind}, call media on udp {}",
+        "laklak {VERSION} listening on http://{bind}, call media on udp {}",
         st.voice.candidate
     );
     axum::serve(

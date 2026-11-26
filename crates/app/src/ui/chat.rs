@@ -4,7 +4,7 @@
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::*;
+use laklak_proto::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
@@ -42,7 +42,7 @@ fn Home() -> impl IntoView {
         <div class="home scroll">
             <Show when=move || s.spaces.with(|v| v.is_empty())>
                 <div class="welcome">
-                    <h2>"Welcome to Natter"</h2>
+                    <h2>"Welcome to Laklak"</h2>
                     <p>"Create a space for your team, or join one with an invite link."</p>
                     <button class="btn primary" on:click=move |_| s.modal.set(Some(Modal::CreateSpace))>"Create or join a space"</button>
                 </div>

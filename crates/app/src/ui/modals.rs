@@ -3,7 +3,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::*;
+use laklak_proto::*;
 
 use super::icons::Icon;
 use super::{Avatar, chat, settings};
@@ -173,7 +173,7 @@ fn CreateSpace() -> impl IntoView {
                     let id = sp.id;
                     crate::store::apply(Event::SpaceCreate(sp));
                     close();
-                    util::storage_set("natter.space", &id.to_string());
+                    util::storage_set("laklak.space", &id.to_string());
                     crate::store::open_space(Some(id));
                 }
                 Err(e) => error.set(Some(e.message)),
@@ -209,7 +209,7 @@ fn CreateSpace() -> impl IntoView {
                     let id = sp.id;
                     crate::store::apply(Event::SpaceCreate(sp));
                     close();
-                    util::storage_set("natter.space", &id.to_string());
+                    util::storage_set("laklak.space", &id.to_string());
                     crate::store::open_space(Some(id));
                 }
                 Err(e) => error.set(Some(e.message)),
@@ -881,7 +881,7 @@ fn ThreadBrowser(channel: Id) -> impl IntoView {
                             <div class="grow">
                                 <div class="thread-name">{t.name.clone()}</div>
                                 <div class="muted small">{format!("{} message{} · started by {} · active {}", count, if count == 1 { "" } else { "s" },
-                                    s.name(owner, space), util::timestamp(natter_proto::id_time(when)))}</div>
+                                    s.name(owner, space), util::timestamp(laklak_proto::id_time(when)))}</div>
                             </div>
                         </div>
                     }

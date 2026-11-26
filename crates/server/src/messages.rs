@@ -8,7 +8,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
-use natter_proto::{
+use laklak_proto::{
     Ack, Attachment, Channel, EditMessage, Event, Id, MAX_ATTACHMENTS, MAX_MESSAGE_LEN, Message,
     MessageKind, ReadState, SearchQuery, SearchResult, SendMessage, Status, parse_user_mentions, perm,
 };
@@ -329,7 +329,7 @@ pub async fn send(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    if acc.ch.kind == natter_proto::ChannelKind::Thread {
+    if acc.ch.kind == laklak_proto::ChannelKind::Thread {
         crate::spaces::unarchive_on_post(&st, &acc.ch).await?;
     }
     // Sending marks the channel read for you.
@@ -768,7 +768,7 @@ pub async fn store_local(st: &St, bytes: &[u8]) -> R<String> {
     Ok(token)
 }
 
-// ponytail: the whole upload is held in memory (≤ NATTER_MAX_UPLOAD_MB); stream to disk if that limit grows past a few hundred MB.
+// ponytail: the whole upload is held in memory (≤ LAKLAK_MAX_UPLOAD_MB); stream to disk if that limit grows past a few hundred MB.
 pub async fn upload(
     State(st): State<St>,
     auth: Auth,

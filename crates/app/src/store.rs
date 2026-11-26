@@ -12,7 +12,7 @@ pub type Action = Arc<dyn Fn() + Send + Sync>;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use natter_proto::*;
+use laklak_proto::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{api, util};
@@ -128,7 +128,7 @@ pub struct VoicePrefs {
     pub noise_ai: bool,
     /// Custom keybinds (global in the desktop app).
     pub keybinds: Vec<Keybind>,
-    /// Desktop: the close button hides Natter to the tray instead of quitting.
+    /// Desktop: the close button hides Laklak to the tray instead of quitting.
     pub close_to_tray: bool,
     /// Desktop: when started with the computer, stay in the tray.
     pub start_minimized: bool,
@@ -367,7 +367,7 @@ pub struct Store {
     pub mobile: RwSignal<bool>,
     /// Which column a phone shows.
     pub pane: RwSignal<Pane>,
-    /// A newer Natter (desktop app, Android): its version, and on Android the APK to download.
+    /// A newer Laklak (desktop app, Android): its version, and on Android the APK to download.
     pub update: RwSignal<Option<(String, Option<String>)>>,
 }
 
@@ -428,8 +428,8 @@ pub fn store() -> Store {
 
 impl Store {
     pub fn init() -> Store {
-        let prefs = util::storage_get("natter.voice").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let settings = util::storage_get("natter.settings").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let prefs = util::storage_get("laklak.voice").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let settings = util::storage_get("laklak.settings").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let s = Store {
             me: RwSignal::new(None),
             my_status: RwSignal::new(Status::Online),
@@ -726,7 +726,7 @@ impl Store {
     /// Saves go one at a time, always with the newest settings: two quick changes sent side by side could reach
     /// the server in the wrong order and the older one would win (or its echo would undo the newer one here).
     pub fn save_settings(&self) {
-        util::storage_set("natter.settings", &serde_json::to_string(&self.settings.get_untracked()).unwrap_or_default());
+        util::storage_set("laklak.settings", &serde_json::to_string(&self.settings.get_untracked()).unwrap_or_default());
         let (saving, _) = SAVING.get();
         SAVING.set((true, saving));
         if saving {
@@ -752,7 +752,7 @@ impl Store {
     }
 
     pub fn save_prefs(&self) {
-        util::storage_set("natter.voice", &serde_json::to_string(&self.prefs.get_untracked()).unwrap_or_default());
+        util::storage_set("laklak.voice", &serde_json::to_string(&self.prefs.get_untracked()).unwrap_or_default());
     }
 }
 
@@ -765,7 +765,7 @@ thread_local! {
 
 pub fn open_space(space: Option<Id>) {
     let s = store();
-    let key = format!("natter.last.{}", space.unwrap_or(0));
+    let key = format!("laklak.last.{}", space.unwrap_or(0));
     let remembered = util::storage_get(&key).and_then(|v| v.parse::<Id>().ok());
     let channel = match space {
         Some(sp) => {
@@ -820,7 +820,7 @@ pub fn open_channel(channel: Id) {
     s.reply_to.set(None);
     s.editing.set(None);
     s.search.set(None);
-    util::storage_set(&format!("natter.last.{}", c.space_id.unwrap_or(0)), &channel.to_string());
+    util::storage_set(&format!("laklak.last.{}", c.space_id.unwrap_or(0)), &channel.to_string());
     load_channel(channel);
 }
 
@@ -1446,7 +1446,7 @@ pub fn apply(ev: Event) {
                 s.ringing.set(Some((channel_id, caller_id)));
                 crate::sound::ring(true);
                 let name = s.name(caller_id, None);
-                crate::desktop::notify(&format!("{name} is calling"), "Open Natter to answer.", Some(channel_id));
+                crate::desktop::notify(&format!("{name} is calling"), "Open Laklak to answer.", Some(channel_id));
             }
         }
         Event::SettingsUpdate(v) => {
@@ -1455,7 +1455,7 @@ pub fn apply(ev: Event) {
                 return;
             }
             if let Ok(st) = serde_json::from_value::<Settings>(v) {
-                util::storage_set("natter.settings", &serde_json::to_string(&st).unwrap_or_default());
+                util::storage_set("laklak.settings", &serde_json::to_string(&st).unwrap_or_default());
                 s.settings.set(st);
             }
         }
@@ -1486,7 +1486,7 @@ fn apply_ready(r: Ready) {
     s.logs.update(|l| l.retain(|id, _| Some(*id) == open));
     if !s.ready.get_untracked() {
         s.ready.set(true);
-        let last_space = util::storage_get("natter.space").and_then(|v| v.parse::<Id>().ok());
+        let last_space = util::storage_get("laklak.space").and_then(|v| v.parse::<Id>().ok());
         let space = last_space.filter(|id| s.spaces.with_untracked(|v| v.iter().any(|x| x.id == *id)));
         open_space(space.or_else(|| s.spaces.with_untracked(|v| v.first().map(|x| x.id))));
         if let Some(ch) = util::take_channel_path().filter(|&ch| s.channel(ch).is_some()) {
@@ -1605,7 +1605,7 @@ fn on_message(m: Message, from_gateway: bool) {
 pub fn session_expired() {
     crate::voice::hang_up_local();
     crate::gateway::disconnect();
-    util::storage_remove("natter.token");
+    util::storage_remove("laklak.token");
     api::set_token(None);
     let s = store();
     s.me.set(None);

@@ -1,4 +1,4 @@
-//! Natter app: the whole UI, in Rust, compiled to WebAssembly. Runs in the desktop shell or a browser.
+//! Laklak app: the whole UI, in Rust, compiled to WebAssembly. Runs in the desktop shell or a browser.
 
 mod api;
 mod desktop;
