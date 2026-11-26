@@ -180,6 +180,14 @@ fn opts_json() -> String {
     .to_string()
 }
 
+/// Watch someone's screen share or camera: join that call if you aren't in it, open it, and show their tile big.
+/// `kind` is "screen" or "cam", as in the call's tile keys.
+pub fn watch(channel: Id, user: Id, kind: &str) {
+    join(channel);
+    crate::store::open_channel(channel);
+    store().call.update(|c| c.focus = Some(format!("{user}:{kind}")));
+}
+
 /// Join a voice channel or DM call (leaving any other call).
 pub fn join(channel: Id) {
     let s = store();

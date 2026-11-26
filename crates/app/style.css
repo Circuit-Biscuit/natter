@@ -155,6 +155,11 @@ a:hover { text-decoration: underline; }
 .voice-member .speaking { color: var(--strong); }
 .vm-icon { color: var(--muted); display: inline-flex; }
 .live { background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; line-height: 14px; }
+.live.watch .watch-label, .voice-member:hover .live.watch .live-label { display: none; }
+.voice-member:hover .live.watch .watch-label { display: inline; }
+.live.watch:hover { filter: brightness(1.15); }
+.watch-cam { display: inline-flex; padding: 2px; border-radius: 4px; }
+.watch-cam:hover { color: var(--strong); background: var(--hover); }
 
 .voice-panel { background: var(--elev); padding: 8px 8px 10px; border-bottom: 1px solid var(--border-soft); flex: none; }
 .vp-top { display: flex; align-items: center; justify-content: space-between; }

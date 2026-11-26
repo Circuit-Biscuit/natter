@@ -353,8 +353,17 @@ pub fn VoiceMembers(channel: Id) -> impl IntoView {
                             on:contextmenu=move |e| s.open_menu(&e, menu::user_menu(u, s.nav.get_untracked().space))>
                             <Avatar user=u size=24 ring=true/>
                             <span class="ellipsis" class:speaking=move || s.call.with(|c| c.speaking.contains(&u))>{move || s.name(u, s.nav.get().space)}</span>
-                            {v.screen.then(|| view! { <span class="live">"LIVE"</span> })}
-                            {v.video.then(|| view! { <Icon name="video" size=14/> })}
+                            // Click to watch: the badge turns into "WATCH" under the pointer.
+                            {v.screen.then(|| view! {
+                                <button class="live watch" title="Watch stream" on:click=move |e| { e.stop_propagation(); voice::watch(channel, u, "screen"); }>
+                                    <span class="live-label">"LIVE"</span><span class="watch-label">"WATCH"</span>
+                                </button>
+                            })}
+                            {v.video.then(|| view! {
+                                <button class="watch-cam" title="Watch camera" on:click=move |e| { e.stop_propagation(); voice::watch(channel, u, "cam"); }>
+                                    <Icon name="video" size=14/>
+                                </button>
+                            })}
                             {(v.muted && !v.deafened).then(|| view! { <span class="vm-icon"><Icon name="mic-off" size=14/></span> })}
                             {v.deafened.then(|| view! { <span class="vm-icon"><Icon name="headphones-off" size=14/></span> })}
                         </div>

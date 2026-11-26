@@ -7,6 +7,10 @@
 - **Sign in with your e-mail address.** If your account has one, it works in the username box too, in any case. The
   server takes it from every app version; this version's sign-in screen says "Username or e-mail".
 
+- **Watch a stream in one click.** In a voice channel's member list, the **LIVE** badge next to someone sharing
+  their screen turns into **WATCH** under the pointer: click it to join (if you aren't in the call yet) and see
+  their screen big. The camera icon next to someone with their camera on does the same for their camera.
+
 ### Fixed
 
 - The web app could keep showing an older version after the server was updated (so "Forgot password?" was
