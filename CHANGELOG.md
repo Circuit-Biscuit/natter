@@ -18,6 +18,9 @@
   update. The server now has them check for a newer one each time they open Natter; a refresh of an open tab
   picks it up.
 
+- The call's full-screen button now also takes you out of full screen, and shows which one it will do, also
+  after you left full screen with Esc.
+
 ### For people who run or build Natter
 
 - The server log now says why each sign-in failed: no account has that username or e-mail, or a wrong password

@@ -65,8 +65,14 @@ pub fn CallView(channel: Id) -> impl IntoView {
         let f = focus.get();
         list.get().into_iter().filter(|t| Some(&t.key) != f.as_ref()).collect()
     };
+    // Full screen follows the browser's own state, so leaving it with Esc (or the OS) flips the button back too.
+    let full = RwSignal::new(document().fullscreen_element().is_some());
+    let fs_listener = window_event_listener_untyped("fullscreenchange", move |_| full.set(document().fullscreen_element().is_some()));
+    on_cleanup(move || fs_listener.remove());
     let fullscreen = move |_| {
-        if let Some(el) = stage.get_untracked() {
+        if document().fullscreen_element().is_some() {
+            document().exit_fullscreen();
+        } else if let Some(el) = stage.get_untracked() {
             let _ = el.request_fullscreen();
         }
     };
@@ -96,7 +102,9 @@ pub fn CallView(channel: Id) -> impl IntoView {
                     <button class="round" title="Stream settings: quality, frame rate, bitrate" on:click=move |_| s.modal.set(Some(crate::store::Modal::GoLive))><Icon name="gear"/></button>
                 </Show>
                 <button class="round danger" title="Leave call" on:click=|_| voice::leave()><Icon name="hangup"/></button>
-                <button class="round ghost" title="Full screen" on:click=fullscreen><Icon name="maximize"/></button>
+                <button class="round ghost" title=move || if full.get() { "Exit full screen" } else { "Full screen" } on:click=fullscreen>
+                    {move || view! { <Icon name=if full.get() { "minimize" } else { "maximize" }/> }}
+                </button>
             </div>
             <Show when=move || s.call.with(|c| c.connecting)>
                 <div class="call-connecting"><div class="spinner"></div>"Connecting…"</div>
