@@ -7,6 +7,13 @@
 - **Sign in with your e-mail address.** If your account has one, it works in the username box too, in any case. The
   server takes it from every app version; this version's sign-in screen says "Username or e-mail".
 
+### Fixed
+
+- The web app could keep showing an older version after the server was updated (so "Forgot password?" was
+  missing in the browser while the desktop app had it): browsers kept the app's start page from before the
+  update. The server now has them check for a newer one each time they open Natter; a refresh of an open tab
+  picks it up.
+
 ### For people who run or build Natter
 
 - The server log now says why each sign-in failed: no account has that username or e-mail, or a wrong password

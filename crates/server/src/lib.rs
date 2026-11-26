@@ -29,6 +29,7 @@ use natter_proto::{ApiError, EPOCH_MS, Id, Millis, Registration};
 use sqlx::SqlitePool;
 use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeader;
 use tower_http::trace::TraceLayer;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -376,7 +377,14 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         // The app is a single page: unknown paths get index.html.
         Some(dir) => app.fallback_service(
             // `fallback` (not `not_found_service`) so app routes like /invite/abc answer 200.
-            ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))),
+            // `no-cache` = ask the server every time (a cheap 304 when nothing changed). Without it browsers cache
+            // index.html by guesswork and keep running the old app after an update, while the desktop app, which
+            // carries its own copy, already has the new one.
+            SetResponseHeader::overriding(
+                ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))),
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-cache"),
+            ),
         ),
         None => app.fallback(|| async { not_found("route") }),
     };
