@@ -21,9 +21,8 @@
   --code-bg: #2b2d31; --btn: #4e5058;
   --shadow: 0 8px 16px rgba(0, 0, 0, .24); --shadow-s: 0 0 0 1px rgba(0, 0, 0, .15), 0 4px 8px rgba(0, 0, 0, .2);
   --scroll: #1a1b1e;
-  /* Logo gradient, pink earcup to turquoise mic (OKLCH blend, never grey in the middle). */
-  --lk-1: #f0609e; --lk-2: #c97eed; --lk-3: #88a2ff; --lk-4: #26c3fb; --lk-5: #30d5c8;
-  --lk-tile: linear-gradient(135deg, #f0609e, #c97eed, #88a2ff, #26c3fb, #30d5c8);
+  /* Logo gradient down the boom L: purple at the top to turquoise at the foot. */
+  --lk-1: #9d00ac; --lk-2: #9a05ae; --lk-3: #7945b5; --lk-4: #5b7ebc; --lk-5: #46a9c2; --lk-6: #33ccc6;
 }
 .app.light {
   color-scheme: light;
@@ -35,8 +34,8 @@
   --mention-bg: rgba(240, 178, 50, .12);
   --pill-bg: color-mix(in srgb, var(--accent) 15%, transparent); --pill-fg: color-mix(in srgb, var(--accent) 80%, #000);
   --code-bg: #f2f3f5; --btn: #6d6f78; --scroll: #c4c9ce;
-  /* Darker logo stops on light ground, each 3:1 or more. */
-  --lk-1: #d8568e; --lk-2: #ab6bc9; --lk-3: #6d82cc; --lk-4: #1c92bc; --lk-5: #22958c;
+  /* The turquoise end darkened on light ground, each stop 3:1 or more. */
+  --lk-1: #9d00ac; --lk-2: #9a05ae; --lk-3: #7945b5; --lk-4: #5b7ebc; --lk-5: #3b90a5; --lk-6: #269994;
   --shadow: 0 8px 16px rgba(0, 0, 0, .12); --shadow-s: 0 0 0 1px rgba(6, 6, 7, .08), 0 2px 10px rgba(0, 0, 0, .08);
 }
 
@@ -83,11 +82,11 @@ a:hover { text-decoration: underline; }
 }
 .rail-btn img { width: 100%; height: 100%; object-fit: cover; }
 .rail-btn .avatar { width: 48px !important; height: 48px !important; }
-/* Spaces morph into rounded squares; the Laklak logo stays a circle. */
+/* Spaces morph into rounded squares; Home stays the app icon. */
 .rail-item:hover .rail-btn:not(.rail-home), .rail-item.active .rail-btn:not(.rail-home) { border-radius: 16px; }
 .rail-item:hover .rail-btn.space, .rail-item.active .rail-btn.space { background: var(--accent); color: #fff; }
-/* Home is the app icon: dark headset L on the brand gradient, always a rounded square. */
-.rail-btn.rail-home { background: var(--lk-tile); color: #1e1f22; border-radius: 16px; }
+/* Home is the app icon: the gradient boom L on deep indigo, always a rounded square. */
+.rail-btn.rail-home { background: #1a1b34; border-radius: 16px; }
 .rail-btn.add { color: var(--ok); }
 .rail-item:hover .rail-btn.add { background: var(--ok); color: #fff; }
 .space-initials { font-weight: 600; font-size: 16px; }
@@ -698,10 +697,11 @@ kbd { background: var(--side); border-radius: 4px; padding: 2px 8px; font-family
 }
 .login-card { background: var(--main); border-radius: 14px; padding: 32px; box-shadow: 0 12px 40px rgba(0, 0, 0, .45); display: flex; flex-direction: column; gap: 16px; user-select: text; }
 .login-brand { display: flex; align-items: center; font-size: 44px; }
-/* The wordmark: headset L plus "aklak" in Fredoka SemiBold, the L sitting on the text baseline. */
+/* The wordmark: boom L plus "aklak" in Fredoka SemiBold. The L's foot and mic hang below the baseline, under
+   the "a": flex baseline alignment ignores margins, so the L is nudged down with top and the text pulled over it. */
 .wordmark { display: inline-flex; align-items: baseline; font-family: "Fredoka", "Segoe UI", system-ui, sans-serif; font-weight: 600; letter-spacing: -.01em; line-height: 1; color: var(--strong); }
-.wordmark-l { width: .566em; height: .773em; margin-bottom: -.055em; flex: none; overflow: visible; }
-.wordmark > span { margin-left: .05em; }
+.wordmark-l { width: .6em; height: .966em; position: relative; top: .276em; flex: none; overflow: visible; }
+.wordmark > span { margin-left: -.276em; position: relative; }
 .login-title { font-size: 22px; font-weight: 700; color: var(--strong); }
 .login-sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
 .login-hint { font-size: 13px; color: var(--muted); text-align: center; }

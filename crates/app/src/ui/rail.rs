@@ -19,7 +19,7 @@ pub fn Rail() -> impl IntoView {
                 <button class="rail-btn rail-home" on:click=move |_| {
                     util::storage_remove("laklak.space");
                     open_space(None);
-                }><Logo size=28/></button>
+                }><Logo size=36 gradient=true/></button>
             </div>
             <For each=move || s.unread_dms() key=|(c, n)| (c.id, *n) let:item>
                 {

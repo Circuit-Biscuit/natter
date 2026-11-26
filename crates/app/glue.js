@@ -639,10 +639,10 @@ export function androidInstaller() {
 // ------------------------------------------------------------------ app icon + unread badge
 // Drawn here because a canvas has fonts: the tray and taskbar badges carry a real number.
 
-// Gradient stops (spread evenly, corner to corner) and the L's colour per icon variant;
-// names match `APP_ICONS` in settings.rs. Classic is the Laklak brand gradient (same as assets/logo.svg).
+// Tile gradient stops (spread evenly, corner to corner) and the L's colour per icon variant; names match
+// `APP_ICONS` in settings.rs. Classic (fg null) is the brand icon: the gradient L on indigo, as assets/logo.svg.
 const APP_ICONS = {
-  classic: [["#f0609e", "#c97eed", "#88a2ff", "#26c3fb", "#30d5c8"], "#1e1f22"],
+  classic: [["#1f2040", "#1a1b34", "#13142b"], null],
   midnight: [["#3a3c44", "#1b1c20", "#000000"], "#ffffff"],
   snow: [["#ffffff", "#eef0f4", "#d5d9e0"], "#c04d7e"],
   sunset: [["#ffb35c", "#f0617a", "#8e3fa8"], "#ffffff"],
@@ -654,13 +654,16 @@ const APP_ICONS = {
   mint: [["#d6fbe9", "#86e0c4", "#3fb39a"], "#0f3d33"],
 };
 
-// The headset L (earcup, boom arm, mic), centred on the 512 tile at 62% of its height.
-// Same geometry as assets/logo.svg and `logo_l` in ui/icons.rs.
+// The boom L and its foam mic, centred on the 512 tile at 62% of its height. Same geometry as assets/logo.svg
+// and `LOGO_L` in ui/icons.rs. fg null = the brand colours (purple → turquoise L, two-tone mic).
 const LOGO_L = (fg) =>
-  `<g transform="translate(256 256) scale(2.836) translate(-39 -52.5)" fill="${fg}">` +
-  `<rect x="0" y="0" width="38" height="46" rx="16"/>` +
-  `<path d="M19 38V73Q19 89 35 89H61" fill="none" stroke="${fg}" stroke-width="22" stroke-linecap="round"/>` +
-  `<rect x="44" y="73" width="34" height="32" rx="16"/></g>`;
+  `<defs><linearGradient id="lk" gradientUnits="userSpaceOnUse" x1="0" y1="4" x2="0" y2="128.5">` +
+  `<stop offset="0" stop-color="#9d00ac"/><stop offset=".28" stop-color="#9a05ae"/><stop offset=".51" stop-color="#7945b5"/>` +
+  `<stop offset=".73" stop-color="#5b7ebc"/><stop offset=".9" stop-color="#46a9c2"/><stop offset="1" stop-color="#33ccc6"/></linearGradient>` +
+  `<linearGradient id="mic" x1="0" y1="0" x2="0" y2="1"><stop offset=".52" stop-color="#2a6273"/><stop offset=".52" stop-color="#0c2832"/></linearGradient></defs>` +
+  `<g transform="translate(256 256) scale(2.4) translate(-30.5 -70)">` +
+  `<path d="M-6 4H7Q11 4 11.6 8L21 100Q21 108.5 27 108.5H52V128.5H14Q0 128.5 -0.5 114.5L-10 8Q-10 4 -6 4Z" fill="${fg || "url(#lk)"}"/>` +
+  `<path d="M50 103H60.5A10.5 16.5 0 0 1 60.5 136H50Z" fill="${fg || "url(#mic)"}"/></g>`;
 
 export function appIconUrl(name) {
   const [stops, fg] = APP_ICONS[name] || APP_ICONS.classic;

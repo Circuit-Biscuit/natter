@@ -74,35 +74,32 @@ pub fn Icon(name: &'static str, #[prop(optional)] size: Option<u32>) -> impl Int
     }
 }
 
-/// The headset L: earcup on top, boom arm as stem and foot, mic at the foot's end (Fredoka's stem width).
+/// The boom L: a plain stem leaning like a boom swung out, the foot running under the "a" below the
+/// baseline, a two-tone foam mic at its end. Units: cap height 100, baseline y=100.
 /// Same geometry as `assets/logo.svg` and `LOGO_L` in glue.js. Built as markup and set with `inner_html`:
 /// SVG children made by a separate `view!` would land in the HTML namespace and not draw.
+const LOGO_L: &str = "M-6 4H7Q11 4 11.6 8L21 100Q21 108.5 27 108.5H52V128.5H14Q0 128.5 -0.5 114.5L-10 8Q-10 4 -6 4Z";
+const LOGO_MIC: &str = "M50 103H60.5A10.5 16.5 0 0 1 60.5 136H50Z";
+
 fn logo_markup(gradient_id: Option<&str>) -> String {
-    let (defs, fill) = match gradient_id {
-        // Pink → turquoise, earcup to mic. Stops are CSS tokens so light themes get the darker set.
-        Some(id) => (
-            format!(
-                concat!(
-                    r#"<defs><linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="78" y2="100">"#,
-                    r#"<stop offset="0" style="stop-color:var(--lk-1)"/><stop offset=".25" style="stop-color:var(--lk-2)"/>"#,
-                    r#"<stop offset=".5" style="stop-color:var(--lk-3)"/><stop offset=".75" style="stop-color:var(--lk-4)"/>"#,
-                    r#"<stop offset="1" style="stop-color:var(--lk-5)"/></linearGradient></defs>"#
-                ),
-                id = id
+    match gradient_id {
+        // Purple at the top to turquoise at the foot. Stops are CSS tokens so light themes get the darker set.
+        Some(id) => format!(
+            concat!(
+                r#"<defs><linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="0" y1="4" x2="0" y2="128.5">"#,
+                r#"<stop offset="0" style="stop-color:var(--lk-1)"/><stop offset=".28" style="stop-color:var(--lk-2)"/>"#,
+                r#"<stop offset=".51" style="stop-color:var(--lk-3)"/><stop offset=".73" style="stop-color:var(--lk-4)"/>"#,
+                r#"<stop offset=".9" style="stop-color:var(--lk-5)"/><stop offset="1" style="stop-color:var(--lk-6)"/>"#,
+                r#"</linearGradient><linearGradient id="{id}-mic" x1="0" y1="0" x2="0" y2="1">"#,
+                r##"<stop offset=".52" stop-color="#2a6273"/><stop offset=".52" stop-color="#0c2832"/></linearGradient></defs>"##,
+                r#"<path d="{l}" fill="url(#{id})"/><path d="{mic}" fill="url(#{id}-mic)"/>"#
             ),
-            format!("url(#{id})"),
+            id = id,
+            l = LOGO_L,
+            mic = LOGO_MIC
         ),
-        None => (String::new(), "currentColor".to_string()),
-    };
-    format!(
-        concat!(
-            r#"{defs}<rect x="0" y="0" width="38" height="46" rx="16" fill="{fill}"/>"#,
-            r#"<path d="M19 38V73Q19 89 35 89H61" fill="none" stroke="{fill}" stroke-width="22" stroke-linecap="round"/>"#,
-            r#"<rect x="44" y="73" width="34" height="32" rx="16" fill="{fill}"/>"#
-        ),
-        defs = defs,
-        fill = fill
-    )
+        None => format!(r#"<path d="{LOGO_L}" fill="currentColor"/><path d="{LOGO_MIC}" fill="currentColor"/>"#),
+    }
 }
 
 /// Each SVG gradient needs a document-unique id.
@@ -118,16 +115,16 @@ pub fn Logo(#[prop(optional)] size: Option<u32>, #[prop(optional)] gradient: boo
     let size = size.unwrap_or(28);
     let id = gradient.then(gradient_id);
     let markup = logo_markup(id.as_deref());
-    view! { <svg width=size height=size viewBox="-17 -3.5 112 112" aria-hidden="true" inner_html=markup></svg> }
+    view! { <svg width=size height=size viewBox="-39.5 0 140 140" aria-hidden="true" inner_html=markup></svg> }
 }
 
-/// "Laklak" with the gradient headset L as its first letter; sized by the surrounding font-size.
+/// "Laklak" with the gradient boom L as its first letter; sized by the surrounding font-size.
 #[component]
 pub fn Wordmark() -> impl IntoView {
     let markup = logo_markup(Some(&gradient_id()));
     view! {
         <span class="wordmark" aria-label="Laklak">
-            <svg class="wordmark-l" viewBox="-4 -4 82 112" aria-hidden="true" inner_html=markup></svg>
+            <svg class="wordmark-l" viewBox="-12 0 87 140" aria-hidden="true" inner_html=markup></svg>
             <span aria-hidden="true">"aklak"</span>
         </span>
     }
