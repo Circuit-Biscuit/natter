@@ -76,8 +76,16 @@ pub fn CallView(channel: Id) -> impl IntoView {
             let _ = el.request_fullscreen();
         }
     };
+    // Fill window: the call covers the whole window (sidebars and all) without going full screen. Esc goes back.
+    let theater = RwSignal::new(false);
+    let esc = window_event_listener(leptos::ev::keydown, move |e| {
+        if e.key() == "Escape" && theater.get_untracked() {
+            theater.set(false);
+        }
+    });
+    on_cleanup(move || esc.remove());
     view! {
-        <div class="call" node_ref=stage>
+        <div class="call" class:theater=move || theater.get() node_ref=stage>
             <div class="call-stage" class:focused=move || focus.get().is_some()>
                 {move || focus.get().and_then(|k| list.get().into_iter().find(|t| t.key == k)).map(|t| view! {
                     <div class="call-focus"><TileView t=t big=true/></div>
@@ -102,6 +110,10 @@ pub fn CallView(channel: Id) -> impl IntoView {
                     <button class="round" title="Stream settings: quality, frame rate, bitrate" on:click=move |_| s.modal.set(Some(crate::store::Modal::GoLive))><Icon name="gear"/></button>
                 </Show>
                 <button class="round danger" title="Leave call" on:click=|_| voice::leave()><Icon name="hangup"/></button>
+                <button class="round ghost" title=move || if theater.get() { "Exit fill window (Esc)" } else { "Fill window" }
+                    on:click=move |_| theater.update(|t| *t = !*t)>
+                    {move || view! { <Icon name=if theater.get() { "shrink" } else { "expand" }/> }}
+                </button>
                 <button class="round ghost" title=move || if full.get() { "Exit full screen" } else { "Full screen" } on:click=fullscreen>
                     {move || view! { <Icon name=if full.get() { "minimize" } else { "maximize" }/> }}
                 </button>

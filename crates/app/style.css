@@ -466,6 +466,9 @@ a:hover { text-decoration: underline; }
 .round.danger { background: var(--danger); }
 .round.ok { background: var(--ok); }
 .round.ghost { background: transparent; }
+/* Fill window: the call over the whole window, sidebars included (below menus and dialogs). */
+.call.theater { position: fixed; inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); z-index: 40; }
+.app.framed .call.theater { top: 30px; }
 .call-connecting { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, .75); padding: 6px 14px; border-radius: 16px; display: flex; gap: 8px; align-items: center; font-size: 14px; }
 .call-connecting .spinner { width: 16px; height: 16px; border-width: 2px; }
 .ptt-hint { position: absolute; top: 14px; right: 14px; background: rgba(0, 0, 0, .6); padding: 4px 10px; border-radius: 12px; font-size: 12px; }

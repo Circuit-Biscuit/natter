@@ -11,6 +11,10 @@
   their screen turns into **WATCH** under the pointer: click it to join (if you aren't in the call yet) and see
   their screen big. The camera icon next to someone with their camera on does the same for their camera.
 
+- **Fill window** in calls: the button next to full screen makes the call (and a stream you're watching) fill
+  the whole Natter window, sidebars out of the way, without going full screen. Click it again or press Esc to
+  go back.
+
 ### Fixed
 
 - The web app could keep showing an older version after the server was updated (so "Forgot password?" was
