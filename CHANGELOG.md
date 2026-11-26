@@ -11,6 +11,11 @@
   they start fresh. Servers are set up again too: the settings are now `LAKLAK_*` (were `NATTER_*`), the data
   folder `./laklak-data` with `laklak.db`, the default Nextcloud folder `Laklak`, and docs/DEPLOY.md uses
   `laklak.service`, `/etc/laklak.env` and `/opt/laklak`.
+- **New look: the Laklak logo and the Splash theme.** The logo is an L drawn as a gaming headset (earcup on
+  top, boom arm, mic at the foot) on a pink-to-turquoise gradient; it's the app icon on every platform, the Home
+  button, and the wordmark in the title bar and on the sign-in screen (set in Fredoka). Splash is the new default
+  theme: deep indigo with a faint pink and turquoise glow behind the chat, and a pink accent. The old grey look is
+  still there: pick Dark in Settings › Appearance.
 - **Sign in with your e-mail address.** If your account has one, it works in the username box too, in any case. The
   server takes it from every app version; this version's sign-in screen says "Username or e-mail".
 - **Watch a stream in one click.** In a voice channel's member list, the **LIVE** badge next to someone sharing
