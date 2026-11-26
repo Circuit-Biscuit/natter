@@ -272,7 +272,9 @@ const fn g(id: &'static str, label: &'static str, light: bool) -> Gradient {
     Gradient { id, label, light }
 }
 
-pub const GRADIENTS: [Gradient; 14] = [
+pub const GRADIENTS: [Gradient; 15] = [
+    // The default look: indigo with the logo's pink and turquoise glowing behind the chat.
+    g("splash", "Splash", false),
     g("mint", "Mint", true),
     g("peach", "Peach", true),
     g("lavender", "Lavender", true),

@@ -106,7 +106,7 @@ fn TitleBar() -> impl IntoView {
     let s = store();
     view! {
         <div class="titlebar" data-tauri-drag-region="">
-            <span class="titlebar-name" data-tauri-drag-region=""><icons::Logo size=14/>"Laklak"</span>
+            <span class="titlebar-name" data-tauri-drag-region=""><icons::Wordmark/></span>
             {move || s.update.get().map(|(v, _)| view! {
                 <button class="titlebar-update" title=format!("Restart Laklak to update to {v}") on:click=|_| desktop::install_update()>
                     <Icon name="download" size=14/>"Update"
@@ -130,7 +130,7 @@ fn Loading() -> impl IntoView {
     let s = store();
     view! {
         <div class="loading">
-            <div class="loading-mark"><icons::Logo size=72/></div>
+            <div class="loading-mark"><icons::Logo size=72 gradient=true/></div>
             <div class="loading-text">
                 {move || match s.conn.get() {
                     Conn::Retrying(_) => "Can't reach the server — retrying…",

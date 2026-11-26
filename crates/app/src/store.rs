@@ -81,7 +81,8 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             theme: "dark".into(),
-            gradient: String::new(),
+            // Splash is the default look; picking a base theme in settings clears it.
+            gradient: "splash".into(),
             accent: String::new(),
             app_icon: "classic".into(),
             compact: false,

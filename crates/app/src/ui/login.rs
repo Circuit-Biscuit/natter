@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use laklak_proto::*;
 
-use super::icons::{Icon, Logo};
+use super::icons::{Icon, Wordmark};
 use crate::{api, desktop, gateway, util};
 
 fn device_name() -> String {
@@ -250,7 +250,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
     view! {
         <div class="login">
             <div class="login-card">
-                <div class="login-brand"><Logo size=56/><span>"Laklak"</span></div>
+                <div class="login-brand"><Wordmark/></div>
                 <Show when=move || editing_server.get() fallback=move || view! {
                     <div class="login-server">
                         <div>

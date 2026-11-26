@@ -639,38 +639,36 @@ export function androidInstaller() {
 // ------------------------------------------------------------------ app icon + unread badge
 // Drawn here because a canvas has fonts: the tray and taskbar badges carry a real number.
 
-// Gradient stops (3) and the bubble colour per icon variant; names match `APP_ICONS` in settings.rs.
+// Gradient stops (spread evenly, corner to corner) and the L's colour per icon variant;
+// names match `APP_ICONS` in settings.rs. Classic is the Laklak brand gradient (same as assets/logo.svg).
 const APP_ICONS = {
-  classic: ["#6c76f0", "#4b56d2", "#3540a8", "#ffffff"],
-  midnight: ["#3a3c44", "#1b1c20", "#000000", "#ffffff"],
-  snow: ["#ffffff", "#eef0f4", "#d5d9e0", "#4b56d2"],
-  sunset: ["#ffb35c", "#f0617a", "#8e3fa8", "#ffffff"],
-  ocean: ["#5ee0d0", "#2b8cff", "#1f3fa8", "#ffffff"],
-  forest: ["#8be09b", "#2f9e5b", "#17543a", "#ffffff"],
-  candy: ["#ffa3d7", "#c86cf0", "#6c5ce7", "#ffffff"],
-  gold: ["#ffe08a", "#f0a030", "#a8541a", "#ffffff"],
-  crimson: ["#ff7a7a", "#da373c", "#7a161b", "#ffffff"],
-  mint: ["#d6fbe9", "#86e0c4", "#3fb39a", "#0f3d33"],
+  classic: [["#f0609e", "#c97eed", "#88a2ff", "#26c3fb", "#30d5c8"], "#1e1f22"],
+  midnight: [["#3a3c44", "#1b1c20", "#000000"], "#ffffff"],
+  snow: [["#ffffff", "#eef0f4", "#d5d9e0"], "#c04d7e"],
+  sunset: [["#ffb35c", "#f0617a", "#8e3fa8"], "#ffffff"],
+  ocean: [["#5ee0d0", "#2b8cff", "#1f3fa8"], "#ffffff"],
+  forest: [["#8be09b", "#2f9e5b", "#17543a"], "#ffffff"],
+  candy: [["#ffa3d7", "#c86cf0", "#6c5ce7"], "#ffffff"],
+  gold: [["#ffe08a", "#f0a030", "#a8541a"], "#ffffff"],
+  crimson: [["#ff7a7a", "#da373c", "#7a161b"], "#ffffff"],
+  mint: [["#d6fbe9", "#86e0c4", "#3fb39a"], "#0f3d33"],
 };
 
-// The logo's speech bubble with the voice wave cut out (same path as assets/logo.svg).
-const BUBBLE =
-  "M216,112 H296 A120,120 0 0 1 296,352 H216 A120,120 0 0 1 175,344.8 C160,362 142,382 126,395 Q108,409 111,388 " +
-  "C113,362 117,334 124.1,309.1 A120,120 0 0 1 216,112 Z M154,232 a14,14 0 0 1 28,0 v0 a14,14 0 0 1 -28,0 Z " +
-  "M198,204 a14,14 0 0 1 28,0 v56 a14,14 0 0 1 -28,0 Z M242,170 a14,14 0 0 1 28,0 v124 a14,14 0 0 1 -28,0 Z " +
-  "M286,196 a14,14 0 0 1 28,0 v72 a14,14 0 0 1 -28,0 Z M330,220 a14,14 0 0 1 28,0 v24 a14,14 0 0 1 -28,0 Z";
+// The headset L (earcup, boom arm, mic), centred on the 512 tile at 62% of its height.
+// Same geometry as assets/logo.svg and `logo_l` in ui/icons.rs.
+const LOGO_L = (fg) =>
+  `<g transform="translate(256 256) scale(2.836) translate(-39 -52.5)" fill="${fg}">` +
+  `<rect x="0" y="0" width="38" height="46" rx="16"/>` +
+  `<path d="M19 38V73Q19 89 35 89H61" fill="none" stroke="${fg}" stroke-width="22" stroke-linecap="round"/>` +
+  `<rect x="44" y="73" width="34" height="32" rx="16"/></g>`;
 
 export function appIconUrl(name) {
-  const [a, b, c, fg] = APP_ICONS[name] || APP_ICONS.classic;
+  const [stops, fg] = APP_ICONS[name] || APP_ICONS.classic;
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><defs>` +
-    `<linearGradient id="bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">` +
-    `<stop offset="0" stop-color="${a}"/><stop offset=".55" stop-color="${b}"/><stop offset="1" stop-color="${c}"/></linearGradient>` +
-    `<radialGradient id="glow" cx="150" cy="96" r="300" gradientUnits="userSpaceOnUse">` +
-    `<stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>` +
-    `<filter id="lift" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".28"/></filter></defs>` +
-    `<rect width="512" height="512" rx="116" fill="url(#bg)"/><rect width="512" height="512" rx="116" fill="url(#glow)"/>` +
-    `<path filter="url(#lift)" fill="${fg}" fill-rule="evenodd" d="${BUBBLE}"/></svg>`;
+    `<linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">` +
+    stops.map((c, i) => `<stop offset="${i / (stops.length - 1)}" stop-color="${c}"/>`).join("") +
+    `</linearGradient></defs><rect width="512" height="512" rx="116" fill="url(#bg)"/>${LOGO_L(fg)}</svg>`;
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
