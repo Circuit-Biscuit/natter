@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Behind the adaptive icon's foreground: the middle of the logo gradient, so the corners blend in. -->
+  <color name="ic_launcher_background">#88A2FF</color>
+</resources>
