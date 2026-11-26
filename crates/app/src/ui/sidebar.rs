@@ -468,10 +468,10 @@ fn UserPanel() -> impl IntoView {
     let me = move || s.me_id();
     let status_menu = move |e: leptos::ev::MouseEvent| {
         let items = vec![
-            Some(MenuItem::new("🟢  Online", || set_status(Status::Online))),
-            Some(MenuItem::new("🌙  Idle", || set_status(Status::Idle))),
-            Some(MenuItem::new("⛔  Do Not Disturb — no notifications", || set_status(Status::Dnd))),
-            Some(MenuItem::new("⚪  Invisible — appear offline", || set_status(Status::Invisible))),
+            Some(MenuItem::new("Online", || set_status(Status::Online)).dot(super::status_class(Status::Online))),
+            Some(MenuItem::new("Idle", || set_status(Status::Idle)).dot(super::status_class(Status::Idle))),
+            Some(MenuItem::new("Do Not Disturb — no notifications", || set_status(Status::Dnd)).dot(super::status_class(Status::Dnd))),
+            Some(MenuItem::new("Invisible — appear offline", || set_status(Status::Invisible)).dot(super::status_class(Status::Invisible))),
             None,
             Some(MenuItem::new("Edit profile…", move || s.modal.set(Some(Modal::UserSettings)))),
             Some(MenuItem::new("Copy username", move || crate::util::copy_text(&s.me.get_untracked().map(|u| u.username).unwrap_or_default()))),

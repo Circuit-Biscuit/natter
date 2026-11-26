@@ -29,7 +29,10 @@ pub fn MenuHost() -> impl IntoView {
                                 <button class="menu-item" class:danger=it.danger on:click=move |_| {
                                     s.menu.set(None);
                                     action();
-                                }>{it.label}</button>
+                                }>
+                                    {it.dot.map(|d| view! { <span class=format!("status-dot {d}")></span> })}
+                                    {it.label}
+                                </button>
                             }.into_any()
                         }
                     }).collect_view()}

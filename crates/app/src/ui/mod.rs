@@ -362,8 +362,8 @@ pub fn Avatar(
 pub fn StatusDot(user: Id) -> impl IntoView {
     let s = store();
     view! {
-        <span class=move || format!("status-dot {}", status_class(s.status(user)))
-            title=move || status_label(s.status(user))></span>
+        <span class=move || format!("status-dot {}", status_class(s.status(user))) role="img"
+            title=move || status_label(s.status(user)) aria-label=move || status_label(s.status(user))></span>
     }
 }
 

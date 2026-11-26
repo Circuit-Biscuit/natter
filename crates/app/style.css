@@ -187,11 +187,22 @@ a:hover { text-decoration: underline; }
   position: absolute; right: -2px; bottom: -2px; width: 34%; height: 34%; min-width: 10px; min-height: 10px;
   border-radius: 50%; box-shadow: 0 0 0 3px var(--dot-ring, var(--side));
 }
-.chat-head .status-dot { position: static; width: 10px; height: 10px; box-shadow: none; }
+/* Inline dots (chat header, status menu): no ring; the cut-outs below take the colour behind them. */
+.chat-head .status-dot, .menu-item .status-dot { position: relative; inset: auto; width: 10px; height: 10px; box-shadow: none; flex: none; }
+.chat-head { --dot-ring: var(--main); }
+.menu-item .status-dot { display: inline-block; vertical-align: -1px; margin-right: 10px; --dot-ring: var(--menu); }
+.menu-item:hover .status-dot { --dot-ring: var(--accent); }
 .status-dot.online { background: var(--ok); }
 .status-dot.idle { background: var(--warn); }
 .status-dot.dnd { background: var(--danger); }
 .status-dot.offline { background: #80848e; }
+/* A shape per status, not only a colour: solid dot online, moon idle, bar do-not-disturb, ring offline/invisible.
+   Each cut-out is painted in the ring's colour, the background around the dot. */
+.status-dot::after { content: ""; position: absolute; background: var(--dot-ring, var(--side)); }
+.status-dot.online::after { content: none; }
+.status-dot.idle::after { width: 62%; height: 62%; left: -12%; top: -12%; border-radius: 50%; }
+.status-dot.dnd::after { left: 20%; right: 20%; top: 38%; height: 24%; border-radius: 4px; }
+.status-dot.offline::after { inset: 27%; border-radius: 50%; }
 
 .icon-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 4px; color: var(--muted); flex: none; }
 .icon-btn:hover { color: var(--strong); background: var(--hover); }

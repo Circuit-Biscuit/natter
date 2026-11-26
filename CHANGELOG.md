@@ -6,11 +6,9 @@
 
 - **Sign in with your e-mail address.** If your account has one, it works in the username box too, in any case. The
   server takes it from every app version; this version's sign-in screen says "Username or e-mail".
-
 - **Watch a stream in one click.** In a voice channel's member list, the **LIVE** badge next to someone sharing
   their screen turns into **WATCH** under the pointer: click it to join (if you aren't in the call yet) and see
   their screen big. The camera icon next to someone with their camera on does the same for their camera.
-
 - **Fill window** in calls: the button next to full screen makes the call (and a stream you're watching) fill
   the whole Natter window, sidebars out of the way, without going full screen. Click it again or press Esc to
   go back.
@@ -21,9 +19,11 @@
   missing in the browser while the desktop app had it): browsers kept the app's start page from before the
   update. The server now has them check for a newer one each time they open Natter; a refresh of an open tab
   picks it up.
-
 - The call's full-screen button now also takes you out of full screen, and shows which one it will do, also
   after you left full screen with Esc.
+- Status dots no longer rely on colour alone: online is a solid dot, idle a moon, Do Not Disturb a dot with a
+  bar and invisible or offline a ring, everywhere a status shows (member list, your panel, profiles, the status
+  menu). Screen readers read the status out.
 
 ### For people who run or build Natter
 

@@ -264,12 +264,18 @@ pub enum Modal {
 pub struct MenuItem {
     pub label: String,
     pub danger: bool,
+    /// A status dot in front of the label (a `status_class`).
+    pub dot: Option<&'static str>,
     pub action: Action,
 }
 
 impl MenuItem {
     pub fn new(label: impl Into<String>, f: impl Fn() + Send + Sync + 'static) -> Self {
-        MenuItem { label: label.into(), danger: false, action: Arc::new(f) }
+        MenuItem { label: label.into(), danger: false, dot: None, action: Arc::new(f) }
+    }
+    pub fn dot(mut self, status_class: &'static str) -> Self {
+        self.dot = Some(status_class);
+        self
     }
     pub fn danger(mut self) -> Self {
         self.danger = true;
