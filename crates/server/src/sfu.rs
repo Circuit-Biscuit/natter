@@ -1,5 +1,9 @@
-//! The call SFU: one UDP socket, one thread, many str0m `Rtc`s demultiplexed with `rtc.accepts()`.
-//! Adapted from str0m's `examples/chat.rs`, plus rooms, user ids, track kinds and no panics on bad input.
+//! The call SFU: one UDP socket, one thread, many str0m `Rtc`s. Started from str0m's `examples/chat.rs`, plus rooms,
+//! user ids, track kinds and no panics on bad input.
+//!
+//! Work follows the rooms, not the whole server: a packet goes to the client its source address belongs to, a
+//! forwarded frame touches the others in its room, and only clients that got input or have a timer due are polled.
+//! (chat.rs polls every client for every packet, which held one core at under 100 callers in the load test.)
 //!
 //! Renegotiation runs over each peer's data channel: the server sends `{"type":"offer","sdp":..}` when tracks
 //! of others appear or go, the app answers `{"type":"answer","sdp":..}` (and may send its own offers).
@@ -7,7 +11,8 @@
 //! Simulcast: apps send cameras and screens as layers "h" (as set), "m" (720p) and "l" (360p). Each viewer gets
 //! one layer per stream: the one it picked (`{"type":"layer",..}` on the data channel), or by its bandwidth.
 
-use std::collections::{HashMap, VecDeque};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::io::ErrorKind;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -52,19 +57,10 @@ pub fn run(
     rx: Receiver<SfuCmd>,
     events: UnboundedSender<SfuEvent>,
 ) {
-    let mut clients: Vec<Client> = vec![];
-    let mut to_propagate: VecDeque<Propagated> = VecDeque::new();
+    let mut sfu = Sfu::default();
     let mut buf = vec![0; 2000];
 
     loop {
-        clients.retain(|c| {
-            let alive = c.rtc.is_alive();
-            if !alive {
-                let _ = events.send(SfuEvent::Gone { client: c.id });
-            }
-            alive
-        });
-
         loop {
             match rx.try_recv() {
                 Ok(SfuCmd::Join {
@@ -74,39 +70,28 @@ pub fn run(
                     rtc,
                     kinds,
                     camera_kbps,
-                }) => {
-                    let mut c = Client::new(client, user, room, *rtc, kinds, camera_kbps);
-                    for track in clients
-                        .iter()
-                        .filter(|o| o.room == room)
-                        .flat_map(|o| o.tracks_in.iter())
-                    {
-                        c.handle_track_open(Arc::downgrade(&track.id));
-                    }
-                    clients.push(c);
-                }
+                }) => sfu.join(Client::new(client, user, room, *rtc, kinds, camera_kbps)),
                 Ok(SfuCmd::Leave { client }) => {
-                    if let Some(c) = clients.iter_mut().find(|c| c.id == client) {
+                    if let Some(c) = sfu.clients.get_mut(&client) {
                         c.rtc.disconnect();
                     }
+                    sfu.wake(client);
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return, // server shutting down
             }
         }
 
-        let mut timeout = Instant::now() + Duration::from_millis(100);
-        for client in clients.iter_mut() {
-            timeout = timeout.min(poll_until_timeout(client, &mut to_propagate, &socket));
-        }
+        sfu.poll(&socket, &events);
 
-        if let Some(p) = to_propagate.pop_front() {
-            propagate(&p, &mut clients);
+        // Read until the next timer is due (at most 100 ms, to pick up commands); skip it when one is due already.
+        let now = Instant::now();
+        let wake = sfu.next_timer().map_or(now + Duration::from_millis(100), |t| t.min(now + Duration::from_millis(100)));
+        if wake <= now {
+            sfu.run_timers(now);
             continue;
         }
-
-        let duration = (timeout - Instant::now()).max(Duration::from_millis(1));
-        let _ = socket.set_read_timeout(Some(duration));
+        let _ = socket.set_read_timeout(Some(wake - now));
         buf.resize(2000, 0);
         match socket.recv_from(&mut buf) {
             Ok((n, source)) => {
@@ -120,8 +105,8 @@ pub fn run(
                             contents,
                         },
                     );
-                    match clients.iter_mut().find(|c| c.rtc.accepts(&input)) {
-                        Some(c) => c.handle_input(input),
+                    match sfu.find(source, &input) {
+                        Some(id) => sfu.input(id, input),
                         // Common: the browser's first STUN beats the Join command by a few ms; it retries.
                         None => tracing::trace!("no client for udp from {source}"),
                     }
@@ -140,9 +125,177 @@ pub fn run(
             }
         }
 
-        let now = Instant::now();
-        for client in &mut clients {
-            client.handle_input(Input::Timeout(now));
+        sfu.run_timers(Instant::now());
+    }
+}
+
+#[derive(Default)]
+struct Sfu {
+    clients: HashMap<u64, Client>,
+    /// Who is in each room.
+    rooms: HashMap<Id, Vec<u64>>,
+    /// The client each source address belongs to, so a packet finds its client without asking all of them.
+    addrs: HashMap<SocketAddr, u64>,
+    /// Clients to poll before the next read: they got input, or frames to forward.
+    dirty: Vec<u64>,
+    /// When clients want their next timeout. Entries that no longer match `Client::next` are stale and skipped.
+    timers: BinaryHeap<Reverse<(Instant, u64)>>,
+}
+
+impl Sfu {
+    fn wake(&mut self, id: u64) {
+        if let Some(c) = self.clients.get_mut(&id)
+            && !c.queued
+        {
+            c.queued = true;
+            self.dirty.push(id);
+        }
+    }
+
+    fn join(&mut self, mut c: Client) {
+        for other in self.rooms.get(&c.room).into_iter().flatten().filter_map(|id| self.clients.get(id)) {
+            for track in &other.tracks_in {
+                c.handle_track_open(Arc::downgrade(&track.id));
+            }
+        }
+        let id = c.id;
+        self.rooms.entry(c.room).or_default().push(id);
+        self.clients.insert(id, c);
+        self.wake(id);
+    }
+
+    /// The client a packet is for: the owner of its source address, else whichever client accepts it (a new
+    /// client's first STUN, or an address that changed).
+    fn find(&mut self, source: SocketAddr, input: &Input) -> Option<u64> {
+        if let Some(&id) = self.addrs.get(&source)
+            && self.clients.get(&id).is_some_and(|c| c.rtc.accepts(input))
+        {
+            return Some(id);
+        }
+        let id = self.clients.values().find(|c| c.rtc.accepts(input))?.id;
+        self.addrs.insert(source, id);
+        Some(id)
+    }
+
+    fn input(&mut self, id: u64, input: Input) {
+        if let Some(c) = self.clients.get_mut(&id) {
+            c.handle_input(input);
+        }
+        self.wake(id);
+    }
+
+    /// Poll the clients that have something to do, hand what they produce to their rooms (which may give others
+    /// something to do), and drop the clients that are gone.
+    fn poll(&mut self, socket: &UdpSocket, events: &UnboundedSender<SfuEvent>) {
+        let mut queue = VecDeque::new();
+        loop {
+            let mut gone = vec![];
+            while let Some(id) = self.dirty.pop() {
+                let Some(c) = self.clients.get_mut(&id) else {
+                    continue;
+                };
+                c.queued = false;
+                let next = poll_until_timeout(c, &mut queue, socket);
+                if !c.rtc.is_alive() {
+                    gone.push(id);
+                } else if c.next != Some(next) {
+                    c.next = Some(next);
+                    self.timers.push(Reverse((next, id)));
+                }
+                while let Some(p) = queue.pop_front() {
+                    self.propagate(p);
+                }
+            }
+            if gone.is_empty() {
+                return;
+            }
+            for id in gone {
+                self.remove(id, events);
+            }
+        }
+    }
+
+    /// Drop a client; the others in its room renegotiate to stop the tracks it sent (their weak references died).
+    fn remove(&mut self, id: u64, events: &UnboundedSender<SfuEvent>) {
+        let Some(c) = self.clients.remove(&id) else {
+            return;
+        };
+        let _ = events.send(SfuEvent::Gone { client: id });
+        self.addrs.retain(|_, owner| *owner != id);
+        let others = match self.rooms.get_mut(&c.room) {
+            Some(members) => {
+                members.retain(|&m| m != id);
+                members.clone()
+            }
+            None => vec![],
+        };
+        if others.is_empty() {
+            self.rooms.remove(&c.room);
+        }
+        drop(c);
+        for m in others {
+            self.wake(m);
+        }
+    }
+
+    /// Hand one event to the others in its origin's room (a keyframe request only to the publisher it is for).
+    fn propagate(&mut self, p: Propagated) {
+        let origin = match &p {
+            Propagated::KeyframeRequest(publisher, mid_in, rid, kind) => {
+                if let Some(c) = self.clients.get_mut(publisher) {
+                    c.request_keyframe_throttled(*mid_in, *rid, *kind);
+                }
+                return self.wake(*publisher);
+            }
+            Propagated::TrackOpen(origin, _) | Propagated::MediaData(origin, _) => *origin,
+            Propagated::Noop | Propagated::Timeout(_) => return,
+        };
+        let Some(room) = self.clients.get(&origin).map(|c| c.room) else {
+            return;
+        };
+        for &id in self.rooms.get(&room).into_iter().flatten() {
+            if id == origin {
+                continue;
+            }
+            let Some(c) = self.clients.get_mut(&id) else {
+                continue;
+            };
+            match &p {
+                Propagated::TrackOpen(_, track_in) => c.handle_track_open(track_in.clone()),
+                Propagated::MediaData(_, data) => c.handle_media_data_out(origin, data),
+                _ => {}
+            }
+            if !c.queued {
+                c.queued = true;
+                self.dirty.push(id);
+            }
+        }
+    }
+
+    /// The earliest timer still wanted.
+    fn next_timer(&mut self) -> Option<Instant> {
+        while let Some(&Reverse((t, id))) = self.timers.peek() {
+            if self.clients.get(&id).is_some_and(|c| c.next == Some(t)) {
+                return Some(t);
+            }
+            self.timers.pop();
+        }
+        None
+    }
+
+    /// Give the clients whose timers are due their timeout.
+    fn run_timers(&mut self, now: Instant) {
+        while let Some(t) = self.next_timer()
+            && t <= now
+        {
+            let Some(Reverse((_, id))) = self.timers.pop() else {
+                break;
+            };
+            if let Some(c) = self.clients.get_mut(&id) {
+                c.next = None;
+                c.handle_input(Input::Timeout(now));
+            }
+            self.wake(id);
         }
     }
 }
@@ -163,36 +316,15 @@ fn poll_until_timeout(
     }
 }
 
-/// Hand one event to every other client in the origin's room.
-fn propagate(propagated: &Propagated, clients: &mut [Client]) {
-    let Some(origin) = propagated.client_id() else {
-        return;
-    };
-    let Some(room) = clients.iter().find(|c| c.id == origin).map(|c| c.room) else {
-        return;
-    };
-    for client in clients
-        .iter_mut()
-        .filter(|c| c.id != origin && c.room == room)
-    {
-        match propagated {
-            Propagated::TrackOpen(_, track_in) => client.handle_track_open(track_in.clone()),
-            Propagated::MediaData(_, data) => client.handle_media_data_out(origin, data),
-            Propagated::KeyframeRequest(_, source, mid_in, rid, kind) => {
-                if *source == client.id {
-                    client.request_keyframe_throttled(*mid_in, *rid, *kind)
-                }
-            }
-            Propagated::Noop | Propagated::Timeout(_) => {}
-        }
-    }
-}
-
 struct Client {
     id: u64,
     user: Id,
     room: Id,
     rtc: Rtc,
+    /// Waiting in `Sfu::dirty` to be polled.
+    queued: bool,
+    /// When str0m next wants a timeout (the matching entry in `Sfu::timers`).
+    next: Option<Instant>,
     /// What the app said each of its m-lines carries.
     kinds: HashMap<Mid, TrackKind>,
     /// Camera cap written into every SDP we hand this app (0 = none).
@@ -350,6 +482,8 @@ impl Client {
             user,
             room,
             rtc,
+            queued: false,
+            next: None,
             kinds,
             camera_kbps,
             pending: None,
@@ -380,7 +514,7 @@ impl Client {
             return Propagated::Noop;
         }
         if let Some((origin, mid_in, rid)) = self.keyframes.pop() {
-            return Propagated::KeyframeRequest(self.id, origin, mid_in, Some(rid), KeyframeRequestKind::Pli);
+            return Propagated::KeyframeRequest(origin, mid_in, Some(rid), KeyframeRequestKind::Pli);
         }
         // Tracks of others waiting for an m-line need an SDP round trip first.
         if self.negotiate_if_needed() {
@@ -488,7 +622,7 @@ impl Client {
         let Some(track_in) = out.track_in.upgrade() else {
             return Propagated::Noop;
         };
-        Propagated::KeyframeRequest(self.id, track_in.origin, track_in.mid, out.rid, req.kind)
+        Propagated::KeyframeRequest(track_in.origin, track_in.mid, out.rid, req.kind)
     }
 
     /// Auto: share what the server can send this app between the streams it gets. Everything starts on its
@@ -743,19 +877,8 @@ enum Propagated {
     Timeout(Instant),
     TrackOpen(u64, Weak<TrackIn>),
     MediaData(u64, MediaData),
-    /// (from client, publisher client, publisher's mid, layer, kind)
-    KeyframeRequest(u64, u64, Mid, Option<Rid>, KeyframeRequestKind),
-}
-
-impl Propagated {
-    fn client_id(&self) -> Option<u64> {
-        match self {
-            Propagated::TrackOpen(c, _)
-            | Propagated::MediaData(c, _)
-            | Propagated::KeyframeRequest(c, _, _, _, _) => Some(*c),
-            _ => None,
-        }
-    }
+    /// (publisher client, its mid, layer, kind)
+    KeyframeRequest(u64, Mid, Option<Rid>, KeyframeRequestKind),
 }
 
 /// Cap the app's camera: a `b=AS` (and `b=TIAS`) line in its camera's m-section of SDP we hand it. Browsers keep
