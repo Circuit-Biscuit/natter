@@ -258,6 +258,8 @@ pub enum Modal {
     GoLive,
     /// A server admin gives someone a temporary password.
     ResetPassword(Id),
+    /// Report a message to the server's admins.
+    Report { channel: Id, message: Id },
     Confirm { title: String, body: String, ok: String, action: Action },
 }
 
@@ -335,6 +337,10 @@ pub struct Store {
     pub email: RwSignal<Option<String>>,
     /// Your account has two-factor sign-in on (from `Ready`).
     pub totp: RwSignal<bool>,
+    /// People you blocked: their messages show folded.
+    pub blocked: RwSignal<HashSet<Id>>,
+    /// Server admins: reports waiting for a look.
+    pub open_reports: RwSignal<u32>,
     pub users: RwSignal<HashMap<Id, User>>,
     pub presence: RwSignal<HashMap<Id, Status>>,
     pub spaces: RwSignal<Vec<Space>>,
@@ -440,6 +446,8 @@ impl Store {
             nextcloud_session: RwSignal::new(false),
             email: RwSignal::new(None),
             totp: RwSignal::new(false),
+            blocked: RwSignal::new(HashSet::new()),
+            open_reports: RwSignal::new(0),
             users: RwSignal::new(HashMap::new()),
             presence: RwSignal::new(HashMap::new()),
             spaces: RwSignal::new(vec![]),
@@ -1453,6 +1461,12 @@ pub fn apply(ev: Event) {
                 crate::desktop::notify(&format!("{name} is calling"), "Open Laklak to answer.", Some(channel_id));
             }
         }
+        Event::ReportsChanged { open } => {
+            if open > s.open_reports.get_untracked() {
+                s.toast("Someone reported a message: Settings › Reports", false);
+            }
+            s.open_reports.set(open);
+        }
         Event::SettingsUpdate(v) => {
             // While saving, ours are newer than any echo.
             if SAVING.get().0 {
@@ -1473,6 +1487,8 @@ fn apply_ready(r: Ready) {
     s.nextcloud_session.set(r.nextcloud);
     s.email.set(r.email);
     s.totp.set(r.totp);
+    s.blocked.set(r.blocked.iter().copied().collect());
+    s.open_reports.set(r.open_reports);
     s.my_status.set(r.status);
     s.users.set(r.users.into_iter().map(|u| (u.id, u)).collect());
     s.me.set(Some(r.user));
@@ -1633,6 +1649,27 @@ pub fn set_status(status: Status) {
         let body = UpdateMe { status: Some(status), ..Default::default() };
         if let Err(e) = api::call::<_, User>("PATCH", "/api/me", &body).await {
             s.error(e);
+        }
+    });
+}
+
+/// Block or unblock someone (their messages fold; they can't message or ring you).
+pub fn set_blocked(user: Id, on: bool) {
+    spawn_local(async move {
+        let method = if on { "PUT" } else { "DELETE" };
+        match api::act(method, &format!("/api/me/blocks/{user}")).await {
+            Ok(()) => {
+                let s = store();
+                s.blocked.update(|b| {
+                    if on {
+                        b.insert(user);
+                    } else {
+                        b.remove(&user);
+                    }
+                });
+                s.toast(if on { "Blocked. Their messages are hidden, and they can't message or ring you." } else { "Unblocked." }, false);
+            }
+            Err(e) => store().toast(e.message, true),
         }
     });
 }

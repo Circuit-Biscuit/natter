@@ -25,6 +25,13 @@ pub fn UserSettings() -> impl IntoView {
                 {item("account", "My account")}
                 {item("profile", "Profile")}
                 {item("devices", "Devices")}
+                <Show when=move || store().me.with(|m| m.as_ref().is_some_and(|m| m.admin))
+                    && store().info.with(|i| i.as_ref().is_some_and(|i| i.moderation))>
+                    <button class:active=move || tab.get() == "reports" on:click=move |_| tab.set("reports")>
+                        "Reports"
+                        {move || (store().open_reports.get() > 0).then(|| view! { <span class="badge">{store().open_reports.get()}</span> })}
+                    </button>
+                </Show>
                 <div class="settings-sep"></div>
                 <div class="settings-group">"APP SETTINGS"</div>
                 {item("appearance", "Appearance")}
@@ -49,6 +56,7 @@ pub fn UserSettings() -> impl IntoView {
                     "keybinds" => view! { <KeybindsTab/> }.into_any(),
                     "system" => view! { <SystemTab/> }.into_any(),
                     "devices" => view! { <DevicesTab/> }.into_any(),
+                    "reports" => view! { <ReportsTab/> }.into_any(),
                     _ => view! { <AccountTab/> }.into_any(),
                 }}
             </section>
@@ -160,6 +168,18 @@ fn AccountTab() -> impl IntoView {
                 <TwoFactor/>
             </Show>
         </Show>
+        <Show when=move || !s.blocked.with(|b| b.is_empty())>
+            <h3>"Blocked"</h3>
+            <div class="blocked-list">
+                {move || s.blocked.get().into_iter().map(|u| view! {
+                    <div class="blocked-row">
+                        <Avatar user=u size=28/>
+                        <span>{move || s.name(u, None)}</span>
+                        <button class="btn small" on:click=move |_| crate::store::set_blocked(u, false)>"Unblock"</button>
+                    </div>
+                }).collect_view()}
+            </div>
+        </Show>
         <h3>"Server"</h3>
         <p class="muted">{move || {
             let base = api::server();
@@ -192,6 +212,101 @@ fn AccountTab() -> impl IntoView {
                 </div>
             </div>
         </Show>
+    }
+}
+
+/// Server admins: reported messages (a copy as reported, the reason, who and when), with dismiss, delete the
+/// message, or suspend its author; and the suspended accounts, to lift.
+#[component]
+fn ReportsTab() -> impl IntoView {
+    let list = RwSignal::new(None::<ReportList>);
+    let error = RwSignal::new(None::<String>);
+    let load = move || {
+        spawn_local(async move {
+            match api::get::<ReportList>("/api/reports").await {
+                Ok(l) => list.set(Some(l)),
+                Err(e) => error.set(Some(e.message)),
+            }
+        });
+    };
+    load();
+    // A report comes in or is resolved elsewhere: show it.
+    Effect::new(move |prev: Option<u32>| {
+        let n = store().open_reports.get();
+        if prev.is_some_and(|p| p != n) {
+            load();
+        }
+        n
+    });
+    let act = move |path: String, body: serde_json::Value| {
+        spawn_local(async move {
+            let r: Result<(), api::Error> = if path.contains("/suspended") {
+                api::call("PUT", &path, &body).await
+            } else {
+                api::call("POST", &path, &body).await
+            };
+            match r {
+                Ok(()) => load(),
+                Err(e) => store().toast(e.message, true),
+            }
+        });
+    };
+    let name = move |id: Option<Id>| {
+        let l = list.get_untracked();
+        id.and_then(|id| l.and_then(|l| l.users.into_iter().find(|u| u.id == id)))
+            .map(|u| format!("{} (@{})", u.display_name, u.username))
+            .unwrap_or_else(|| "someone".into())
+    };
+    view! {
+        <h2>"Reports"</h2>
+        <p class="muted">"Messages people reported to this server's admins. Resolved reports go after 90 days."</p>
+        {move || error.get().map(|e| view! { <div class="form-error">{e}</div> })}
+        {move || list.get().map(|l| {
+            let (open, done): (Vec<Report>, Vec<Report>) = l.reports.into_iter().partition(|r| r.resolved_at.is_none());
+            view! {
+                {(open.is_empty()).then(|| view! { <p class="muted">"Nothing to look at."</p> })}
+                {open.into_iter().map(|r| {
+                    let id = r.id;
+                    let author = r.author_id;
+                    view! {
+                        <div class="report-card">
+                            <div class="muted small">{format!("{} reported {} · {}", name(r.reporter_id), name(author), util::long_time(r.created_at))}</div>
+                            <blockquote class="report-content">{r.content.clone()}</blockquote>
+                            <div><b>"Reason: "</b>{r.reason.clone()}</div>
+                            <div class="row">
+                                <button class="btn" on:click=move |_| act(format!("/api/reports/{id}/resolve"), serde_json::json!({"action": "dismiss"}))>"Dismiss"</button>
+                                {r.message_exists.then(|| view! {
+                                    <button class="btn" on:click=move |_| act(format!("/api/reports/{id}/resolve"), serde_json::json!({"action": "delete"}))>"Delete message"</button>
+                                })}
+                                {author.map(|_| view! {
+                                    <button class="btn danger" on:click=move |_| act(format!("/api/reports/{id}/resolve"), serde_json::json!({"action": "suspend"}))>"Suspend author"</button>
+                                })}
+                            </div>
+                        </div>
+                    }
+                }).collect_view()}
+                {(!l.suspended.is_empty()).then(|| view! {
+                    <h3>"Suspended accounts"</h3>
+                    {l.suspended.iter().map(|u| {
+                        let uid = u.id;
+                        view! {
+                            <div class="blocked-row">
+                                <span>{format!("{} (@{})", u.display_name, u.username)}</span>
+                                <button class="btn small" on:click=move |_| act(format!("/api/users/{uid}/suspended"), serde_json::json!({"suspended": false}))>"Lift suspension"</button>
+                            </div>
+                        }
+                    }).collect_view()}
+                })}
+                {(!done.is_empty()).then(|| view! {
+                    <h3>"Resolved"</h3>
+                    {done.into_iter().map(|r| view! {
+                        <div class="report-done muted small">
+                            {format!("{} · {}: \"{}\" ({})", util::long_time(r.resolved_at.unwrap_or_default()), r.resolution.clone().unwrap_or_default(), r.content.chars().take(80).collect::<String>(), name(r.author_id))}
+                        </div>
+                    }).collect_view()}
+                })}
+            }
+        })}
     }
 }
 

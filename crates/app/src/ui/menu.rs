@@ -80,6 +80,11 @@ pub fn message_menu(m: &Message) -> Vec<Option<MenuItem>> {
     v.push(Some(MenuItem::new("Copy Text", move || util::copy_text(&text))));
     v.push(Some(MenuItem::new("Mark Unread", move || crate::store::mark_unread(channel, id))));
     v.push(Some(MenuItem::new("Copy Message ID", move || util::copy_text(&id.to_string()))));
+    let moderation = s.info.with_untracked(|i| i.as_ref().is_some_and(|i| i.moderation));
+    if moderation && !mine && s.user(author).is_some_and(|u| !u.bot) {
+        v.push(None);
+        v.push(Some(MenuItem::new("Report Message…", move || s.modal.set(Some(Modal::Report { channel, message: id }))).danger()));
+    }
     if mine || can_delete {
         v.push(None);
         v.push(Some(MenuItem::new("Delete Message", move || crate::store::delete_with_confirm(channel, id)).danger()));
@@ -202,6 +207,23 @@ pub fn user_menu(user: Id, space: Option<Id>) -> Vec<Option<MenuItem>> {
     v.push(None);
     v.push(Some(MenuItem::new("Copy Username", move || util::copy_text(&username2))));
     v.push(Some(MenuItem::new("Copy User ID", move || util::copy_text(&user.to_string()))));
+    if user != me && !u.bot && s.info.with_untracked(|i| i.as_ref().is_some_and(|i| i.moderation)) {
+        let blocked = s.blocked.with_untracked(|b| b.contains(&user));
+        let name = u.display_name.clone();
+        v.push(Some(if blocked {
+            MenuItem::new("Unblock", move || crate::store::set_blocked(user, false))
+        } else {
+            MenuItem::new("Block…", move || {
+                store().confirm(
+                    &format!("Block {name}?"),
+                    "Their messages are hidden for you (you can still open each one), and they can't message or ring you. They aren't told.",
+                    "Block",
+                    move || crate::store::set_blocked(user, true),
+                )
+            })
+            .danger()
+        }));
+    }
     // Server admins can give someone a temporary password (for a lost one).
     if user != me && !u.bot && s.me.with_untracked(|m| m.as_ref().is_some_and(|m| m.admin)) {
         v.push(Some(MenuItem::new("Reset Password…", move || store().modal.set(Some(Modal::ResetPassword(user)))).danger()));

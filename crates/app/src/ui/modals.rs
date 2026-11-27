@@ -38,6 +38,7 @@ pub fn ModalHost() -> impl IntoView {
                 Modal::WordGame(sp) => view! { <super::word::WordGame space=sp/> }.into_any(),
                 Modal::GoLive => view! { <super::call::GoLive/> }.into_any(),
                 Modal::ResetPassword(u) => view! { <ResetPassword user=u/> }.into_any(),
+                Modal::Report { channel, message } => view! { <ReportDialog channel=channel message=message/> }.into_any(),
                 Modal::Confirm { title, body, ok, action } => view! { <Confirm title=title body=body ok=ok action=action/> }.into_any(),
             };
             view! {
@@ -148,6 +149,50 @@ fn ResetPassword(user: Id) -> impl IntoView {
             <div class="temp-password"><code>{move || temp.get()}</code><button class="btn" on:click=copy>"Copy"</button></div>
             <div class="modal-foot"><button class="btn primary" on:click=|_| close()>"Done"</button></div>
         </Show>
+    }
+}
+
+/// Report a message to the server's admins: they see a copy of it and the reason, and can delete it or suspend
+/// its author. The author isn't told who reported it.
+#[component]
+fn ReportDialog(channel: Id, message: Id) -> impl IntoView {
+    let reason = RwSignal::new(String::new());
+    let error = RwSignal::new(None::<String>);
+    let busy = RwSignal::new(false);
+    let pick = move |r: &'static str| reason.set(r.to_string());
+    let send = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        busy.set(true);
+        let body = ReportReq { reason: reason.get_untracked() };
+        spawn_local(async move {
+            match api::call::<_, ()>("POST", &format!("/api/channels/{channel}/messages/{message}/report"), &body).await {
+                Ok(()) => {
+                    close();
+                    store().toast("Thanks. The server's admins will look at it.", false);
+                }
+                Err(e) => error.set(Some(e.message)),
+            }
+            busy.set(false);
+        });
+    };
+    view! {
+        <h2>"Report message"</h2>
+        <p class="modal-text">"The server's admins see a copy of the message and what you write here. Its author isn't told who reported it."</p>
+        <form class="form" on:submit=send>
+            <div class="report-reasons">
+                {["Spam or scam", "Harassment or hate", "Sexual or violent content", "Someone under 15", "Something else"].map(|r| view! {
+                    <button type="button" class="btn" class:active=move || reason.get() == r on:click=move |_| pick(r)>{r}</button>
+                }).to_vec()}
+            </div>
+            <label>"What's wrong with it?"
+                <textarea required=true maxlength="1000" rows="3" prop:value=move || reason.get() on:input=move |e| reason.set(event_target_value(&e))></textarea>
+            </label>
+            {move || error.get().map(|e| view! { <div class="form-error">{e}</div> })}
+            <div class="modal-foot">
+                <button type="button" class="btn link" on:click=|_| close()>"Cancel"</button>
+                <button class="btn danger" type="submit" disabled=move || busy.get() || reason.get().trim().is_empty()>"Report"</button>
+            </div>
+        </form>
     }
 }
 

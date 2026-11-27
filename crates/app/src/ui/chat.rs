@@ -557,8 +557,29 @@ fn ThreadPanel(thread: Id) -> impl IntoView {
     }
 }
 
+/// A message, folded when its author is someone you blocked (until you open it).
 #[component]
 pub fn MessageItem(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
+    let s = store();
+    let author = m.author_id;
+    // Only what they wrote: "joined the space" and other notices stay.
+    let theirs = m.kind == MessageKind::Default;
+    let opened = RwSignal::new(false);
+    let folded = move || theirs && !opened.get() && s.blocked.with(|b| b.contains(&author));
+    view! {
+        <Show when=folded fallback=move || view! { <MessageInner m=m.clone() head=head space=space/> }>
+            <div class="message blocked-message">
+                <div class="msg-gutter"></div>
+                <div class="msg-body muted small">"A message from someone you blocked. "
+                    <a href="#" on:click=move |e| { e.prevent_default(); opened.set(true); }>"Show"</a>
+                </div>
+            </div>
+        </Show>
+    }
+}
+
+#[component]
+fn MessageInner(m: Message, head: bool, space: Option<Id>) -> impl IntoView {
     let s = store();
     let me = s.me_id();
     let id = m.id;

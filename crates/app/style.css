@@ -550,6 +550,14 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .settings-body label.check:has(> input[type=radio]:checked) { background: var(--active); color: var(--strong); }
 .form-error { color: var(--danger-text); font-size: 14px; }
 .form-ok { color: var(--ok); font-size: 14px; }
+.blocked-message .msg-body { padding: 2px 0; }
+.blocked-list { display: flex; flex-direction: column; gap: 6px; }
+.blocked-row { display: flex; align-items: center; gap: 10px; }
+.report-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+.report-reasons .btn.active { outline: 2px solid var(--accent); }
+.report-card { background: var(--side); border-radius: 8px; padding: 12px 14px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.report-content { margin: 0; padding: 6px 10px; border-left: 3px solid var(--danger, #e5484d); white-space: pre-wrap; word-break: break-word; }
+.report-done { padding: 2px 0; }
 .totp-setup { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
 .totp-qr { background: #fff; padding: 8px; border-radius: 8px; line-height: 0; }
 .totp-qr svg { width: 180px; height: 180px; }
