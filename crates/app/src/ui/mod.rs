@@ -130,7 +130,7 @@ fn Loading() -> impl IntoView {
     let s = store();
     view! {
         <div class="loading">
-            <div class="loading-mark"><icons::Logo size=72 gradient=true/></div>
+            <div class="loading-mark"><icons::Logo size=72/></div>
             <div class="loading-text">
                 {move || match s.conn.get() {
                     Conn::Retrying(_) => "Can't reach the server — retrying…",

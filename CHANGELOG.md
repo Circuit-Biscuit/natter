@@ -12,8 +12,8 @@
   folder `./laklak-data` with `laklak.db`, the default Nextcloud folder `Laklak`, and docs/DEPLOY.md uses
   `laklak.service`, `/etc/laklak.env` and `/opt/laklak`.
 - **New look: the Laklak logo and the Splash theme.** The logo is an L drawn as a headset mic boom: a leaning
-  stem running purple to turquoise, its foot hanging under the "a" and ending in a foam mic; it's the app icon on
-  every platform (on deep indigo), the Home button, and the wordmark in the title bar and on the sign-in screen (set in Fredoka). Splash is the new default
+  stem running purple to turquoise, its foot hanging under the "a" and ending in a raised mic; it's the app icon on
+  every platform (on deep indigo), the Home button, and the wordmark in the title bar and on the sign-in screen. Splash is the new default
   theme: deep indigo with a faint pink and turquoise glow behind the chat, and a pink accent. The old grey look is
   still there: pick Dark in Settings › Appearance.
 - **Sign in with your e-mail address.** If your account has one, it works in the username box too, in any case. The

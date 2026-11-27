@@ -74,32 +74,31 @@ pub fn Icon(name: &'static str, #[prop(optional)] size: Option<u32>) -> impl Int
     }
 }
 
-/// The boom L: a plain stem leaning like a boom swung out, the foot running under the "a" below the
-/// baseline, a two-tone foam mic at its end. Units: cap height 100, baseline y=100.
-/// Same geometry as `assets/logo.svg` and `LOGO_L` in glue.js. Built as markup and set with `inner_html`:
-/// SVG children made by a separate `view!` would land in the HTML namespace and not draw.
-const LOGO_L: &str = "M-6 4H7Q11 4 11.6 8L21 100Q21 108.5 27 108.5H52V128.5H14Q0 128.5 -0.5 114.5L-10 8Q-10 4 -6 4Z";
-const LOGO_MIC: &str = "M50 103H60.5A10.5 16.5 0 0 1 60.5 136H50Z";
+/// The boom L, on the 1024 artboard of assets/laklak-wordmark.svg: a leaning stem whose foot runs under the
+/// "a" below the baseline and ends in a raised mic. Purple at the top to turquoise at the foot; the stops are
+/// CSS tokens so light themes get a darker end. Same geometry as `LOGO_L` in glue.js and assets/logo.svg.
+/// Built as markup and set with `inner_html`: SVG children made by a separate `view!` would land in the HTML
+/// namespace and not draw.
+const LOGO_L: &str = "M344.281,596.038C325.183,595.901 336.857,595.692 317.013,595C312.123,594.83 232.362,591.306 228.941,589.46C225.519,587.615 222.722,585.049 220.55,581.762C218.378,578.475 216.782,574.265 215.764,569.132C214.745,564 193.01,470.683 193.01,463.225L173.169,368.598C172.806,365.466 172.674,362.838 173.231,360.223C173.788,357.609 175.288,355.466 177.729,353.793C180.17,352.121 184.178,351.285 189.753,351.285C195.366,351.285 199.364,352.111 201.747,353.765C204.131,355.418 205.611,357.571 206.188,360.223C206.765,362.876 207.375,365.5 207.827,368.598L227.668,461.437C227.668,464.013 249.018,553.13 249.268,554.744C249.518,556.359 249.989,557.618 250.681,558.522C251.373,559.425 299.979,561.995 301.238,562.014C309.748,562.147 315.64,545.771 322.991,545.985C329.813,546.183 343.417,546.921 351.967,547.418C367.884,548.344 365.413,553.419 365.654,570.796C365.893,588.083 357.279,596.131 344.281,596.038Z";
+const LOGO_L_TRANSFORM: &str = "matrix(.999935 -.011392 .011392 .999935 75.072378 16.933639)";
 
-fn logo_markup(gradient_id: Option<&str>) -> String {
-    match gradient_id {
-        // Purple at the top to turquoise at the foot. Stops are CSS tokens so light themes get the darker set.
-        Some(id) => format!(
-            concat!(
-                r#"<defs><linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="0" y1="4" x2="0" y2="128.5">"#,
-                r#"<stop offset="0" style="stop-color:var(--lk-1)"/><stop offset=".28" style="stop-color:var(--lk-2)"/>"#,
-                r#"<stop offset=".51" style="stop-color:var(--lk-3)"/><stop offset=".73" style="stop-color:var(--lk-4)"/>"#,
-                r#"<stop offset=".9" style="stop-color:var(--lk-5)"/><stop offset="1" style="stop-color:var(--lk-6)"/>"#,
-                r#"</linearGradient><linearGradient id="{id}-mic" x1="0" y1="0" x2="0" y2="1">"#,
-                r##"<stop offset=".52" stop-color="#2a6273"/><stop offset=".52" stop-color="#0c2832"/></linearGradient></defs>"##,
-                r#"<path d="{l}" fill="url(#{id})"/><path d="{mic}" fill="url(#{id}-mic)"/>"#
-            ),
-            id = id,
-            l = LOGO_L,
-            mic = LOGO_MIC
+/// "aklak" in Fredoka, outlined: each glyph with its x origin, at em 228.95 on baseline y 542.61 (same artboard).
+const GLYPH_A: &str = "M0.449,0.008C0.424,0.008 0.406,0.003 0.394,-0.005C0.382,-0.014 0.377,-0.025 0.377,-0.037L0.387,-0.054C0.383,-0.047 0.375,-0.039 0.364,-0.03C0.353,-0.02 0.338,-0.011 0.32,-0.004C0.302,0.004 0.279,0.008 0.253,0.008C0.222,0.008 0.193,0.001 0.166,-0.012C0.138,-0.025 0.113,-0.044 0.092,-0.067C0.07,-0.091 0.054,-0.118 0.041,-0.147C0.029,-0.177 0.023,-0.209 0.022,-0.243C0.023,-0.275 0.029,-0.307 0.041,-0.336C0.054,-0.366 0.071,-0.392 0.092,-0.415C0.114,-0.438 0.139,-0.457 0.166,-0.47C0.194,-0.483 0.223,-0.49 0.253,-0.49C0.278,-0.49 0.299,-0.486 0.316,-0.48C0.334,-0.472 0.348,-0.464 0.359,-0.455C0.371,-0.445 0.38,-0.436 0.386,-0.427L0.378,-0.442C0.377,-0.458 0.383,-0.47 0.395,-0.478C0.406,-0.487 0.425,-0.491 0.45,-0.491C0.474,-0.491 0.491,-0.487 0.502,-0.48C0.512,-0.472 0.518,-0.463 0.52,-0.451C0.523,-0.439 0.524,-0.427 0.524,-0.413L0.524,-0.068C0.524,-0.055 0.523,-0.043 0.52,-0.031C0.518,-0.019 0.512,-0.01 0.501,-0.003C0.491,0.004 0.474,0.008 0.449,0.008ZM0.275,-0.141C0.292,-0.141 0.308,-0.145 0.322,-0.154C0.336,-0.163 0.348,-0.176 0.356,-0.191C0.365,-0.206 0.369,-0.223 0.369,-0.241C0.369,-0.261 0.365,-0.278 0.356,-0.293C0.347,-0.308 0.336,-0.32 0.321,-0.329C0.307,-0.338 0.29,-0.343 0.273,-0.343C0.253,-0.343 0.236,-0.338 0.221,-0.329C0.206,-0.32 0.194,-0.307 0.185,-0.292C0.176,-0.277 0.172,-0.259 0.172,-0.24C0.172,-0.222 0.177,-0.205 0.186,-0.19C0.195,-0.175 0.207,-0.163 0.223,-0.154C0.238,-0.145 0.255,-0.141 0.275,-0.141Z";
+const GLYPH_K: &str = "M0.454,-0.127C0.474,-0.109 0.485,-0.091 0.487,-0.075C0.488,-0.059 0.479,-0.04 0.46,-0.019C0.445,-0.004 0.432,0.006 0.421,0.011C0.411,0.016 0.4,0.016 0.389,0.012C0.379,0.007 0.366,-0.002 0.352,-0.014L0.194,-0.152L0.194,-0.066C0.194,-0.053 0.193,-0.04 0.191,-0.029C0.188,-0.017 0.182,-0.008 0.171,-0.001C0.161,0.006 0.144,0.009 0.119,0.009C0.095,0.009 0.077,0.006 0.067,-0.001C0.056,-0.009 0.05,-0.018 0.048,-0.03C0.045,-0.041 0.044,-0.054 0.044,-0.067L0.044,-0.643C0.044,-0.657 0.046,-0.669 0.048,-0.68C0.051,-0.692 0.057,-0.701 0.068,-0.708C0.078,-0.716 0.096,-0.719 0.12,-0.719C0.144,-0.719 0.161,-0.716 0.172,-0.708C0.182,-0.701 0.188,-0.692 0.191,-0.68C0.193,-0.669 0.194,-0.656 0.194,-0.642L0.194,-0.341L0.306,-0.449C0.319,-0.461 0.332,-0.47 0.343,-0.475C0.355,-0.48 0.366,-0.48 0.378,-0.476C0.389,-0.472 0.401,-0.463 0.414,-0.449C0.435,-0.426 0.446,-0.407 0.445,-0.393C0.444,-0.378 0.433,-0.361 0.414,-0.341L0.305,-0.243L0.454,-0.127Z";
+const GLYPH_L: &str = "M0.233,0.009C0.205,0.009 0.181,0.008 0.16,0.005C0.139,0.002 0.121,-0.003 0.106,-0.011C0.091,-0.019 0.079,-0.031 0.07,-0.045C0.06,-0.059 0.054,-0.077 0.049,-0.1C0.045,-0.122 0.043,-0.149 0.043,-0.181L0.043,-0.644C0.043,-0.657 0.044,-0.67 0.046,-0.681C0.049,-0.692 0.055,-0.702 0.066,-0.709C0.076,-0.716 0.094,-0.72 0.118,-0.72C0.142,-0.72 0.159,-0.716 0.17,-0.709C0.18,-0.702 0.186,-0.693 0.189,-0.681C0.192,-0.67 0.193,-0.657 0.193,-0.644L0.193,-0.189C0.193,-0.178 0.193,-0.169 0.194,-0.162C0.195,-0.155 0.198,-0.15 0.201,-0.146C0.204,-0.142 0.208,-0.139 0.213,-0.138C0.218,-0.137 0.225,-0.136 0.234,-0.136C0.242,-0.136 0.25,-0.135 0.259,-0.133C0.267,-0.131 0.274,-0.125 0.28,-0.115C0.286,-0.105 0.288,-0.089 0.288,-0.065C0.288,-0.041 0.286,-0.023 0.28,-0.013C0.274,-0.002 0.267,0.004 0.258,0.006C0.25,0.008 0.241,0.009 0.233,0.009Z";
+const AKLAK: [(&str, f32); 5] = [(GLYPH_A, 328.13), (GLYPH_K, 457.03), (GLYPH_L, 572.42), (GLYPH_A, 641.34), (GLYPH_K, 770.24)];
+
+fn logo_l_markup(id: &str) -> String {
+    format!(
+        concat!(
+            r#"<defs><linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0" gradientTransform="matrix(43.942506 150.684736 -150.684736 43.942506 244.909138 445.353444)">"#,
+            r#"<stop offset="0" style="stop-color:var(--lk-1)"/><stop offset="1" style="stop-color:var(--lk-2)"/></linearGradient></defs>"#,
+            r#"<path transform="{t}" d="{d}" fill="url(#{id})"/>"#
         ),
-        None => format!(r#"<path d="{LOGO_L}" fill="currentColor"/><path d="{LOGO_MIC}" fill="currentColor"/>"#),
-    }
+        id = id,
+        t = LOGO_L_TRANSFORM,
+        d = LOGO_L
+    )
 }
 
 /// Each SVG gradient needs a document-unique id.
@@ -109,23 +108,20 @@ fn gradient_id() -> String {
     format!("lk-grad-{}", N.fetch_add(1, Ordering::Relaxed))
 }
 
-/// The Laklak mark, centred in a square: one colour (`currentColor`) or the brand gradient.
+/// The Laklak mark: the gradient L centred in a square.
 #[component]
-pub fn Logo(#[prop(optional)] size: Option<u32>, #[prop(optional)] gradient: bool) -> impl IntoView {
+pub fn Logo(#[prop(optional)] size: Option<u32>) -> impl IntoView {
     let size = size.unwrap_or(28);
-    let id = gradient.then(gradient_id);
-    let markup = logo_markup(id.as_deref());
-    view! { <svg width=size height=size viewBox="-39.5 0 140 140" aria-hidden="true" inner_html=markup></svg> }
+    let markup = logo_l_markup(&gradient_id());
+    view! { <svg width=size height=size viewBox="220.5 357.5 260 260" aria-hidden="true" inner_html=markup></svg> }
 }
 
-/// "Laklak" with the gradient boom L as its first letter; sized by the surrounding font-size.
+/// "Laklak": the gradient L and "aklak" in `currentColor`; 1em of the surrounding font-size is the glyphs' em.
 #[component]
 pub fn Wordmark() -> impl IntoView {
-    let markup = logo_markup(Some(&gradient_id()));
-    view! {
-        <span class="wordmark" aria-label="Laklak">
-            <svg class="wordmark-l" viewBox="-12 0 87 140" aria-hidden="true" inner_html=markup></svg>
-            <span aria-hidden="true">"aklak"</span>
-        </span>
+    let mut markup = logo_l_markup(&gradient_id());
+    for (d, x) in AKLAK {
+        markup += &format!(r#"<path transform="matrix(228.95 0 0 228.95 {x} 542.61)" d="{d}"/>"#);
     }
+    view! { <svg class="wordmark" viewBox="248 362 638 251" fill="currentColor" role="img" aria-label="Laklak" inner_html=markup></svg> }
 }
