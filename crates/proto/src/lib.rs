@@ -771,6 +771,10 @@ pub struct ServerInfo {
     /// Reporting messages to the server's admins, and blocking people (`/api/reports`, `/api/me/blocks`).
     #[serde(default)]
     pub moderation: bool,
+    /// New accounts (and changed addresses) confirm an e-mail address with a code: open sign-up on a server that
+    /// sends e-mail. A try without the code e-mails one and answers with error code `email_code_sent`.
+    #[serde(default)]
+    pub email_confirm: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -783,6 +787,9 @@ pub struct RegisterReq {
     /// For password resets (only where the server can send e-mail).
     #[serde(default)]
     pub email: Option<String>,
+    /// The code e-mailed to `email`, where the server confirms addresses (`ServerInfo::email_confirm`).
+    #[serde(default)]
+    pub email_code: Option<String>,
 }
 
 /// `POST /api/auth/forgot`: e-mail a reset code to the account with this username or e-mail. The answer is the
@@ -810,6 +817,9 @@ pub struct ResetWithCode {
 pub struct SetEmail {
     pub email: String,
     pub password: String,
+    /// The code e-mailed to the new address, where the server confirms addresses (`ServerInfo::email_confirm`).
+    #[serde(default)]
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

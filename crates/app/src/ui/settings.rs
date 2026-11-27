@@ -76,12 +76,23 @@ fn AccountTab() -> impl IntoView {
     let email_pw = RwSignal::new(String::new());
     let show_epw = RwSignal::new(false);
     let email_msg = RwSignal::new(None::<(bool, String)>);
+    // Servers with open sign-up confirm a new address with an e-mailed code.
+    let email_code = RwSignal::new(None::<String>);
     let save_email = move |e: leptos::ev::SubmitEvent| {
         e.prevent_default();
-        let body = SetEmail { email: email_in.get_untracked(), password: email_pw.get_untracked() };
+        let body = SetEmail {
+            email: email_in.get_untracked(),
+            password: email_pw.get_untracked(),
+            code: email_code.get_untracked().filter(|c| !c.trim().is_empty()),
+        };
         spawn_local(async move {
             match api::call::<_, ()>("PUT", "/api/me/email", &body).await {
+                Err(e) if e.code.as_deref() == Some("email_code_sent") => {
+                    email_code.set(Some(String::new()));
+                    email_msg.set(Some((true, format!("{}.", e.message))));
+                }
                 Ok(()) => {
+                    email_code.set(None);
                     let saved = email_key(&body.email);
                     email_msg.set(Some((true, if saved.is_some() { "Saved.".into() } else { "Removed.".into() })));
                     email_in.set(saved.clone().unwrap_or_default());
@@ -158,8 +169,14 @@ fn AccountTab() -> impl IntoView {
                     None => "Add one, and you can reset a lost password yourself (and sign in with it). Nobody else sees it.".to_string(),
                 }}</p>
                 <form class="form narrow" on:submit=save_email>
-                    <label>"E-mail"<input type="email" maxlength="254" autocomplete="email" placeholder="you@example.com" prop:value=move || email_in.get() on:input=move |e| email_in.set(event_target_value(&e))/></label>
+                    <label>"E-mail"<input type="email" maxlength="254" autocomplete="email" placeholder="you@example.com" prop:value=move || email_in.get() on:input=move |e| { email_in.set(event_target_value(&e)); email_code.set(None); }/></label>
                     <label>"Current password"<div class="pw"><input type=super::pw_type(show_epw) required=true autocomplete="current-password" prop:value=move || email_pw.get() on:input=move |e| email_pw.set(event_target_value(&e))/><super::Reveal shown=show_epw/></div></label>
+                    {move || email_code.get().is_some().then(|| view! {
+                        <label><span>"Code from the e-mail " <span class="muted">"(empty: send a new one)"</span></span>
+                            <input autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"
+                                prop:value=move || email_code.get().unwrap_or_default() on:input=move |e| email_code.set(Some(event_target_value(&e)))/>
+                        </label>
+                    })}
                     {move || email_msg.get().map(|(ok, m)| view! { <div class=if ok { "form-ok" } else { "form-error" }>{m}</div> })}
                     <button class="btn primary" type="submit">{move || if email_in.get().trim().is_empty() && s.email.get().is_some() { "Remove e-mail" } else { "Save e-mail" }}</button>
                 </form>

@@ -90,6 +90,16 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let code = RwSignal::new(String::new());
     let new_pw = RwSignal::new(String::new());
     let show_new = RwSignal::new(false);
+    // Open sign-up confirms the e-mail address: `Some` once the server e-mailed a code (the field shows).
+    let email_code = RwSignal::new(None::<String>);
+    let email_code_ref = NodeRef::<leptos::html::Input>::new();
+    Effect::new(move |_| {
+        if email_code.with(Option::is_some)
+            && let Some(el) = email_code_ref.get()
+        {
+            let _ = el.focus();
+        }
+    });
     // The account has two-factor sign-in on: the server asked for the authenticator code.
     let totp_needed = RwSignal::new(false);
     let totp = RwSignal::new(String::new());
@@ -118,11 +128,16 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
         if e.code.as_deref() == Some("totp_required") {
             totp_needed.set(true);
             error.set(None);
+        } else if e.code.as_deref() == Some("email_code_sent") {
+            email_code.set(Some(String::new()));
+            error.set(None);
         } else {
             error.set(Some(e.message));
         }
     };
     let email_reset = move || info.get().is_some_and(|i| i.email_reset);
+    // New accounts confirm their address (not the first: it sets the server up).
+    let email_confirm = move || info.get().is_some_and(|i| i.email_confirm && !i.first_run);
     // Came with an invite to a server that lets invited people make a Laklak account.
     let can_join_without_nc = move || {
         !invite.get().is_empty() && info.get().is_some_and(|i| i.registration != Registration::Closed)
@@ -177,6 +192,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                     invite: Some(invite_code(&invite.get_untracked())).filter(|c| !c.is_empty()),
                     device: Some(device_name()),
                     email: Some(email.get_untracked()).filter(|e| !e.trim().is_empty()),
+                    email_code: email_code.get_untracked().filter(|c| !c.trim().is_empty()),
                 };
                 api::call("POST", "/api/auth/register", &body).await
             } else {
@@ -437,9 +453,14 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                     </label>
                                 </Show>
                                 <Show when=move || mode_register.get() && email_reset()>
-                                    <label><span>"E-mail " <span class="muted">"(optional: to reset a lost password, or sign in with)"</span></span>
+                                    <label><span>"E-mail " <span class="muted">{move || if email_confirm() {
+                                        "(we'll send a code to confirm it)"
+                                    } else {
+                                        "(optional: to reset a lost password, or sign in with)"
+                                    }}</span></span>
                                         <input type="email" maxlength="254" autocomplete="email" autocapitalize="none" spellcheck="false"
-                                            prop:value=move || email.get() on:input=move |e| email.set(event_target_value(&e))/>
+                                            required=email_confirm
+                                            prop:value=move || email.get() on:input=move |e| { email.set(event_target_value(&e)); email_code.set(None); }/>
                                     </label>
                                 </Show>
                                 <label>"Password"
@@ -450,6 +471,13 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                         <super::Reveal shown=show_pw/>
                                     </div>
                                 </label>
+                                <Show when=move || mode_register.get() && email_code.with(Option::is_some)>
+                                    <p class="login-hint left">"We e-mailed you a code: it works for 30 minutes (check your spam folder too)."</p>
+                                    <label><span>"Code from the e-mail " <span class="muted">"(empty: send a new one)"</span></span>
+                                        <input node_ref=email_code_ref autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"
+                                            prop:value=move || email_code.get().unwrap_or_default() on:input=move |e| email_code.set(Some(event_target_value(&e)))/>
+                                    </label>
+                                </Show>
                                 <Show when=move || !mode_register.get()>
                                     {totp_field}
                                     <a href="#" class="forgot-link" on:click=open_forgot>"Forgot password?"</a>

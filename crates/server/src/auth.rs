@@ -168,13 +168,17 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
         gateway_identify: true,
         totp: true,
         moderation: true,
+        email_confirm: email_confirm(&st),
     }))
 }
 
 pub async fn register(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json<RegisterReq>) -> R<Json<AuthResp>> {
     // Before anything costly (password hashing): bots signing up in bulk from one address.
     st.over_ip_limit("sign-up", ip, st.cfg.signups_per_ip_hour, Duration::from_secs(3600))?;
-    st.note_ip("sign-up", ip);
+    // The second step of a confirmed sign-up (with the e-mailed code) isn't another sign-up.
+    if !(email_confirm(&st) && req.email_code.is_some()) {
+        st.note_ip("sign-up", ip);
+    }
     let username = username_key(&req.username);
     if !valid_username(&username) {
         return Err(bad("usernames are 2-32 characters: a-z, 0-9, _ and ."));
@@ -212,6 +216,22 @@ pub async fn register(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): J
                 return Err(forbidden("you need an invite to create an account here"));
             }
             _ => {}
+        }
+    }
+    // Not for the first (admin) account: nobody has tried the server's mail yet.
+    if email_confirm(&st) && user_count(&st).await? > 0 {
+        let email = email.as_deref().ok_or_else(|| bad("enter your e-mail address: this server confirms it with a code"))?;
+        // Taken ones fail now, not after the code.
+        let taken: Option<bool> = sqlx::query_scalar("SELECT username = ? FROM users WHERE username = ? OR email = ? LIMIT 1")
+            .bind(&username)
+            .bind(&username)
+            .bind(email)
+            .fetch_optional(&st.db)
+            .await?;
+        match taken {
+            Some(true) => return Err(conflict("that username is taken")),
+            Some(false) => return Err(conflict("that e-mail address belongs to another account")),
+            None => confirm_email(&st, ip, email, req.email_code.as_deref()).await?,
         }
     }
     let hash = hash_password(req.password).await?;
@@ -471,6 +491,78 @@ fn code_key(typed: &str) -> String {
     typed.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_lowercase()
 }
 
+/// Open sign-up on a server that sends e-mail: new accounts, and changed addresses, confirm the address with a code.
+pub fn email_confirm(st: &St) -> bool {
+    st.cfg.registration == Registration::Open && st.mailer.is_some()
+}
+
+const EMAIL_CODE_LIFE_MS: i64 = 30 * 60 * 1000;
+
+/// Confirms `email` belongs to whoever typed it. Without a code: e-mails one (30 minutes, 5 tries, a new one at most
+/// every minute per address) and answers `email_code_sent`. With one: checks it and uses it up.
+async fn confirm_email(st: &St, ip: std::net::IpAddr, email: &str, typed: Option<&str>) -> R<()> {
+    let now = now_ms();
+    sqlx::query("DELETE FROM email_codes WHERE expires_at < ?").bind(now).execute(&st.db).await?;
+    let Some(typed) = typed.map(code_key).filter(|c| !c.is_empty()) else {
+        // Besides one a minute per address: someone mailing codes to many addresses.
+        st.over_ip_limit("e-mail code", ip, 10, Duration::from_secs(3600))?;
+        let fresh: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM email_codes WHERE email = ? AND expires_at > ?)")
+                .bind(email)
+                .bind(now + EMAIL_CODE_LIFE_MS - 60_000)
+                .fetch_one(&st.db)
+                .await?;
+        if !fresh {
+            st.note_ip("e-mail code", ip);
+            let code = reset_code();
+            sqlx::query(
+                "INSERT INTO email_codes (email, code_hash, expires_at, tries) VALUES (?, ?, ?, 0)
+                 ON CONFLICT(email) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, tries = 0",
+            )
+            .bind(email)
+            .bind(hash_token(&code_key(&code)))
+            .bind(now + EMAIL_CODE_LIFE_MS)
+            .execute(&st.db)
+            .await?;
+            let server = st.cfg.name.clone();
+            let body = format!(
+                "Hi,\n\n\
+                 This code confirms your e-mail address for Laklak on {server}:\n\n    {code}\n\n\
+                 It works for 30 minutes. If you didn't ask for it, ignore this e-mail.\n\n\
+                 Laklak at {server}\n"
+            );
+            let (st, to) = (st.clone(), email.to_string());
+            tokio::spawn(async move {
+                let Some(mailer) = &st.mailer else { return };
+                match mailer.send(&to, &format!("Your Laklak code: {code}"), body).await {
+                    Ok(()) => tracing::info!("e-mail confirmation code sent"),
+                    Err(e) => tracing::warn!("e-mail confirmation code not sent: {e:#}"),
+                }
+            });
+        }
+        return Err(ApiErr {
+            code: Some("email_code_sent"),
+            ..bad(format!("we e-mailed a code to {email}: enter it to confirm the address"))
+        });
+    };
+    // Besides 5 tries per code: guessing codes across addresses.
+    st.over_ip_limit("wrong e-mail code", ip, 20, Duration::from_secs(600))?;
+    let row: Option<(String, i64)> = sqlx::query_as("SELECT code_hash, tries FROM email_codes WHERE email = ?")
+        .bind(email)
+        .fetch_optional(&st.db)
+        .await?;
+    if let Some((hash, tries)) = row
+        && tries < 5
+        && hash == hash_token(&typed)
+    {
+        sqlx::query("DELETE FROM email_codes WHERE email = ?").bind(email).execute(&st.db).await?;
+        return Ok(());
+    }
+    sqlx::query("UPDATE email_codes SET tries = tries + 1 WHERE email = ?").bind(email).execute(&st.db).await?;
+    st.note_ip("wrong e-mail code", ip);
+    Err(ApiErr { code: Some("email_code_wrong"), ..bad("that code is wrong or has expired: ask for a new one") })
+}
+
 /// "Forgot password?": e-mails a code (30 minutes, 5 tries) to the account's address. Always the same answer, sent
 /// before the mail goes out, so neither it nor its timing says whether the account exists.
 pub async fn forgot_password(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json<ForgotPassword>) -> R<StatusCode> {
@@ -581,9 +673,9 @@ fn login_kind(login: &str) -> &'static str {
 }
 
 /// Your e-mail for password resets (empty removes it), confirmed with your password.
-pub async fn set_email(State(st): State<St>, auth: Auth, Json(req): Json<SetEmail>) -> R<StatusCode> {
-    let (hash, nc): (String, Option<String>) =
-        sqlx::query_as("SELECT password_hash, nc_user_id FROM users WHERE id = ?")
+pub async fn set_email(State(st): State<St>, ClientIp(ip): ClientIp, auth: Auth, Json(req): Json<SetEmail>) -> R<StatusCode> {
+    let (hash, nc, current): (String, Option<String>, Option<String>) =
+        sqlx::query_as("SELECT password_hash, nc_user_id, email FROM users WHERE id = ?")
             .bind(auth.user)
             .fetch_one(&st.db)
             .await?;
@@ -597,6 +689,17 @@ pub async fn set_email(State(st): State<St>, auth: Auth, Json(req): Json<SetEmai
         "" => None,
         e => Some(email_key(e).ok_or_else(|| bad("that e-mail address doesn't look right"))?),
     };
+    if email_confirm(&st) && email != current {
+        let email = email.as_deref().ok_or_else(|| bad("this server needs an e-mail address on every account"))?;
+        let taken: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)")
+            .bind(email)
+            .fetch_one(&st.db)
+            .await?;
+        if taken {
+            return Err(conflict("that e-mail address belongs to another account"));
+        }
+        confirm_email(&st, ip, email, req.code.as_deref()).await?;
+    }
     let res = sqlx::query("UPDATE users SET email = ? WHERE id = ?").bind(&email).bind(auth.user).execute(&st.db).await;
     match res {
         Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {

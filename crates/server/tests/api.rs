@@ -1149,7 +1149,7 @@ async fn full_flow() {
     let (s, _) = login(Some(recovery[0].clone())).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED, "once");
     let (s, _) = call(&app, "POST", "/api/me/2fa/disable", Some(&tc), Some(json!({"code": "999999"}))).await;
-    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    assert_eq!(s, StatusCode::FORBIDDEN, "not 401: that would sign the app out");
     let (s, _) = call(&app, "POST", "/api/me/2fa/disable", Some(&tc), Some(json!({"code": recovery[1]}))).await;
     assert_eq!(s, StatusCode::NO_CONTENT);
     assert_eq!(login(None).await.0, StatusCode::OK, "off again");
@@ -1185,6 +1185,94 @@ async fn full_flow() {
     assert_eq!(call(&app, "PUT", &format!("/api/users/{u1}/suspended"), Some(&t1), Some(json!({"suspended": true}))).await.0, StatusCode::FORBIDDEN);
     assert_eq!(call(&app, "PUT", &format!("/api/users/{u5}/suspended"), Some(&t1), Some(json!({"suspended": false}))).await.0, StatusCode::NO_CONTENT);
     assert_eq!(login(None).await.0, StatusCode::OK, "lifted");
+
+    let _ = std::fs::remove_dir_all(data);
+}
+
+/// Open sign-up on a server that sends e-mail: an address is confirmed with an e-mailed code before an account gets
+/// it, at sign-up and when changing it later.
+#[tokio::test]
+async fn open_signup_confirms_email() {
+    let data = std::env::temp_dir().join(format!("laklak-test-{}", rand::random::<u64>()));
+    let mail_dir = data.join("mail");
+    let cfg = laklak_server::Config {
+        bind: "127.0.0.1:0".parse().unwrap(),
+        data: data.clone(),
+        name: "Test".into(),
+        registration: Registration::Open,
+        max_upload: 1024 * 1024,
+        media_port: 0,
+        media_threads: 1,
+        signups_per_ip_hour: 20,
+        turn_urls: vec![],
+        turn_secret: None,
+        camera_kbps: 1000,
+        game_utc_offset_min: 60,
+        public_ip: Some("127.0.0.1".parse().unwrap()),
+        web_dir: None,
+        nextcloud_url: None,
+        nextcloud_group: None,
+        nextcloud_folder: "Laklak".into(),
+        autojoin_space: None,
+        klipy_key: None,
+        smtp_url: Some(format!("file://{}", mail_dir.display())),
+        smtp_from: Some("Laklak <laklak@example.org>".into()),
+    };
+    let (app, st) = laklak_server::build(cfg).await.unwrap();
+    // The code in the mail to `to`.
+    let code_for = async |to: &str| {
+        for _ in 0..50 {
+            let found = std::fs::read_dir(&mail_dir).into_iter().flatten().flatten().find_map(|f| {
+                let m = std::fs::read_to_string(f.path()).ok()?;
+                m.contains(&format!("To: {to}")).then_some(m)
+            });
+            if let Some(m) = found {
+                return m.lines().find_map(|l| l.trim().strip_prefix("Subject: Your Laklak code: ")).unwrap().to_string();
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("no mail to {to}");
+    };
+    let register = |body: Value| call(&app, "POST", "/api/auth/register", None, Some(body));
+
+    // The first (admin) account needs no code.
+    let (s, a) = register(json!({"username": "admin", "password": "hunter2hunter2"})).await;
+    assert_eq!(s, StatusCode::OK, "{a}");
+    assert_eq!(call(&app, "GET", "/api/info", None, None).await.1["email_confirm"], true);
+
+    let (s, e) = register(json!({"username": "bob", "password": "hunter2hunter2"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "an address is needed: {e}");
+    let bob = json!({"username": "bob", "password": "hunter2hunter2", "email": "Bob@Example.org"});
+    let (s, e) = register(bob.clone()).await;
+    assert_eq!((s, e["code"].as_str()), (StatusCode::BAD_REQUEST, Some("email_code_sent")), "{e}");
+    let code = code_for("bob@example.org").await;
+    let with = |c: &str| {
+        let mut b = bob.clone();
+        b["email_code"] = json!(c);
+        b
+    };
+    let (s, e) = register(with("AAAA-AAAA")).await;
+    assert_eq!((s, e["code"].as_str()), (StatusCode::BAD_REQUEST, Some("email_code_wrong")), "{e}");
+    let (s, a) = register(with(&code.to_lowercase())).await;
+    assert_eq!(s, StatusCode::OK, "{a}");
+    let tb = a["token"].as_str().unwrap().to_string();
+    let (s, _) = register(with(&code)).await;
+    assert_eq!(s, StatusCode::CONFLICT, "used up, and bob exists");
+    let (s, _) = register(json!({"username": "bob2", "password": "hunter2hunter2", "email": "bob@example.org"})).await;
+    assert_eq!(s, StatusCode::CONFLICT, "the address is taken: no code goes out");
+
+    // A new address is confirmed too; it can't be removed.
+    let set = |email: &str, code: Option<&str>| {
+        call(&app, "PUT", "/api/me/email", Some(&tb), Some(json!({"email": email, "password": "hunter2hunter2", "code": code})))
+    };
+    assert_eq!(set("", None).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(set("bob@example.org", None).await.0, StatusCode::NO_CONTENT, "unchanged: no code");
+    let (s, e) = set("robert@example.org", None).await;
+    assert_eq!(e["code"].as_str(), Some("email_code_sent"), "{s} {e}");
+    let code = code_for("robert@example.org").await;
+    assert_eq!(set("robert@example.org", Some(&code)).await.0, StatusCode::NO_CONTENT);
+    let saved: Option<String> = sqlx::query_scalar("SELECT email FROM users WHERE username = 'bob'").fetch_one(&st.db).await.unwrap();
+    assert_eq!(saved.as_deref(), Some("robert@example.org"));
 
     let _ = std::fs::remove_dir_all(data);
 }

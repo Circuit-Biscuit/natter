@@ -197,7 +197,8 @@ pub async fn disable(State(st): State<St>, auth: Auth, Json(req): Json<TotpCode>
         Second::Passed | Second::Needed => {}
         Second::Wrong => {
             st.login_fails.lock().unwrap().entry(username).or_default().push(std::time::Instant::now());
-            return Err(wrong());
+            // Not `wrong()`: apps sign out on a 401 while signed in.
+            return Err(ApiErr { code: Some("totp_wrong"), ..crate::forbidden("that code is wrong") });
         }
     }
     clear(&st, auth.user).await?;

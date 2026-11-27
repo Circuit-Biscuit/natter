@@ -216,6 +216,7 @@ pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
             gateway_identify: true,
             totp: true,
             moderation: true,
+            email_confirm: crate::auth::email_confirm(&st),
         },
         nextcloud: nextcloud::is_nc_session(st, session).await,
         email,
