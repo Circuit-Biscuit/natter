@@ -90,6 +90,38 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let code = RwSignal::new(String::new());
     let new_pw = RwSignal::new(String::new());
     let show_new = RwSignal::new(false);
+    // The account has two-factor sign-in on: the server asked for the authenticator code.
+    let totp_needed = RwSignal::new(false);
+    let totp = RwSignal::new(String::new());
+    let totp_ref = NodeRef::<leptos::html::Input>::new();
+    // The field appears after the password was sent: put the cursor in it.
+    Effect::new(move |_| {
+        if totp_needed.get()
+            && let Some(el) = totp_ref.get()
+        {
+            let _ = el.focus();
+        }
+    });
+    let totp_field = move || {
+        view! {
+            <Show when=move || totp_needed.get()>
+                <label><span>"Authentication code " <span class="muted">"(from your authenticator app, or a recovery code)"</span></span>
+                    <input required=true node_ref=totp_ref autocomplete="one-time-code" autocapitalize="none" spellcheck="false"
+                        maxlength="20" placeholder="123 456"
+                        prop:value=move || totp.get() on:input=move |e| totp.set(event_target_value(&e))/>
+                </label>
+            </Show>
+        }
+    };
+    // A 401 that asks for the code: show the field (no error yet); anything else is an error.
+    let auth_error = move |e: api::Error| {
+        if e.code.as_deref() == Some("totp_required") {
+            totp_needed.set(true);
+            error.set(None);
+        } else {
+            error.set(Some(e.message));
+        }
+    };
     let email_reset = move || info.get().is_some_and(|i| i.email_reset);
     // Came with an invite to a server that lets invited people make a Laklak account.
     let can_join_without_nc = move || {
@@ -152,6 +184,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                     username: laklak_proto::username_key(&username.get_untracked()),
                     password: password.get_untracked(),
                     device: Some(device_name()),
+                    totp: Some(totp.get_untracked()).filter(|t| totp_needed.get_untracked() && !t.trim().is_empty()),
                 };
                 api::call("POST", "/api/auth/login", &body).await
             };
@@ -162,7 +195,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                     let code = if register { String::new() } else { invite_code(&invite.get_untracked()) };
                     finish(auth, on_done, code);
                 }
-                Err(e) => error.set(Some(e.message)),
+                Err(e) => auth_error(e),
             }
         });
     };
@@ -193,6 +226,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                     code: code.get_untracked(),
                     new_password: new_pw.get_untracked(),
                     device: Some(device_name()),
+                    totp: Some(totp.get_untracked()).filter(|t| totp_needed.get_untracked() && !t.trim().is_empty()),
                 };
                 let r = api::call::<_, AuthResp>("POST", "/api/auth/reset", &body).await;
                 busy.set(false);
@@ -201,7 +235,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                         forgot.set(0);
                         finish(auth, on_done, invite_code(&invite.get_untracked()));
                     }
-                    Err(e) => error.set(Some(e.message)),
+                    Err(e) => auth_error(e),
                 }
             }
         });
@@ -366,6 +400,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                                 <super::Reveal shown=show_new/>
                                             </div>
                                         </label>
+                                        {totp_field}
                                         {move || error.get().map(|e| view! { <div class="form-error">{e}</div> })}
                                         <button class="btn primary wide" type="submit" disabled=move || busy.get()>"Set password and sign in"</button>
                                         <a href="#" class="small" on:click=move |e| { e.prevent_default(); error.set(None); forgot.set(1); }>"Send a new code"</a>
@@ -416,6 +451,7 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                                     </div>
                                 </label>
                                 <Show when=move || !mode_register.get()>
+                                    {totp_field}
                                     <a href="#" class="forgot-link" on:click=open_forgot>"Forgot password?"</a>
                                 </Show>
                                 <Show when=move || mode_register.get() && info.get().is_some_and(|i| i.registration == Registration::Invite && !i.first_run)>

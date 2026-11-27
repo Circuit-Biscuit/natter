@@ -187,8 +187,8 @@ pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
         .flat_map(|s| s.channels.iter().map(|c| c.id))
         .chain(dms.iter().map(|c| c.id))
         .collect();
-    let (status, settings, email): (String, String, Option<String>) =
-        sqlx::query_as("SELECT status, settings, email FROM users WHERE id = ?")
+    let (status, settings, email, totp): (String, String, Option<String>, bool) =
+        sqlx::query_as("SELECT status, settings, email, totp_enabled FROM users WHERE id = ?")
             .bind(user)
             .fetch_one(&st.db)
             .await?;
@@ -213,9 +213,11 @@ pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
             camera_kbps: st.cfg.camera_kbps,
             email_reset: st.mailer.is_some(),
             gateway_identify: true,
+            totp: true,
         },
         nextcloud: nextcloud::is_nc_session(st, session).await,
         email,
+        totp,
     })
 }
 

@@ -64,6 +64,8 @@ pub fn gateway_url(identify: bool) -> String {
 pub struct Error {
     pub status: u16,
     pub message: String,
+    /// The server's `ApiError::code`, for errors the app acts on (`totp_required`).
+    pub code: Option<String>,
 }
 
 impl std::fmt::Display for Error {
@@ -77,7 +79,7 @@ fn js_err(e: JsValue) -> Error {
         .dyn_ref::<js_sys::Error>()
         .map(|e| String::from(e.message()))
         .unwrap_or_else(|| "Network error".into());
-    Error { status: 0, message: format!("Can't reach the server ({message})") }
+    Error { status: 0, message: format!("Can't reach the server ({message})"), code: None }
 }
 
 async fn send(method: &str, path: &str, body: Option<JsValue>, headers: &[(&str, &str)]) -> Result<Response, Error> {
@@ -107,7 +109,9 @@ async fn send(method: &str, path: &str, body: Option<JsValue>, headers: &[(&str,
         Ok(p) => JsFuture::from(p).await.ok().and_then(|v| v.as_string()).unwrap_or_default(),
         Err(_) => String::new(),
     };
-    let message = serde_json::from_str::<ApiError>(&text).map(|e| e.error).unwrap_or_else(|_| {
+    let parsed = serde_json::from_str::<ApiError>(&text).ok();
+    let code = parsed.as_ref().and_then(|e| e.code.clone());
+    let message = parsed.map(|e| e.error).ok_or(()).unwrap_or_else(|_| {
         match status {
             401 => "Your session has ended. Please sign in again.".into(),
             413 => "That file is too large for this server.".into(),
@@ -118,13 +122,13 @@ async fn send(method: &str, path: &str, body: Option<JsValue>, headers: &[(&str,
     if status == 401 && token().is_some() {
         crate::store::session_expired();
     }
-    Err(Error { status, message })
+    Err(Error { status, message, code })
 }
 
 async fn parse<R: DeserializeOwned>(resp: Response) -> Result<R, Error> {
     let text = JsFuture::from(resp.text().map_err(js_err)?).await.map_err(js_err)?.as_string().unwrap_or_default();
     let text = if text.is_empty() { "null" } else { &text };
-    serde_json::from_str(text).map_err(|e| Error { status: 0, message: format!("Unexpected reply: {e}") })
+    serde_json::from_str(text).map_err(|e| Error { status: 0, message: format!("Unexpected reply: {e}"), code: None })
 }
 
 pub async fn get<R: DeserializeOwned>(path: &str) -> Result<R, Error> {

@@ -234,6 +234,7 @@ pub async fn send(
         status: StatusCode::TOO_MANY_REQUESTS,
         msg: "you're sending messages too fast".into(),
         retry_after_ms: Some(ms),
+        code: None,
     })?;
     let replied_author: Option<Id> = match req.reply_to {
         Some(r) => Some(

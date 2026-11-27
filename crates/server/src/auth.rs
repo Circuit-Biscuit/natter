@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     ApiErr, ClientIp, R, St, bad, conflict, db, forbidden, gateway, messages, nextcloud, not_found, now_ms,
-    spaces, voice,
+    spaces, totp, voice,
 };
 
 /// The signed-in user behind a request.
@@ -162,6 +162,7 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
         camera_kbps: st.cfg.camera_kbps,
         email_reset: st.mailer.is_some(),
         gateway_identify: true,
+        totp: true,
     }))
 }
 
@@ -287,6 +288,17 @@ pub async fn login(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json
     let why = if nextcloud { "wrong password (the account signs in with Nextcloud)" } else { "wrong password" };
     if !verify_password(req.password, hash).await {
         return Err(fail(format!("{username} (by {via}): {why}")));
+    }
+    match totp::check(&st, id, req.totp.as_deref()).await? {
+        totp::Second::Passed => {}
+        totp::Second::Needed => {
+            tracing::info!("{username}: password right, asking for the two-factor code");
+            return Err(totp::needed());
+        }
+        totp::Second::Wrong => {
+            let _ = fail(format!("{username}: wrong two-factor code"));
+            return Err(totp::wrong());
+        }
     }
     st.login_fails.lock().unwrap().remove(&username);
     tracing::info!("{username} signed in (by {via})");
@@ -416,10 +428,11 @@ pub async fn reset_password(
         .bind(user)
         .execute(&st.db)
         .await?;
-    // Their failed tries don't hold the new password back.
+    // Their failed tries don't hold the new password back, and a lost authenticator doesn't either: the admin vouches.
     st.login_fails.lock().unwrap().remove(&username);
+    totp::clear(&st, user).await?;
     end_sessions(&st, user, 0, true).await?;
-    tracing::info!("server admin {} gave {username} a temporary password", auth.user);
+    tracing::info!("server admin {} gave {username} a temporary password (two-factor sign-in off)", auth.user);
     Ok(Json(TempPassword { password }))
 }
 
@@ -534,6 +547,16 @@ pub async fn reset_with_code(State(st): State<St>, ClientIp(ip): ClientIp, Json(
     if hash_token(&code_key(&req.code)) != hash {
         sqlx::query("UPDATE password_resets SET tries = tries + 1 WHERE user_id = ?").bind(id).execute(&st.db).await?;
         return Err(wrong(format!("wrong code for {username}")));
+    }
+    // An e-mailed code doesn't get past two-factor sign-in: the reset needs the authenticator code too.
+    match totp::check(&st, id, req.totp.as_deref()).await? {
+        totp::Second::Passed => {}
+        totp::Second::Needed => return Err(totp::needed()),
+        totp::Second::Wrong => {
+            sqlx::query("UPDATE password_resets SET tries = tries + 1 WHERE user_id = ?").bind(id).execute(&st.db).await?;
+            st.note_ip("wrong reset code", ip);
+            return Err(totp::wrong());
+        }
     }
     let new = hash_password(req.new_password).await?;
     sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?").bind(new).bind(id).execute(&st.db).await?;
@@ -672,12 +695,14 @@ pub async fn delete_me(
     // "deleted-…" has a '-', which usernames can't, so nobody can take it; '!' marks a hash nothing matches.
     sqlx::query(
         "UPDATE users SET username = ?, display_name = 'Deleted User', password_hash = '!deleted', avatar_id = NULL,
-         about = '', custom_status = NULL, admin = 0, settings = '{}', nc_user_id = NULL, email = NULL WHERE id = ?",
+         about = '', custom_status = NULL, admin = 0, settings = '{}', nc_user_id = NULL, email = NULL,
+         totp_secret = NULL, totp_enabled = 0 WHERE id = ?",
     )
     .bind(format!("deleted-{me}"))
     .bind(me)
     .execute(&st.db)
     .await?;
+    sqlx::query("DELETE FROM totp_recovery WHERE user_id = ?").bind(me).execute(&st.db).await?;
     // Space members already got MemberRemove; this renames them in DMs, mentions and threads.
     st.hub.send(&audience, &Event::UserUpdate(db::user(&st.db, me).await?));
     Ok(StatusCode::NO_CONTENT)

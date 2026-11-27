@@ -698,6 +698,9 @@ pub struct Ready {
     /// Your e-mail for password resets, if you gave one (nobody else sees it).
     #[serde(default)]
     pub email: Option<String>,
+    /// Your account has two-factor sign-in on.
+    #[serde(default)]
+    pub totp: bool,
 }
 
 /// Client -> server. Serialized as `{"op": "...", "d": ...}`.
@@ -754,6 +757,9 @@ pub struct ServerInfo {
     /// servers only read `?token=`.
     #[serde(default)]
     pub gateway_identify: bool,
+    /// Accounts can turn on two-factor sign-in (`/api/me/2fa/...`).
+    #[serde(default)]
+    pub totp: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -782,6 +788,9 @@ pub struct ResetWithCode {
     pub code: String,
     pub new_password: String,
     pub device: Option<String>,
+    /// The authenticator code (or a recovery code), when the account has two-factor sign-in on.
+    #[serde(default)]
+    pub totp: Option<String>,
 }
 
 /// `PUT /api/me/email`: your e-mail for password resets; empty removes it. Your password confirms it, so a stolen
@@ -797,6 +806,33 @@ pub struct LoginReq {
     pub username: String,
     pub password: String,
     pub device: Option<String>,
+    /// The authenticator code (or a recovery code), when the account has two-factor sign-in on: without it the
+    /// server answers 401 with `code: "totp_required"`.
+    #[serde(default)]
+    pub totp: Option<String>,
+}
+
+/// `POST /api/me/2fa/setup`: a new authenticator secret, not on until confirmed with `POST /api/me/2fa/enable`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TotpSetup {
+    /// Base32, for typing into the app by hand.
+    pub secret: String,
+    /// `otpauth://totp/...`: what the QR code holds; a phone opens it straight in its authenticator app.
+    pub uri: String,
+    /// The QR code as an SVG.
+    pub qr_svg: String,
+}
+
+/// A code from the authenticator app (or a recovery code): `POST /api/me/2fa/enable`, `POST /api/me/2fa/disable`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TotpCode {
+    pub code: String,
+}
+
+/// Turning two-factor sign-in on returns single-use recovery codes, shown once.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TotpEnabled {
+    pub recovery_codes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1082,6 +1118,9 @@ pub struct ApiError {
     /// On 429: how long to wait before retrying.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retry_after_ms: Option<u64>,
+    /// For errors apps act on: `totp_required` (ask for the authenticator code, send it again), `totp_wrong`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 // ---------------------------------------------------------------- text helpers

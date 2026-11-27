@@ -156,6 +156,9 @@ fn AccountTab() -> impl IntoView {
                     <button class="btn primary" type="submit">{move || if email_in.get().trim().is_empty() && s.email.get().is_some() { "Remove e-mail" } else { "Save e-mail" }}</button>
                 </form>
             </Show>
+            <Show when=move || s.info.with(|i| i.as_ref().is_some_and(|i| i.totp))>
+                <TwoFactor/>
+            </Show>
         </Show>
         <h3>"Server"</h3>
         <p class="muted">{move || {
@@ -189,6 +192,114 @@ fn AccountTab() -> impl IntoView {
                 </div>
             </div>
         </Show>
+    }
+}
+
+/// Two-factor sign-in: set up with a QR code (or the key typed in), confirmed with a code, recovery codes shown once;
+/// turning it off takes a code too.
+#[component]
+fn TwoFactor() -> impl IntoView {
+    let s = store();
+    let setup = RwSignal::new(None::<TotpSetup>);
+    let recovery = RwSignal::new(None::<Vec<String>>);
+    let code = RwSignal::new(String::new());
+    let msg = RwSignal::new(None::<(bool, String)>);
+    let start = move |_| {
+        msg.set(None);
+        spawn_local(async move {
+            match api::call::<_, TotpSetup>("POST", "/api/me/2fa/setup", &()).await {
+                Ok(x) => {
+                    code.set(String::new());
+                    setup.set(Some(x));
+                }
+                Err(e) => msg.set(Some((false, e.message))),
+            }
+        });
+    };
+    let turn_on = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        let body = TotpCode { code: code.get_untracked() };
+        spawn_local(async move {
+            match api::call::<_, TotpEnabled>("POST", "/api/me/2fa/enable", &body).await {
+                Ok(on) => {
+                    setup.set(None);
+                    recovery.set(Some(on.recovery_codes));
+                    store().totp.set(true);
+                    msg.set(None);
+                }
+                Err(e) => msg.set(Some((false, e.message))),
+            }
+        });
+    };
+    let turn_off = move |e: leptos::ev::SubmitEvent| {
+        e.prevent_default();
+        let body = TotpCode { code: code.get_untracked() };
+        spawn_local(async move {
+            match api::call::<_, ()>("POST", "/api/me/2fa/disable", &body).await {
+                Ok(()) => {
+                    store().totp.set(false);
+                    code.set(String::new());
+                    msg.set(Some((true, "Two-factor sign-in is off.".into())));
+                }
+                Err(e) => msg.set(Some((false, e.message))),
+            }
+        });
+    };
+    let code_input = move || view! {
+        <label>"Code from the app"
+            <input required=true autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="123 456"
+                prop:value=move || code.get() on:input=move |e| code.set(event_target_value(&e))/>
+        </label>
+    };
+    view! {
+        <h3>"Two-factor sign-in"</h3>
+        {move || match (recovery.get(), s.totp.get(), setup.get()) {
+            (Some(list), _, _) => {
+                let text = list.join("\n");
+                let copy = text.clone();
+                view! {
+                    <p class="muted small">"It's on. Save these recovery codes somewhere safe: each one signs you in once if your phone is lost. They aren't shown again."</p>
+                    <pre class="recovery-codes">{text}</pre>
+                    <div class="row">
+                        <button class="btn" on:click=move |_| util::copy_text(&copy)>"Copy codes"</button>
+                        <button class="btn primary" on:click=move |_| recovery.set(None)>"Done"</button>
+                    </div>
+                }.into_any()
+            }
+            (None, true, _) => view! {
+                <p class="muted small">"On: signing in asks for a code from your authenticator app as well as your password."</p>
+                <form class="form narrow" on:submit=turn_off>
+                    {code_input}
+                    <button class="btn danger" type="submit">"Turn off"</button>
+                </form>
+            }.into_any(),
+            (None, false, Some(x)) => {
+                let key = x.secret.as_bytes().chunks(4).map(|c| String::from_utf8_lossy(c).into_owned()).collect::<Vec<_>>().join(" ");
+                view! {
+                    <p class="muted small">"Scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, Aegis, 1Password and others), or type the key in. Then enter the code it shows."</p>
+                    <div class="totp-setup">
+                        <div class="totp-qr" inner_html=x.qr_svg.clone()></div>
+                        <div>
+                            <div class="muted small">"Key"</div>
+                            <code class="totp-key">{key}</code>
+                            <div class="small"><a href=x.uri.clone()>"Open in an authenticator app on this device"</a></div>
+                        </div>
+                    </div>
+                    <form class="form narrow" on:submit=turn_on>
+                        {code_input}
+                        <div class="row">
+                            <button class="btn primary" type="submit">"Turn on"</button>
+                            <button type="button" class="btn link" on:click=move |_| setup.set(None)>"Cancel"</button>
+                        </div>
+                    </form>
+                }.into_any()
+            }
+            (None, false, None) => view! {
+                <p class="muted small">"Off. With it on, signing in also asks for a code from an app on your phone, so a stolen password alone isn't enough."</p>
+                <button class="btn" on:click=start>"Set up"</button>
+            }.into_any(),
+        }}
+        {move || msg.get().map(|(ok, m)| view! { <div class=if ok { "form-ok" } else { "form-error" }>{m}</div> })}
     }
 }
 

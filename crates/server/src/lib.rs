@@ -11,6 +11,7 @@ mod messages;
 mod nextcloud;
 mod sfu;
 mod spaces;
+mod totp;
 mod voice;
 
 use std::collections::HashMap;
@@ -200,6 +201,7 @@ impl AppState {
             status: StatusCode::TOO_MANY_REQUESTS,
             msg: "too many attempts from your network, try again later".into(),
             retry_after_ms: Some(wait.as_millis() as u64),
+            code: None,
         })
     }
 
@@ -273,6 +275,8 @@ pub struct ApiErr {
     pub status: StatusCode,
     pub msg: String,
     pub retry_after_ms: Option<u64>,
+    /// For errors apps act on (`laklak_proto::ApiError::code`).
+    pub code: Option<&'static str>,
 }
 
 impl ApiErr {
@@ -281,6 +285,7 @@ impl ApiErr {
             status,
             msg: msg.into(),
             retry_after_ms: None,
+            code: None,
         }
     }
 }
@@ -323,6 +328,7 @@ impl IntoResponse for ApiErr {
             Json(ApiError {
                 error: self.msg,
                 retry_after_ms: self.retry_after_ms,
+                code: self.code.map(String::from),
             }),
         )
             .into_response()
@@ -395,6 +401,9 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .route("/api/me/sessions", get(auth::sessions))
         .route("/api/me/sessions/{id}", delete(auth::revoke_session))
         .route("/api/me/password", put(auth::change_password))
+        .route("/api/me/2fa/setup", post(totp::setup))
+        .route("/api/me/2fa/enable", post(totp::enable))
+        .route("/api/me/2fa/disable", post(totp::disable))
         .route("/api/users/{id}/password", post(auth::reset_password))
         .route("/api/me/settings", put(auth::put_settings))
         .route(

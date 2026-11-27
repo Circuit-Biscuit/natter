@@ -1107,5 +1107,52 @@ async fn full_flow() {
         assert_eq!(login_from("10.0.0.5", &format!("lan{i}"), "x").await, StatusCode::UNAUTHORIZED);
     }
 
+    // Two-factor sign-in: set up, confirmed with a code, then sign-ins need a fresh code (each works once) or a
+    // recovery code (used up); turning it off needs a code too.
+    let totp_at = |secret: &str, offset: i64| {
+        use hmac::{KeyInit, Mac};
+        let key = data_encoding::BASE32_NOPAD.decode(secret.as_bytes()).unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let mut mac = hmac::Hmac::<sha1::Sha1>::new_from_slice(&key).unwrap();
+        mac.update(&((now / 30 + offset) as u64).to_be_bytes());
+        let h = mac.finalize().into_bytes();
+        let o = (h[19] & 0x0f) as usize;
+        format!("{:06}", u32::from_be_bytes([h[o] & 0x7f, h[o + 1], h[o + 2], h[o + 3]]) % 1_000_000)
+    };
+    let (_, carol) = call(&app, "POST", "/api/auth/login", None, Some(json!({"username": "carol", "password": "carols-new-one"}))).await;
+    let tc = carol["token"].as_str().unwrap().to_string();
+    let (s, setup) = call(&app, "POST", "/api/me/2fa/setup", Some(&tc), None).await;
+    assert_eq!(s, StatusCode::OK, "{setup}");
+    let secret = setup["secret"].as_str().unwrap().to_string();
+    assert!(setup["uri"].as_str().unwrap().starts_with("otpauth://totp/Test:carol?secret="));
+    assert!(setup["qr_svg"].as_str().unwrap().contains("<svg"));
+    let (s, _) = call(&app, "POST", "/api/me/2fa/enable", Some(&tc), Some(json!({"code": "000000"}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "a wrong code doesn't turn it on");
+    let (s, on) = call(&app, "POST", "/api/me/2fa/enable", Some(&tc), Some(json!({"code": totp_at(&secret, 0)}))).await;
+    assert_eq!(s, StatusCode::OK, "{on}");
+    let recovery: Vec<String> = serde_json::from_value(on["recovery_codes"].clone()).unwrap();
+    assert_eq!(recovery.len(), 8);
+    let login = |totp: Option<String>| {
+        let app = app.clone();
+        async move { call(&app, "POST", "/api/auth/login", None, Some(json!({"username": "carol", "password": "carols-new-one", "totp": totp}))).await }
+    };
+    let (s, e) = login(None).await;
+    assert_eq!((s, e["code"].as_str()), (StatusCode::UNAUTHORIZED, Some("totp_required")));
+    let (s, e) = login(Some("123456".into())).await;
+    assert_eq!((s, e["code"].as_str()), (StatusCode::UNAUTHORIZED, Some("totp_wrong")));
+    let (s, _) = login(Some(totp_at(&secret, 0))).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "the code that turned it on is used up");
+    let (s, _) = login(Some(totp_at(&secret, 1))).await;
+    assert_eq!(s, StatusCode::OK, "a fresh code signs in");
+    let (s, _) = login(Some(recovery[0].to_uppercase())).await;
+    assert_eq!(s, StatusCode::OK, "a recovery code signs in, in any case");
+    let (s, _) = login(Some(recovery[0].clone())).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "once");
+    let (s, _) = call(&app, "POST", "/api/me/2fa/disable", Some(&tc), Some(json!({"code": "999999"}))).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _) = call(&app, "POST", "/api/me/2fa/disable", Some(&tc), Some(json!({"code": recovery[1]}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(login(None).await.0, StatusCode::OK, "off again");
+
     let _ = std::fs::remove_dir_all(data);
 }

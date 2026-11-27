@@ -333,6 +333,8 @@ pub struct Store {
     pub nextcloud_session: RwSignal<bool>,
     /// Your e-mail for password resets (from `Ready`; only you see it).
     pub email: RwSignal<Option<String>>,
+    /// Your account has two-factor sign-in on (from `Ready`).
+    pub totp: RwSignal<bool>,
     pub users: RwSignal<HashMap<Id, User>>,
     pub presence: RwSignal<HashMap<Id, Status>>,
     pub spaces: RwSignal<Vec<Space>>,
@@ -437,6 +439,7 @@ impl Store {
             info: RwSignal::new(None),
             nextcloud_session: RwSignal::new(false),
             email: RwSignal::new(None),
+            totp: RwSignal::new(false),
             users: RwSignal::new(HashMap::new()),
             presence: RwSignal::new(HashMap::new()),
             spaces: RwSignal::new(vec![]),
@@ -1469,6 +1472,7 @@ fn apply_ready(r: Ready) {
     s.info.set(Some(r.server));
     s.nextcloud_session.set(r.nextcloud);
     s.email.set(r.email);
+    s.totp.set(r.totp);
     s.my_status.set(r.status);
     s.users.set(r.users.into_iter().map(|u| (u.id, u)).collect());
     s.me.set(Some(r.user));
