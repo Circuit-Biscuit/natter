@@ -45,10 +45,33 @@ fn outbound_ip() -> IpAddr {
         .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
 }
 
+/// Socket buffer the call socket asks for. Media comes in bursts (a video frame is several packets): with Linux's
+/// default (~200 KB) the load test lost packets at 100 callers while the SFU thread was only 60% busy.
+const MEDIA_BUFFER: usize = 4 << 20;
+
+/// The call socket, with big buffers. Linux caps them at `net.core.rmem_max`/`wmem_max` (see docs/DEPLOY.md).
+fn media_socket(port: u16) -> std::io::Result<UdpSocket> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    let _ = s.set_recv_buffer_size(MEDIA_BUFFER);
+    let _ = s.set_send_buffer_size(MEDIA_BUFFER);
+    s.bind(&SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)).into())?;
+    // Linux reports twice what it granted.
+    let got = s.recv_buffer_size()?;
+    if got < MEDIA_BUFFER {
+        tracing::warn!(
+            "call socket buffer is {} KB (wanted {} KB): raise net.core.rmem_max and wmem_max, or big calls lose packets",
+            got / 1024,
+            MEDIA_BUFFER / 1024
+        );
+    }
+    Ok(s.into())
+}
+
 impl Voice {
     pub fn start(cfg: &Config) -> anyhow::Result<(Voice, UnboundedReceiver<SfuEvent>)> {
         str0m::crypto::from_feature_flags().install_process_default();
-        let socket = UdpSocket::bind(("0.0.0.0", cfg.media_port))?;
+        let socket = media_socket(cfg.media_port)?;
         let port = socket.local_addr()?.port();
         let candidate = SocketAddr::new(cfg.public_ip.unwrap_or_else(outbound_ip), port);
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();

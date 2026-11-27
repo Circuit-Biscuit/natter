@@ -84,6 +84,10 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload && sudo systemctl enable --now laklak
 curl -s http://127.0.0.1:8080/health
 sudo ufw allow 50000/udp comment 'Laklak call media'
+# Let the call socket have 4 MB buffers: calls come in bursts, and Linux's default (~200 KB) drops packets
+# with a hundred people in calls.
+printf 'net.core.rmem_max = 8388608\nnet.core.wmem_max = 8388608\n' | sudo tee /etc/sysctl.d/90-laklak.conf
+sudo sysctl --system
 ```
 
 ## 4. HTTPS with Apache (`chat.example.com`)
@@ -226,6 +230,7 @@ for one developer.
 
 | Symptom | Fix |
 |---|---|
+| Calls stutter or drop out with many people in them | The log says `call socket buffer is … KB`: raise `net.core.rmem_max`/`wmem_max` (step 3). |
 | Calls stay on "Connecting…" | UDP 50000 blocked, or `LAKLAK_PUBLIC_IP` is not the address clients reach. Check `call media on udp …` in `journalctl -u laklak`. |
 | "Connection lost" banner flickers | The proxy isn't upgrading `/gateway` to a WebSocket (see the RewriteRule above). |
 | Nextcloud sign-in says "not allowed" | The user isn't in `LAKLAK_NEXTCLOUD_GROUP`. |
