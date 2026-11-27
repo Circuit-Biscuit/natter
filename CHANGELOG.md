@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### New
+
+- **Calls carry about five times more people per server.** The call server used to do work for everyone in a
+  call anywhere on the server whenever any audio arrived, so one server gave out below 100 people in calls. Now its
+  work follows each call. In a load test, a 4-core server with `LAKLAK_MEDIA_THREADS=4` carried 400 people in calls of
+  five, a fifth of them on camera, with no loss; one call thread carries about 200 people in voice calls.
+- **For server operators:** `LAKLAK_MEDIA_THREADS` (default 1) runs that many call threads, one per core at
+  most, each on its own UDP port from `LAKLAK_MEDIA_PORT` up (open 50000-50003 for 4). The call socket now asks for
+  4 MB buffers; raise `net.core.rmem_max` and `wmem_max` (docs/DEPLOY.md step 3), or the server warns and big calls
+  lose packets in bursts.
+- **Load test** (`loadtest/`): puts fake chat users and callers on a server in Docker and reports delivery
+  delay, media delay and loss.
+
 ## [0.13.0] — 2026-11-27
 
 ### New
