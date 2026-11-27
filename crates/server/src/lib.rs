@@ -24,7 +24,7 @@ use std::time::Instant;
 use axum::Json;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use laklak_proto::{ApiError, EPOCH_MS, Id, Millis, Registration};
@@ -133,6 +133,53 @@ impl Config {
             smtp_from: var("LAKLAK_SMTP_FROM"),
         })
     }
+}
+
+/// The web app's Content-Security-Policy. Scripts: its own files, WebAssembly, and Trunk's inline loader by its
+/// hash. The loader changes with every web build and the folder is swapped while the server runs, so the hash is
+/// worked out again whenever index.html changes. Styles stay open: Leptos sets style attributes.
+struct WebCsp {
+    index: PathBuf,
+    cached: Mutex<Option<(std::time::SystemTime, HeaderValue)>>,
+}
+
+const CSP_REST: &str = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'";
+
+impl WebCsp {
+    fn get(&self) -> HeaderValue {
+        let Ok(modified) = std::fs::metadata(&self.index).and_then(|m| m.modified()) else {
+            return HeaderValue::from_static(CSP_REST);
+        };
+        let mut cached = self.cached.lock().unwrap();
+        if let Some((at, v)) = &*cached
+            && *at == modified
+        {
+            return v.clone();
+        }
+        let Ok(html) = std::fs::read_to_string(&self.index) else { return HeaderValue::from_static(CSP_REST) };
+        let v = HeaderValue::from_str(&csp_for(&html)).unwrap_or(HeaderValue::from_static(CSP_REST));
+        *cached = Some((modified, v.clone()));
+        v
+    }
+}
+
+/// The policy for a page: inline scripts allowed by hash only (of their text as the browser reads it: CRLF as LF).
+fn csp_for(html: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hashes = String::new();
+    let mut rest = html;
+    while let Some(i) = rest.find("<script") {
+        let tag = &rest[i..];
+        let Some(open) = tag.find('>') else { break };
+        let body = &tag[open + 1..];
+        let Some(close) = body.find("</script>") else { break };
+        if !tag[..open].contains("src=") {
+            let text = body[..close].replace("\r\n", "\n").replace('\r', "\n");
+            hashes += &format!(" 'sha256-{}'", data_encoding::BASE64.encode(&Sha256::digest(text.as_bytes())));
+        }
+        rest = &body[close..];
+    }
+    format!("script-src 'self' 'wasm-unsafe-eval'{hashes}; {CSP_REST}")
 }
 
 pub struct AppState {
@@ -493,7 +540,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
     app = match &cfg.web_dir {
         // The app is a single page: unknown paths get index.html.
         Some(dir) => {
-            use axum::http::{HeaderName, HeaderValue, header};
+            use axum::http::{HeaderName, header};
             let set = |name: HeaderName, value: &'static str| {
                 SetResponseHeaderLayer::if_not_present(name, HeaderValue::from_static(value))
             };
@@ -503,11 +550,13 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
                     // cache index.html by guesswork and keep running the old app after an update, while the desktop
                     // app, which carries its own copy, already has the new one.
                     .layer(SetResponseHeaderLayer::overriding(header::CACHE_CONTROL, HeaderValue::from_static("no-cache")))
-                    // Unless a proxy in front set them: no framing by other sites (clickjacking), no MIME guessing,
-                    // only the origin as referrer (YouTube's player needs one), camera/mic/screen for this site only.
-                    // ponytail: no script-src yet: Trunk's inline loader needs a hash that changes with every web
-                    // build (and the web folder is swapped without a restart); XSS defence is the app escaping output.
-                    .layer(set(header::CONTENT_SECURITY_POLICY, "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"))
+                    // Unless a proxy in front set them: scripts only from here (see `WebCsp`), no framing by other
+                    // sites (clickjacking), no MIME guessing, only the origin as referrer (YouTube's player needs
+                    // one), camera/mic/screen for this site only.
+                    .layer(SetResponseHeaderLayer::if_not_present(header::CONTENT_SECURITY_POLICY, {
+                        let csp = Arc::new(WebCsp { index: dir.join("index.html"), cached: Default::default() });
+                        move |_: &axum::http::Response<_>| Some(csp.get())
+                    }))
                     .layer(set(header::X_FRAME_OPTIONS, "DENY"))
                     .layer(set(header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
                     .layer(set(header::REFERRER_POLICY, "strict-origin-when-cross-origin"))
@@ -591,5 +640,19 @@ mod tests {
         for local in ["10.1.2.3", "192.168.1.1", "172.16.0.9", "127.0.0.1", "::1", "fd00::1", "fe80::1"] {
             assert_eq!(k(local), None, "{local} isn't limited");
         }
+    }
+}
+
+#[cfg(test)]
+mod csp_tests {
+    #[test]
+    fn inline_scripts_by_hash() {
+        let csp = super::csp_for("<script type=\"module\"></script><script src=\"/a.js\"></script><script>a\r\nb</script>");
+        // SHA-256 of nothing, and of "a\nb"; none for the file.
+        assert_eq!(
+            csp,
+            "script-src 'self' 'wasm-unsafe-eval' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' \
+             'sha256-fhj3NzEbLcOy8mndeDlrA1HxT7Zu+oefdoyyMYGIPHg='; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+        );
     }
 }
