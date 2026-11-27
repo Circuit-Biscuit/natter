@@ -14,9 +14,37 @@
   automatic security updates and nightly backups, optionally encrypted off-site with restic. Run it again to
   upgrade, with the previous version kept for rollback. `deploy/cloud-init.yaml` does it on a new cloud server's
   first boot.
-- **Security headers on the web app:** no embedding in other sites (`frame-ancestors 'none'`, `X-Frame-Options`), no
-  MIME sniffing, the origin only as referrer, and camera, microphone and screen sharing for this site only. A proxy's
-  own headers take precedence.
+- **Security headers on the web app:** scripts only from the server itself (a Content-Security-Policy with the hash
+  of the app's loader, worked out again whenever the app is updated), so a script slipped into a page can't run; no
+  embedding in other sites (`frame-ancestors 'none'`, `X-Frame-Options`), no MIME sniffing, the origin only as
+  referrer, and camera, microphone and screen sharing for this site only. A proxy's own headers take precedence.
+- **Two-factor sign-in.** Under Settings › My account, scan a QR code with an authenticator app (Google or Microsoft
+  Authenticator, Aegis, 1Password and others): signing in then asks for its code as well as your password, so a
+  stolen password alone isn't enough. You get 8 single-use recovery codes for a lost phone. Resetting a password by
+  e-mail asks for the code too; a server admin's temporary password turns it off.
+- **Report a message, block someone.** Right-click a message › Report Message… sends it to the server's admins with
+  a reason (the author isn't told who). Server admins get a notice and Settings › Reports, with a copy of each
+  reported message: dismiss it, delete the message, or suspend the author (signed out everywhere, can't sign in until
+  the suspension is lifted). Blocking someone (right-click them › Block…) stops their direct messages and calls to
+  you, and folds their messages away ("Show" opens one); Settings › My account lists who you blocked.
+- **Open sign-up confirms e-mail addresses.** On a server where anyone may sign up and that can send e-mail, a new
+  account needs an e-mail address, confirmed with a code mailed to it; changing it later needs a code for the new
+  one. Invite-only servers are unchanged. The server warns at startup when sign-up is open but it can't send mail.
+- **Limits per visitor address** on sign-ups (`LAKLAK_SIGNUPS_PER_IP_HOUR`, default 20 an hour), failed sign-ins,
+  password reset requests and codes, e-mail codes and Nextcloud sign-ins, so one machine can't make accounts in bulk
+  or guess passwords across many accounts. Behind a proxy on the same machine, the visitor is the last
+  `X-Forwarded-For` address; private and local addresses aren't limited.
+- **Dependency audit:** every change is checked against the RustSec list of vulnerable crates.
+
+### New
+
+- **Calls through a relay (TURN)** for networks that block the call ports (some offices, hotels, mobile networks):
+  the apps fall back to the relay by themselves. Operators: set `LAKLAK_TURN_URLS` and `LAKLAK_TURN_SECRET` (coturn's
+  `static-auth-secret`); the one-script install sets up coturn on UDP/TCP 3478 and TLS 5349, relaying only to the
+  server itself.
+- **Watchdog** (one-script install): every 5 minutes it checks that Laklak answers, here and over HTTPS, the
+  certificate, its services, the disk and the backups, and posts problems to an ntfy.sh topic or a Discord or Slack
+  webhook (`ALERT_URL`). `/health` now also asks the database.
 
 ## [0.13.1] — 2026-11-27
 

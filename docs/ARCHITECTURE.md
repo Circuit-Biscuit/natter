@@ -27,7 +27,7 @@
 | `LAKLAK_BIND` | `0.0.0.0:8080` | HTTP listen address (put TLS in front: Caddy / nginx) |
 | `LAKLAK_DATA` | `./laklak-data` | Data directory: `laklak.db` + `files/` |
 | `LAKLAK_NAME` | `Laklak` | Server name shown on the sign-in screen |
-| `LAKLAK_REGISTRATION` | `invite` | `open` · `invite` (a valid invite code is needed) · `closed`. The first account can always be created and becomes admin. |
+| `LAKLAK_REGISTRATION` | `invite` | `open` · `invite` (a valid invite code is needed) · `closed`. The first account can always be created and becomes admin. With `open` and `LAKLAK_SMTP_URL`, new accounts confirm an e-mail address with a code (see Auth). |
 | `LAKLAK_MAX_UPLOAD_MB` | `100` | Upload size limit |
 | `LAKLAK_SIGNUPS_PER_IP_HOUR` | `20` | New accounts per hour from one address (IPv6: per /64). Also fixed per address: 30 failed sign-ins and 20 wrong reset codes per 10 minutes, 5 reset requests per 15 minutes, 10 Nextcloud sign-in starts per 10 minutes. Behind a proxy on the same machine the address is the last `X-Forwarded-For` entry; private and loopback addresses aren't limited. |
 | `LAKLAK_MEDIA_PORT` | `50000` | UDP port for call media (the first one, with several threads) |
@@ -35,12 +35,14 @@
 | `LAKLAK_CAMERA_KBPS` | `1000` | Most a camera sends in a call, kbit/s (`b=AS`/`b=TIAS` in the SDP the server hands out); `0` = no cap |
 | `LAKLAK_GAME_UTC_OFFSET` | `60` | Daily Word's time zone, minutes ahead of UTC: when the day's word changes and when the 09:00 summary goes out |
 | `LAKLAK_PUBLIC_IP` | auto (outbound interface) | IP announced to call clients; set it to the public IP on a server |
-| `LAKLAK_WEB_DIR` | unset | Serve the built app (`crates/app/dist`) at `/` |
+| `LAKLAK_TURN_URLS` | unset | Call relay (TURN) addresses for the apps, comma-separated, e.g. `turn:chat.example.com:3478?transport=udp,turns:chat.example.com:5349?transport=tcp`: for networks that block UDP to the call ports |
+| `LAKLAK_TURN_SECRET` | unset | Secret shared with the relay (coturn's `static-auth-secret`): `GET /api/voice/ice` hands out day-long credentials (username `<expiry>:<user id>`, HMAC-SHA1 of it as password), so the relay needs no user list |
+| `LAKLAK_WEB_DIR` | unset | Serve the built app (`crates/app/dist`) at `/`, with `Cache-Control: no-cache` and, unless a proxy set them, security headers: `Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval' 'sha256-…'` (the hash of Trunk's inline loader, worked out again whenever `index.html` changes) `; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` |
 | `LAKLAK_NEXTCLOUD_URL` | unset | Nextcloud to sign in with and store files in, e.g. `https://cloud.example.com` |
 | `LAKLAK_NEXTCLOUD_GROUP` | unset | Only members of this Nextcloud group may sign in with Nextcloud |
 | `LAKLAK_NEXTCLOUD_FOLDER` | `Laklak` | Folder in each user's Nextcloud that receives their uploads |
 | `LAKLAK_AUTOJOIN_SPACE` | unset | Space id every Nextcloud user joins on first sign-in (the company space) |
-| `LAKLAK_SMTP_URL` | unset | Mail account for password reset codes: `smtps://user:password@host:465` or `smtp://…:587?tls=required`; `file:///folder` writes `.eml` files instead (testing) |
+| `LAKLAK_SMTP_URL` | unset | Mail account for password reset codes (and, with open sign-up, e-mail confirmation codes): `smtps://user:password@host:465` or `smtp://…:587?tls=required`; `file:///folder` writes `.eml` files instead (testing) |
 | `LAKLAK_SMTP_FROM` | unset | Sender of those e-mails, e.g. `Laklak <chat@example.com>` (needed with `LAKLAK_SMTP_URL`) |
 | `RUST_LOG` | `laklak_server=info` | Log filter |
 
@@ -57,6 +59,40 @@ Ids are `laklak_proto::Id`: `(ms since 2026-01-01) << 10 | seq`, generated in-pr
 Argon2id password hashes. A session token is 32 random bytes (hex); only its SHA-256 is stored. Every device has its
 own session (listed and revocable under Settings › Devices). Failed logins are throttled per username (10 per 10 min).
 CORS allows any origin: tokens travel in the `Authorization` header, never in cookies.
+
+**Two-factor sign-in** (per account, optional): TOTP (RFC 6238: HMAC-SHA1, 30 s, 6 digits, one step either side),
+set up with a QR code; each code works once (`users.totp_last_step`). Turning it on returns 8 single-use recovery
+codes, stored hashed (`totp_recovery`). Sign-in and e-mailed resets then answer 401 with `code: "totp_required"` until
+`LoginReq.totp` / `ResetWithCode.totp` carries a code; wrong ones count as failed sign-ins. An admin's temporary
+password clears it. Nextcloud accounts use Nextcloud's own.
+
+**E-mail confirmation** (open sign-up on a server with `LAKLAK_SMTP_URL`, `ServerInfo.email_confirm`): a sign-up
+without `email_code` checks that the username and address are free, mails a code and answers 400 with
+`code: "email_code_sent"`; the same request with `email_code` creates the account. Codes (`email_codes`) are stored
+hashed, last 30 minutes and 5 tries, go out at most once a minute per address and 10 times an hour per visitor
+address. `PUT /api/me/email` works the same way for a new address (`SetEmail.code`), and can't remove it. The first
+account needs none.
+
+**Limits per visitor address** (`ClientIp`: the peer, or the last `X-Forwarded-For` entry when the peer is this
+machine; IPv6 per /64; private and loopback addresses exempt): sign-ups `LAKLAK_SIGNUPS_PER_IP_HOUR`, 30 failed
+sign-ins and 20 wrong reset or e-mail codes per 10 minutes, 5 reset requests per 15 minutes, 10 e-mail codes an hour,
+10 Nextcloud sign-in starts per 10 minutes.
+
+**Suspended accounts** (`users.suspended`): set by a server admin, from a report or directly. The account is signed
+out everywhere and leaves any call, and signing in is refused until the suspension is lifted. Server admins can't be
+suspended.
+
+### Reports and blocks
+
+Anyone can report a message they can see, not their own, to the server's admins: the report (`reports`) keeps a copy
+of the message text, the reason, who and when; one per person per message, 20 an hour. Admins get
+`Event::ReportsChanged { open }` (and `Ready.open_reports`), and `GET /api/reports` lists open ones oldest first, the
+latest 50 resolved ones, and who is suspended. Resolving one dismisses it, deletes the message or suspends its
+author, and settles every report on that message. Resolved reports go after 90 days.
+
+Blocking someone (`blocks`, `Ready.blocked`) stops a one-to-one DM between the two (either way), new DMs and rings;
+the apps fold the blocked person's messages ("A message from someone you blocked. Show"). Group DMs and spaces stay
+open, and nobody is told.
 
 ### Permissions
 
@@ -213,7 +249,15 @@ Everything else needs `Authorization: Bearer <token>`:
 | PATCH | `/api/me` | `UpdateMe` → `User` |
 | DELETE | `/api/me` | `DeleteAccount` (password, or `confirm` on a Nextcloud session) → 204; 409 while you own a space. Deletes your messages, uploads, memberships, reactions, pings, games, settings, sessions; the `users` row stays as an anonymous "Deleted User" |
 | PUT | `/api/me/password` | `ChangePassword` → 204 (signs out your other devices) |
-| PUT | `/api/me/email` | `SetEmail` (with your password) → 204; your e-mail for reset codes, empty removes it. Only you see it (`Ready.email`) |
+| PUT | `/api/me/email` | `SetEmail` (with your password; and `code` for a new address where addresses are confirmed) → 204; your e-mail for reset codes, empty removes it (not where addresses are confirmed). Only you see it (`Ready.email`) |
+| POST | `/api/me/2fa/setup` | → `TotpSetup` (a new secret, its `otpauth://` link and a QR code as SVG; not on until enabled) |
+| POST | `/api/me/2fa/enable` | `TotpCode` → `TotpEnabled` (8 recovery codes, shown once) |
+| POST | `/api/me/2fa/disable` | `TotpCode` (a current or recovery code) → 204; a wrong one is 403 `totp_wrong` (not 401: apps sign out on 401) |
+| PUT / DELETE | `/api/me/blocks/{user_id}` | block / unblock → 204 |
+| POST | `/api/channels/{id}/messages/{mid}/report` | `ReportReq` → 204 |
+| GET | `/api/reports` | server admins: → `ReportList` |
+| POST | `/api/reports/{id}/resolve` | server admins: `ResolveReport` (`dismiss`, `delete` or `suspend`) → 204 |
+| PUT | `/api/users/{id}/suspended` | server admins: `SetSuspended` → 204 |
 | POST | `/api/users/{id}/password` | server admins: → `TempPassword` (a new, temporary password for a local account; it's signed out everywhere) |
 | PUT | `/api/me/settings` | any JSON → 204 |
 | POST | `/api/uploads` | raw bytes → `Attachment` |
@@ -244,12 +288,14 @@ Everything else needs `Authorization: Bearer <token>`:
 | GET | `/api/search?q=&space_id=&channel_id=&author_id=&has_file=&before=&limit=` | → `SearchResult` |
 | POST | `/api/channels/{id}/voice` | `VoiceJoin` → `VoiceAnswer` |
 | PATCH / DELETE | `/api/voice` | `VoiceUpdate` → 204 / leave → 204 |
-| POST | `/api/channels/{id}/ring` | → 204 (DMs: ring the others) |
+| POST | `/api/channels/{id}/ring` | → 204 (DMs: ring the others, except anyone who blocked the caller or was blocked by them) |
+| GET | `/api/voice/ice` | → `IceServers` (the relay with day-long credentials; empty without `LAKLAK_TURN_*`) |
 | GET | `/api/nextcloud/files?path=` | → `[NcFile]` (Nextcloud sessions only) |
 | POST | `/api/nextcloud/share` | `NcShare` → `Attachment` |
 
 Errors are `{"error": "..."}` with a fitting status (400 bad input, 401 no/invalid token, 403 not allowed, 404 not found
-or not visible, 409 conflict, 413 too large, 429 rate limited).
+or not visible, 409 conflict, 413 too large, 429 rate limited). Some add a `code` the apps act on: `totp_required`,
+`totp_wrong`, `email_code_sent`, `email_code_wrong`.
 
 ## App
 

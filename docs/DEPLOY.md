@@ -17,9 +17,19 @@ sudo DOMAIN=chat.example.com bash install.sh
   `?token=` older apps put in the `/gateway` URL;
 * **`/etc/laklak.env`** written once (invite-only sign-ups, this machine's IP for calls, one call thread per core),
   then left alone: edit it and `systemctl restart laklak`;
-* a **firewall** (ufw: SSH, 80, 443, the call ports), the **call socket buffers** (step 3), **journal logs kept two
-  weeks**, automatic security updates;
+* a **firewall** (ufw: SSH, 80, 443, the call ports, the relay), the **call socket buffers** (step 3), **journal logs
+  kept two weeks**, automatic security updates;
+* a **call relay** (coturn on UDP/TCP 3478 and TLS 5349) for people whose network blocks UDP to the call ports. It
+  relays to this server only, and Laklak hands the apps day-long credentials (`LAKLAK_TURN_URLS`/`_SECRET`);
+* a **watchdog** every 5 minutes: does Laklak answer, here and over HTTPS; is the certificate fine, are the services
+  running, the disk not full, the backups working? Problems go to `journalctl -u laklak-watch` and, with `ALERT_URL`
+  set (an [ntfy.sh](https://ntfy.sh) topic with a long random name, or a Discord or Slack webhook; it's kept in
+  `/etc/laklak-alerts.env`), to your phone: when they start, daily while they last, and when they're gone.
+  `laklak-watch --test` sends a test alert. A dead machine can't alert: watch `https://<domain>/health` from outside too;
 * a **nightly backup** (see Backups) and a hardened `laklak.service`.
+
+`TARBALL=/path/laklak-local.tar.gz` installs a build of your own (laid out like a release's tarball) instead of a
+release, to try it before releasing.
 
 Run it again to upgrade: it swaps in the new release only if the version changed, waits if a call is running
 (`FORCE=1` doesn't), keeps the previous one in `/opt/laklak.old` and prints how to roll back. On a cloud, paste
@@ -33,7 +43,7 @@ With the [`hcloud` CLI](https://github.com/hetznercloud/cli) and an API token fo
 ```sh
 hcloud ssh-key create --name me --public-key-from-file ~/.ssh/id_ed25519.pub
 hcloud firewall create --name laklak
-for rule in "tcp 22" "tcp 80" "tcp 443" "udp 443" "udp 50000-50001"; do
+for rule in "tcp 22" "tcp 80" "tcp 443" "udp 443" "udp 50000-50001" "udp 3478" "tcp 3478" "tcp 5349"; do
   set -- $rule
   hcloud firewall add-rule laklak --direction in --protocol "$1" --port "$2" --source-ips 0.0.0.0/0 --source-ips ::/0
 done
@@ -53,6 +63,17 @@ becomes the admin.
   install). After `hcloud server change-type` to more cores, raise `LAKLAK_MEDIA_THREADS` in `/etc/laklak.env`,
   widen the UDP range in both the Hetzner firewall and ufw (`ufw allow 50000:50003/udp`), and restart.
 * **Backups off the server:** see Backups below (Cloudflare R2's free tier covers a new server).
+
+Before opening it to the public:
+
+* **Sign-ups:** `LAKLAK_REGISTRATION=open` together with `LAKLAK_SMTP_URL` and `LAKLAK_SMTP_FROM` (step 2): new
+  accounts then confirm an e-mail address with a code. Without mail the server warns at startup, since anyone could
+  sign up with any address. `LAKLAK_SIGNUPS_PER_IP_HOUR` (default 20) caps sign-ups from one address; raise it for a
+  launch event where many people share one network.
+* **Admins:** turn on two-factor sign-in for every server admin account (Settings › My account). Reported messages
+  show under Settings › Reports, and a notice pops up for each new one.
+* **Alerts:** set `ALERT_URL` in `/etc/laklak-alerts.env` and run `laklak-watch --test`.
+* **Terms and privacy policy** for whoever runs the server; the apps link the privacy policy from Settings.
 
 The steps below do the same by hand, with Apache (for example next to an existing Nextcloud) or Caddy.
 
@@ -78,7 +99,7 @@ LAKLAK_MEDIA_PORT=50000
 # LAKLAK_MEDIA_THREADS=4             # more people in calls: one call thread per core, UDP ports 50000-50003
 # LAKLAK_AUTOJOIN_SPACE=<space id>    # set after creating the company space (right-click it › Copy Space ID)
 # LAKLAK_KLIPY_KEY=<app key>          # optional: turns on the GIF picker (see below)
-# LAKLAK_SMTP_URL=smtps://chat%40example.com:<password>@mail.example.com:465   # optional: "Forgot password?" e-mails
+# LAKLAK_SMTP_URL=smtps://chat%40example.com:<password>@mail.example.com:465   # optional: "Forgot password?" e-mails, confirming addresses
 # LAKLAK_SMTP_FROM=Laklak <chat@example.com>
 RUST_LOG=laklak_server=info
 ```
@@ -101,6 +122,9 @@ other special character in the password URL-encoded too. `LAKLAK_SMTP_FROM` is t
 The log says `password reset e-mail is on` at startup, or why the mail server didn't answer. Without SMTP the apps
 offer no e-mail reset. Either way a server admin can give someone a temporary password: right-click them ›
 **Reset Password…**.
+
+With `LAKLAK_REGISTRATION=open`, the same mail account confirms addresses: signing up mails a code to the address
+given (needed there), and changing it later needs a code sent to the new one.
 
 **When someone can't sign in:** the log says why, for every try: `journalctl -u laklak | grep -E "sign-in|reset code"`
 shows `no account has that username` (they're typing another name), `<username> (by e-mail): wrong password`,
