@@ -76,6 +76,10 @@ pub(crate) async fn create_session(
     device: Option<String>,
     nc: Option<(&str, &str)>,
 ) -> R<String> {
+    let suspended: bool = sqlx::query_scalar("SELECT suspended FROM users WHERE id = ?").bind(user).fetch_one(&st.db).await?;
+    if suspended {
+        return Err(forbidden("this account is suspended: ask the server's admins"));
+    }
     let token = hex::encode(rand::random::<[u8; 32]>());
     let device = device
         .map(|d| d.trim().chars().take(64).collect::<String>())
@@ -163,6 +167,7 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
         email_reset: st.mailer.is_some(),
         gateway_identify: true,
         totp: true,
+        moderation: true,
     }))
 }
 
@@ -301,8 +306,10 @@ pub async fn login(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json
         }
     }
     st.login_fails.lock().unwrap().remove(&username);
+    let token = create_session(&st, id, req.device, None).await.inspect_err(|e| {
+        tracing::info!("sign-in refused for {username}: {}", e.msg);
+    })?;
     tracing::info!("{username} signed in (by {via})");
-    let token = create_session(&st, id, req.device, None).await?;
     Ok(Json(AuthResp {
         token,
         user: db::user(&st.db, id).await?,
@@ -311,7 +318,7 @@ pub async fn login(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json
 
 /// End `session` (or, with `all_but`, every other session of `user`): sign those devices out and
 /// drop their Nextcloud app passwords. Returns how many ended.
-async fn end_sessions(st: &St, user: Id, session: Id, all_but: bool) -> R<usize> {
+pub(crate) async fn end_sessions(st: &St, user: Id, session: Id, all_but: bool) -> R<usize> {
     let sql = if !all_but {
         "DELETE FROM sessions WHERE user_id = ? AND id = ? RETURNING id, nc_login, nc_app_password"
     } else {

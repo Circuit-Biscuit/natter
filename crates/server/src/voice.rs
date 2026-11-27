@@ -295,9 +295,15 @@ pub async fn ring(State(st): State<St>, auth: Auth, Path(ch): Path<Id>) -> R<Sta
     if !acc.dm() {
         return Err(bad("only direct messages ring"));
     }
-    st.hub.send_except(
-        &acc.ch.recipients,
-        auth.user,
+    // Nobody who blocked the caller (or was blocked by them) gets rung.
+    let mut ring = vec![];
+    for &r in &acc.ch.recipients {
+        if r != auth.user && !crate::moderation::between(&st, auth.user, r).await? {
+            ring.push(r);
+        }
+    }
+    st.hub.send(
+        &ring,
         &Event::CallRing {
             channel_id: ch,
             caller_id: auth.user,

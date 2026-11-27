@@ -195,6 +195,7 @@ pub async fn send(
 ) -> R<Json<Message>> {
     let me = auth.user;
     let acc = messaging_access(&st, me, ch).await?;
+    crate::moderation::check_dm(&st, me, &acc.ch).await?;
     if !acc.can_post() {
         return Err(forbidden(if acc.has(perm::SEND_MESSAGES) {
             "only members with Manage messages can post here"

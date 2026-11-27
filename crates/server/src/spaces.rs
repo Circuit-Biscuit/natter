@@ -1536,6 +1536,11 @@ pub async fn create_dm(
     if others.iter().any(|o| !known.contains(o)) {
         return Err(not_found("user"));
     }
+    for &o in &others {
+        if crate::moderation::between(&st, me, o).await? {
+            return Err(forbidden("you can't message this person"));
+        }
+    }
     let key = (others.len() == 1).then(|| format!("{}:{}", me.min(others[0]), me.max(others[0])));
     if let Some(k) = &key {
         let existing: Option<Id> = sqlx::query_scalar("SELECT id FROM channels WHERE dm_key = ?")

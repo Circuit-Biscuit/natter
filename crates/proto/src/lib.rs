@@ -672,6 +672,8 @@ pub enum Event {
         caller_id: Id,
     },
     SettingsUpdate(serde_json::Value),
+    /// To server admins: someone reported a message, or a report was resolved; `open` reports are waiting.
+    ReportsChanged { open: u32 },
     /// The token was revoked or the account deleted: sign out.
     InvalidSession,
     HeartbeatAck,
@@ -701,6 +703,12 @@ pub struct Ready {
     /// Your account has two-factor sign-in on.
     #[serde(default)]
     pub totp: bool,
+    /// People you blocked: the apps hide their messages; they can't message or ring you.
+    #[serde(default)]
+    pub blocked: Vec<Id>,
+    /// Server admins: reports waiting for a look (`GET /api/reports`).
+    #[serde(default)]
+    pub open_reports: u32,
 }
 
 /// Client -> server. Serialized as `{"op": "...", "d": ...}`.
@@ -760,6 +768,9 @@ pub struct ServerInfo {
     /// Accounts can turn on two-factor sign-in (`/api/me/2fa/...`).
     #[serde(default)]
     pub totp: bool,
+    /// Reporting messages to the server's admins, and blocking people (`/api/reports`, `/api/me/blocks`).
+    #[serde(default)]
+    pub moderation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -827,6 +838,63 @@ pub struct TotpSetup {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TotpCode {
     pub code: String,
+}
+
+/// `POST /api/channels/{id}/messages/{mid}/report`: tell the server's admins what's wrong with a message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportReq {
+    pub reason: String,
+}
+
+/// A report, as server admins see it (`GET /api/reports`). `content` is a copy of the message as it was reported.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Report {
+    pub id: Id,
+    pub reporter_id: Option<Id>,
+    pub author_id: Option<Id>,
+    pub channel_id: Id,
+    pub message_id: Id,
+    /// The message is still there (not deleted since).
+    pub message_exists: bool,
+    pub content: String,
+    pub reason: String,
+    pub created_at: Millis,
+    pub resolved_at: Option<Millis>,
+    pub resolved_by: Option<Id>,
+    /// `dismissed`, `deleted` or `suspended`.
+    pub resolution: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportList {
+    /// Open ones first (oldest first), then the latest resolved ones.
+    pub reports: Vec<Report>,
+    /// Everyone the reports name.
+    pub users: Vec<User>,
+    /// Accounts suspended now.
+    pub suspended: Vec<User>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportAction {
+    Dismiss,
+    /// Delete the reported message.
+    Delete,
+    /// Suspend the author: signed out everywhere, can't sign in.
+    Suspend,
+}
+
+/// `POST /api/reports/{id}/resolve`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolveReport {
+    pub action: ReportAction,
+}
+
+/// `PUT /api/users/{id}/suspended` (server admins).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetSuspended {
+    pub suspended: bool,
 }
 
 /// Turning two-factor sign-in on returns single-use recovery codes, shown once.

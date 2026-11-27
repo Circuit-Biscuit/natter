@@ -8,6 +8,7 @@ mod games;
 mod gateway;
 mod mail;
 mod messages;
+mod moderation;
 mod nextcloud;
 mod sfu;
 mod spaces;
@@ -401,6 +402,10 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .route("/api/me/sessions", get(auth::sessions))
         .route("/api/me/sessions/{id}", delete(auth::revoke_session))
         .route("/api/me/password", put(auth::change_password))
+        .route("/api/me/blocks/{user_id}", put(moderation::block).delete(moderation::unblock))
+        .route("/api/reports", get(moderation::list))
+        .route("/api/reports/{id}/resolve", post(moderation::resolve))
+        .route("/api/users/{id}/suspended", put(moderation::set_suspended))
         .route("/api/me/2fa/setup", post(totp::setup))
         .route("/api/me/2fa/enable", post(totp::enable))
         .route("/api/me/2fa/disable", post(totp::disable))
@@ -472,6 +477,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
             "/api/channels/{id}/messages/{mid}/reactions/{emoji}",
             put(messages::react).delete(messages::unreact),
         )
+        .route("/api/channels/{id}/messages/{mid}/report", post(moderation::report))
         .route("/api/channels/{id}/pins", get(messages::pins))
         .route(
             "/api/channels/{id}/pins/{mid}",

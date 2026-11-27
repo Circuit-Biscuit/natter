@@ -172,6 +172,7 @@ pub async fn kick_session(st: &St, user: Id, session: Id) {
 /// Everything the app needs to render, in one frame.
 pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
     let me = db::user(&st.db, user).await?;
+    let me_admin = me.admin;
     let spaces = db::spaces_of(&st.db, user).await?;
     let dms = db::dms_of(&st.db, user).await?;
     let users = db::users(&st.db, &db::user_audience(&st.db, user).await?).await?;
@@ -214,10 +215,13 @@ pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
             email_reset: st.mailer.is_some(),
             gateway_identify: true,
             totp: true,
+            moderation: true,
         },
         nextcloud: nextcloud::is_nc_session(st, session).await,
         email,
         totp,
+        blocked: crate::moderation::blocked_by(st, user).await?,
+        open_reports: if me_admin { crate::moderation::open_reports(st).await? } else { 0 },
     })
 }
 

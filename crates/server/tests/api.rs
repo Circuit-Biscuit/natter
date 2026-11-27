@@ -1154,5 +1154,37 @@ async fn full_flow() {
     assert_eq!(s, StatusCode::NO_CONTENT);
     assert_eq!(login(None).await.0, StatusCode::OK, "off again");
 
+    // Moderation: a report keeps a copy for the server's admins; blocks stop DMs; suspending ends every session
+    // and refuses sign-in until lifted. Admins can't be suspended.
+    let (_, m) = call(&app, "POST", &format!("/api/channels/{general}/messages"), Some(&tc), Some(json!({"content": "buy cheap pills"}))).await;
+    let mid = m["id"].as_i64().unwrap();
+    let report = |t: &str| {
+        let (t, app) = (t.to_string(), app.clone());
+        async move { call(&app, "POST", &format!("/api/channels/{general}/messages/{mid}/report"), Some(&t), Some(json!({"reason": "spam"}))).await.0 }
+    };
+    assert_eq!(report(&t1).await, StatusCode::NO_CONTENT);
+    assert_eq!(report(&t1).await, StatusCode::NO_CONTENT, "again: still one report");
+    assert_eq!(report(&tc).await, StatusCode::BAD_REQUEST, "not your own message");
+    assert_eq!(call(&app, "GET", "/api/reports", Some(&tc), None).await.0, StatusCode::FORBIDDEN);
+    let (_, list) = call(&app, "GET", "/api/reports", Some(&t1), None).await;
+    let open: Vec<&Value> = list["reports"].as_array().unwrap().iter().filter(|r| r["resolved_at"].is_null()).collect();
+    assert_eq!(open.len(), 1, "{list}");
+    assert_eq!((open[0]["content"].as_str(), open[0]["reason"].as_str()), (Some("buy cheap pills"), Some("spam")));
+    let rid = open[0]["id"].as_i64().unwrap();
+    assert_eq!(call(&app, "PUT", &format!("/api/me/blocks/{u1}"), Some(&tc), None).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(call(&app, "POST", "/api/dms", Some(&t1), Some(json!({"recipients": [u5]}))).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(call(&app, "DELETE", &format!("/api/me/blocks/{u1}"), Some(&tc), None).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(call(&app, "POST", "/api/dms", Some(&t1), Some(json!({"recipients": [u5]}))).await.0, StatusCode::OK);
+    let (s, _) = call(&app, "POST", &format!("/api/reports/{rid}/resolve"), Some(&t1), Some(json!({"action": "suspend"}))).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(call(&app, "GET", "/api/me/sessions", Some(&tc), None).await.0, StatusCode::UNAUTHORIZED, "signed out");
+    assert_eq!(login(None).await.0, StatusCode::FORBIDDEN, "suspended");
+    let (_, list) = call(&app, "GET", "/api/reports", Some(&t1), None).await;
+    assert_eq!(list["reports"][0]["resolution"].as_str(), Some("suspended"));
+    assert_eq!(list["suspended"][0]["id"].as_i64(), Some(u5));
+    assert_eq!(call(&app, "PUT", &format!("/api/users/{u1}/suspended"), Some(&t1), Some(json!({"suspended": true}))).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(call(&app, "PUT", &format!("/api/users/{u5}/suspended"), Some(&t1), Some(json!({"suspended": false}))).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(login(None).await.0, StatusCode::OK, "lifted");
+
     let _ = std::fs::remove_dir_all(data);
 }
