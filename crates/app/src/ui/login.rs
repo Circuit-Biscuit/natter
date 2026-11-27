@@ -54,6 +54,19 @@ fn invite_code(s: &str) -> String {
     s.trim().trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string()
 }
 
+/// What people put in "Server address": the address with or without `https://`, or a link they got from that server.
+/// An invite link also fills in the invite (people paste the link they were sent); a channel link gives its server.
+fn server_address(input: &str) -> (String, Option<String>) {
+    let s = input.trim();
+    let s = if s.contains("://") { s.to_string() } else { format!("https://{s}") };
+    if let Some((base, code)) = s.split_once("/invite/") {
+        let code = invite_code(code);
+        return (base.trim_end_matches('/').into(), (!code.is_empty()).then_some(code));
+    }
+    let base = s.split_once("/channels/").map_or(s.as_str(), |(b, _)| b);
+    (base.trim_end_matches('/').into(), None)
+}
+
 #[component]
 pub fn Login(on_done: Callback<()>) -> impl IntoView {
     let in_app = desktop::is_tauri();
@@ -274,10 +287,20 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                         </div>
                     </div>
                 }>
-                    <form class="form" on:submit=move |e| { e.prevent_default(); load_info(); }>
+                    <form class="form" on:submit=move |e| {
+                        e.prevent_default();
+                        let (base, code) = server_address(&server.get_untracked());
+                        server.set(base);
+                        if let Some(code) = code {
+                            invite.set(code);
+                            mode_register.set(true);
+                        }
+                        load_info();
+                    }>
                         <div class="login-title">"Connect to your Laklak server"</div>
                         <label>"Server address"
-                            <input type="url" placeholder="https://chat.example.com" required=true autofocus=true
+                            <input type="text" inputmode="url" autocapitalize="off" autocomplete="url" spellcheck="false"
+                                placeholder="chat.example.com, or an invite link" required=true autofocus=true
                                 prop:value=move || server.get()
                                 on:input=move |e| server.set(event_target_value(&e))/>
                         </label>
@@ -415,5 +438,19 @@ pub fn Login(on_done: Callback<()>) -> impl IntoView {
                 </Show>
             </div>
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::server_address;
+
+    #[test]
+    fn server_addresses() {
+        let s = |base: &str, code: Option<&str>| (base.to_string(), code.map(String::from));
+        assert_eq!(server_address(" circuit-biscuit.com/natter/ "), s("https://circuit-biscuit.com/natter", None));
+        assert_eq!(server_address("https://chat.example.com/natter/invite/PyRNxbSW"), s("https://chat.example.com/natter", Some("PyRNxbSW")));
+        assert_eq!(server_address("chat.example.com/invite/abc/"), s("https://chat.example.com", Some("abc")));
+        assert_eq!(server_address("http://localhost:8080/channels/1/2"), s("http://localhost:8080", None));
     }
 }

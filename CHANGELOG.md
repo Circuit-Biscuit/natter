@@ -15,6 +15,13 @@
 - **Load test** (`loadtest/`): puts fake chat users and callers on a server in Docker and reports delivery
   delay, media delay and loss.
 
+### Fixed
+
+- **Pasting an invite link as the server address works.** In the desktop app's "Server address", the link you were
+  sent (`https://…/invite/CODE`) now connects to that server and fills in the invite, and an address without
+  `https://` is accepted too. Before, both failed: the field only took a full address, and an invite link answered
+  with a web page instead of the server.
+
 ## [0.13.0] — 2026-11-27
 
 ### New
