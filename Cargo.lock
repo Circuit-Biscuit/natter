@@ -3274,6 +3274,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "laklak-loadtest"
+version = "0.13.0"
+dependencies = [
+ "anyhow",
+ "futures-util",
+ "laklak-proto",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "str0m",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "laklak-proto"
 version = "0.13.0"
 dependencies = [

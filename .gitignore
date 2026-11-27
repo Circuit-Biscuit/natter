@@ -9,3 +9,4 @@ fastlane/.env
 fastlane/report.xml
 fastlane/README.md
 fastlane/metadata/android/*/changelogs/
+loadtest/results/

@@ -1,0 +1,45 @@
+# Local load test: one Laklak server (4 CPUs like a 4-vCPU cloud server, data in RAM) and the load generator.
+# Both run the binaries from ../target/release in a plain Debian image, so nothing is built into an image.
+# Use run.sh; see README.md.
+name: laklak-lt
+
+x-base: &base
+  image: debian:trixie-slim
+  ulimits:
+    nofile: 1048576
+  logging:
+    driver: json-file
+    options: { max-size: 10m, max-file: "1" }
+
+services:
+  laklak:
+    <<: *base
+    container_name: laklak-lt-server
+    command: /laklak/laklak-server
+    volumes: ["../target/release/laklak-server:/laklak/laklak-server:ro"]
+    tmpfs: [/data]
+    cpuset: ${SERVER_CPUS:-0-3}
+    environment:
+      LAKLAK_BIND: 0.0.0.0:8080
+      LAKLAK_DATA: /data
+      LAKLAK_NAME: Load test
+      LAKLAK_REGISTRATION: open
+      LAKLAK_PUBLIC_IP: 172.30.99.10
+      RUST_LOG: laklak_server=warn
+    networks:
+      lt: { ipv4_address: 172.30.99.10 }
+
+  loadgen:
+    <<: *base
+    profiles: [run]
+    entrypoint: ["/laklak/laklak-loadtest", "--server", "http://172.30.99.10:8080"]
+    volumes: ["../target/release/laklak-loadtest:/laklak/laklak-loadtest:ro"]
+    cpuset: ${LOADGEN_CPUS:-4-15}
+    depends_on: [laklak]
+    networks:
+      lt: { ipv4_address: 172.30.99.20 }
+
+networks:
+  lt:
+    ipam:
+      config: [{ subnet: 172.30.99.0/24 }]
