@@ -14,9 +14,16 @@ docker compose down --remove-orphans >/dev/null 2>&1 || true
 docker compose up -d laklak
 pid=$(docker inspect -f '{{.State.Pid}}' laklak-lt-server)
 
-# sfu = the call thread (100% = one core full), other = everything else; then both containers' totals.
+# sfu = the call thread (100% = one core full), other = everything else; then both containers' totals and UDP packets
+# dropped because a socket's buffer was full (counted since start, per container).
+udp_drops() {
+  awk '/^Udp:/ { if (seen) { printf "udp drops: receive %s, send %s", $6, $7; exit } seen = 1 }' "/proc/$1/net/snmp" 2>/dev/null
+}
 (
   while [ -d "/proc/$pid" ]; do
+    loadgen=$(docker ps -q --filter name=laklak-lt-loadgen | head -1)
+    lpid=$([ -n "$loadgen" ] && docker inspect -f '{{.State.Pid}}' "$loadgen" || echo 0)
+    echo "          server $(udp_drops "$pid")  |  loadgen $(udp_drops "$lpid")"
     rss=$(awk '/VmRSS/ {printf "%.0f", $2 / 1024}' "/proc/$pid/status" 2>/dev/null || echo "?")
     top -H -b -n 2 -d 1 -p "$pid" | awk -v t="$(date +%T)" -v rss="$rss" '
       /^top -/ { delete cpu; next }
