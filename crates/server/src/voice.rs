@@ -1,4 +1,7 @@
-//! Who is in which call, the call routes, and the bridge to the SFU thread.
+//! Who is in which call, the call routes, and the bridge to the SFU threads.
+//!
+//! Each SFU thread (`LAKLAK_MEDIA_THREADS`) has its own UDP port. A call lives on one thread: the first to join
+//! picks the thread with the fewest people, everyone after joins them there.
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
@@ -25,12 +28,14 @@ use crate::{Config, R, St, bad, db, forbidden, internal, messages, not_found, no
 struct Entry {
     state: VoiceState,
     client: u64,
+    /// The SFU thread the call runs on.
+    worker: usize,
 }
 
 pub struct Voice {
-    /// Address announced to call clients.
-    pub candidate: SocketAddr,
-    sfu: std::sync::mpsc::Sender<SfuCmd>,
+    /// Address announced to call clients, per SFU thread.
+    candidates: Vec<SocketAddr>,
+    workers: Vec<std::sync::mpsc::Sender<SfuCmd>>,
     states: Mutex<HashMap<Id, Entry>>,
     /// DM calls in progress: channel → ("X started a call" message, start time).
     calls: Mutex<HashMap<Id, (Id, Millis)>>,
@@ -71,17 +76,28 @@ fn media_socket(port: u16) -> std::io::Result<UdpSocket> {
 impl Voice {
     pub fn start(cfg: &Config) -> anyhow::Result<(Voice, UnboundedReceiver<SfuEvent>)> {
         str0m::crypto::from_feature_flags().install_process_default();
-        let socket = media_socket(cfg.media_port)?;
-        let port = socket.local_addr()?.port();
-        let candidate = SocketAddr::new(cfg.public_ip.unwrap_or_else(outbound_ip), port);
-        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let ip = cfg.public_ip.unwrap_or_else(outbound_ip);
         let (ev_tx, ev_rx) = unbounded_channel();
-        std::thread::Builder::new()
-            .name("sfu".into())
-            .spawn(move || crate::sfu::run(socket, candidate, cmd_rx, ev_tx))?;
+        let (mut candidates, mut workers) = (vec![], vec![]);
+        for i in 0..cfg.media_threads {
+            // Port 0 (tests): any free port for each.
+            let port = match cfg.media_port {
+                0 => 0,
+                p => p.checked_add(i).ok_or_else(|| anyhow::anyhow!("LAKLAK_MEDIA_PORT + threads is over 65535"))?,
+            };
+            let socket = media_socket(port)?;
+            let candidate = SocketAddr::new(ip, socket.local_addr()?.port());
+            let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+            let events = ev_tx.clone();
+            std::thread::Builder::new()
+                .name(format!("sfu{i}"))
+                .spawn(move || crate::sfu::run(socket, candidate, cmd_rx, events))?;
+            candidates.push(candidate);
+            workers.push(cmd_tx);
+        }
         let voice = Voice {
-            candidate,
-            sfu: cmd_tx,
+            candidates,
+            workers,
             states: Mutex::default(),
             calls: Mutex::default(),
             next_client: AtomicU64::new(1),
@@ -89,8 +105,17 @@ impl Voice {
         Ok((voice, ev_rx))
     }
 
-    fn command(&self, cmd: SfuCmd) {
-        let _ = self.sfu.send(cmd);
+    /// "ip:port", or "ip:first-last" with several threads.
+    pub fn media_addrs(&self) -> String {
+        match (self.candidates.first(), self.candidates.last()) {
+            (Some(a), Some(b)) if a != b => format!("{a}-{}", b.port()),
+            (Some(a), _) => a.to_string(),
+            _ => "none".into(),
+        }
+    }
+
+    fn command(&self, worker: usize, cmd: SfuCmd) {
+        let _ = self.workers[worker].send(cmd);
     }
 
     pub fn states_in(&self, channels: &HashSet<Id>) -> Vec<VoiceState> {
@@ -154,18 +179,7 @@ pub async fn join(
 
     disconnect(&st, me).await?; // one call at a time
 
-    // Bandwidth estimation picks the simulcast layer each viewer gets on Auto (sfu.rs).
-    let mut rtc = Rtc::builder().enable_bwe(Some(Bitrate::kbps(1500))).build(Instant::now());
-    let candidate = Candidate::host(st.voice.candidate, "udp")
-        .map_err(|e| internal(format!("candidate: {e:?}")))?;
-    rtc.add_local_candidate(candidate);
-    let answer = rtc
-        .sdp_api()
-        .accept_offer(offer)
-        .map_err(|e| bad(format!("can't use that SDP offer: {e}")))?;
-
     let client = st.voice.next_client.fetch_add(1, Ordering::Relaxed);
-    let first = st.voice.room_empty(ch);
     let state = VoiceState {
         user_id: me,
         channel_id: ch,
@@ -175,14 +189,38 @@ pub async fn join(
         screen: false,
         joined_at: now_ms(),
     };
-    st.voice.states.lock().unwrap().insert(
-        me,
-        Entry {
-            state: state.clone(),
-            client,
-        },
-    );
-    st.voice.command(SfuCmd::Join {
+    // Pick the call's thread and take the seat under one lock, so two people starting a call together land on the
+    // same thread.
+    let (rtc, answer, first, worker) = {
+        let mut g = st.voice.states.lock().unwrap();
+        let joined = g.values().find(|e| e.state.channel_id == ch).map(|e| e.worker);
+        let worker = joined.unwrap_or_else(|| {
+            let mut load = vec![0usize; st.voice.workers.len()];
+            for e in g.values() {
+                load[e.worker] += 1;
+            }
+            (0..load.len()).min_by_key(|&w| load[w]).unwrap_or(0)
+        });
+        // Bandwidth estimation picks the simulcast layer each viewer gets on Auto (sfu.rs).
+        let mut rtc = Rtc::builder().enable_bwe(Some(Bitrate::kbps(1500))).build(Instant::now());
+        let candidate = Candidate::host(st.voice.candidates[worker], "udp")
+            .map_err(|e| internal(format!("candidate: {e:?}")))?;
+        rtc.add_local_candidate(candidate);
+        let answer = rtc
+            .sdp_api()
+            .accept_offer(offer)
+            .map_err(|e| bad(format!("can't use that SDP offer: {e}")))?;
+        g.insert(
+            me,
+            Entry {
+                state: state.clone(),
+                client,
+                worker,
+            },
+        );
+        (rtc, answer, joined.is_none(), worker)
+    };
+    st.voice.command(worker, SfuCmd::Join {
         client,
         user: me,
         room: ch,
@@ -251,7 +289,7 @@ pub async fn ring(State(st): State<St>, auth: Auth, Path(ch): Path<Id>) -> R<Sta
 pub async fn disconnect(st: &St, user: Id) -> R<()> {
     let entry = st.voice.states.lock().unwrap().remove(&user);
     if let Some(e) = entry {
-        st.voice.command(SfuCmd::Leave { client: e.client });
+        st.voice.command(e.worker, SfuCmd::Leave { client: e.client });
         left(st, e.state).await?;
     }
     Ok(())

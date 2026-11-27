@@ -42,6 +42,8 @@ pub struct Config {
     pub registration: Registration,
     pub max_upload: u64,
     pub media_port: u16,
+    /// Call threads (`LAKLAK_MEDIA_THREADS`, default 1), one UDP port each from `media_port` up; a call stays on one.
+    pub media_threads: u16,
     /// Most a camera may send in a call, kbit/s (`LAKLAK_CAMERA_KBPS`, 0 = no cap).
     pub camera_kbps: u32,
     /// Daily Word's time zone: minutes ahead of UTC (`LAKLAK_GAME_UTC_OFFSET`, default 60 = Central Europe).
@@ -86,6 +88,11 @@ impl Config {
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(50000),
+            media_threads: var("LAKLAK_MEDIA_THREADS")
+                .map(|v| v.parse())
+                .transpose()?
+                .unwrap_or(1)
+                .max(1),
             // ponytail: ~half the browser default (2.5 Mbit/s at 720p); simulcast if big calls ever need more.
             camera_kbps: var("LAKLAK_CAMERA_KBPS")
                 .map(|v| v.parse())
@@ -409,7 +416,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     tracing::info!(
         "laklak {VERSION} listening on http://{bind}, call media on udp {}",
-        st.voice.candidate
+        st.voice.media_addrs()
     );
     axum::serve(
         listener,

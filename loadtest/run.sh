@@ -14,7 +14,8 @@ docker compose down --remove-orphans >/dev/null 2>&1 || true
 docker compose up -d laklak
 pid=$(docker inspect -f '{{.State.Pid}}' laklak-lt-server)
 
-# sfu = the call thread (100% = one core full), other = everything else; then both containers' totals and UDP packets
+# sfu = the call threads together (100% = one core full) and the busiest one, other = everything else; then both
+# containers' totals and UDP packets
 # dropped because a socket's buffer was full (counted since start, per container).
 udp_drops() {
   awk '/^Udp:/ { if (seen) { printf "udp drops: receive %s, send %s", $6, $7; exit } seen = 1 }' "/proc/$1/net/snmp" 2>/dev/null
@@ -26,9 +27,9 @@ udp_drops() {
     echo "          server $(udp_drops "$pid")  |  loadgen $(udp_drops "$lpid")"
     rss=$(awk '/VmRSS/ {printf "%.0f", $2 / 1024}' "/proc/$pid/status" 2>/dev/null || echo "?")
     top -H -b -n 2 -d 1 -p "$pid" | awk -v t="$(date +%T)" -v rss="$rss" '
-      /^top -/ { delete cpu; next }
-      /^ *[0-9]+ / { cpu[$12 ~ /^sfu/ ? "sfu" : "other"] += $9 }
-      END { printf "%s  server threads: sfu %.0f%%  other %.0f%%  rss %s MB\n", t, cpu["sfu"], cpu["other"], rss }'
+      /^top -/ { delete cpu; busiest = 0; next }
+      /^ *[0-9]+ / { cpu[$12 ~ /^sfu/ ? "sfu" : "other"] += $9; if ($12 ~ /^sfu/ && $9 > busiest) busiest = $9 }
+      END { printf "%s  server threads: sfu %.0f%% (busiest %.0f%%)  other %.0f%%  rss %s MB\n", t, cpu["sfu"], busiest, cpu["other"], rss }'
     docker stats --no-stream --format '          {{.Name}}: cpu {{.CPUPerc}}  mem {{.MemUsage}}' | grep laklak-lt || true
     sleep 3
   done
@@ -42,7 +43,7 @@ docker compose down >/dev/null 2>&1
 
 echo
 echo "busiest server moments:"
-grep "server threads" "$out/server.log" | awk '{s = $5; o = $7; sub("%", "", s); sub("%", "", o); print s + o, $0}' |
+grep "server threads" "$out/server.log" | awk '{s = $5; o = $9; sub("%", "", s); sub("%", "", o); print s + o, $0}' |
   sort -n | tail -3 | cut -d' ' -f2-
 echo "full logs: loadtest/$out"
 exit "$status"

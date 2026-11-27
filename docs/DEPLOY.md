@@ -22,6 +22,7 @@ LAKLAK_NEXTCLOUD_URL=https://cloud.example.com
 LAKLAK_NEXTCLOUD_GROUP=staff          # optional: only this Nextcloud group may sign in
 LAKLAK_PUBLIC_IP=203.0.113.10         # the address call media is announced on
 LAKLAK_MEDIA_PORT=50000
+# LAKLAK_MEDIA_THREADS=4             # more people in calls: one call thread per core, UDP ports 50000-50003
 # LAKLAK_AUTOJOIN_SPACE=<space id>    # set after creating the company space (right-click it › Copy Space ID)
 # LAKLAK_KLIPY_KEY=<app key>          # optional: turns on the GIF picker (see below)
 # LAKLAK_SMTP_URL=smtps://chat%40example.com:<password>@mail.example.com:465   # optional: "Forgot password?" e-mails
@@ -83,7 +84,7 @@ WantedBy=multi-user.target
 ```sh
 sudo systemctl daemon-reload && sudo systemctl enable --now laklak
 curl -s http://127.0.0.1:8080/health
-sudo ufw allow 50000/udp comment 'Laklak call media'
+sudo ufw allow 50000/udp comment 'Laklak call media'   # with LAKLAK_MEDIA_THREADS=4: 50000:50003/udp
 # Let the call socket have 4 MB buffers: calls come in bursts, and Linux's default (~200 KB) drops packets
 # with a hundred people in calls.
 printf 'net.core.rmem_max = 8388608\nnet.core.wmem_max = 8388608\n' | sudo tee /etc/sysctl.d/90-laklak.conf

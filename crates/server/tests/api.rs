@@ -149,6 +149,7 @@ async fn full_flow() {
         registration: Registration::Invite,
         max_upload: 10 * 1024 * 1024,
         media_port: 0,
+        media_threads: 2,
         camera_kbps: 1000,
         game_utc_offset_min: 60,
         public_ip: Some("127.0.0.1".parse().unwrap()),

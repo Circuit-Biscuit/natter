@@ -29,7 +29,8 @@
 | `LAKLAK_NAME` | `Laklak` | Server name shown on the sign-in screen |
 | `LAKLAK_REGISTRATION` | `invite` | `open` · `invite` (a valid invite code is needed) · `closed`. The first account can always be created and becomes admin. |
 | `LAKLAK_MAX_UPLOAD_MB` | `100` | Upload size limit |
-| `LAKLAK_MEDIA_PORT` | `50000` | UDP port for all call media |
+| `LAKLAK_MEDIA_PORT` | `50000` | UDP port for call media (the first one, with several threads) |
+| `LAKLAK_MEDIA_THREADS` | `1` | Call threads, one UDP port each from `LAKLAK_MEDIA_PORT` up; a call stays on one thread. In the load test one thread carried about 200 people in voice calls, or 120 with a fifth of them on camera. Up to one per core. |
 | `LAKLAK_CAMERA_KBPS` | `1000` | Most a camera sends in a call, kbit/s (`b=AS`/`b=TIAS` in the SDP the server hands out); `0` = no cap |
 | `LAKLAK_GAME_UTC_OFFSET` | `60` | Daily Word's time zone, minutes ahead of UTC: when the day's word changes and when the 09:00 summary goes out |
 | `LAKLAK_PUBLIC_IP` | auto (outbound interface) | IP announced to call clients; set it to the public IP on a server |

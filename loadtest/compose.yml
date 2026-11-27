@@ -25,6 +25,7 @@ services:
       LAKLAK_NAME: Load test
       LAKLAK_REGISTRATION: open
       LAKLAK_PUBLIC_IP: 172.30.99.10
+      LAKLAK_MEDIA_THREADS: ${MEDIA_THREADS:-4}
       RUST_LOG: laklak_server=warn
     networks:
       lt: { ipv4_address: 172.30.99.10 }

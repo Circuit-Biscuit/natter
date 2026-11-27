@@ -30,7 +30,7 @@ Every 5 seconds it prints a line like:
 ```
 
 and a summary of the time after the ramp at the end. `results/<time>/server.log` has the server's CPU every few
-seconds: `sfu` is the call thread (100% = one core full), `other` is everything else.
+seconds: `sfu` is the call threads together (100% = one core full) with the busiest one, `other` is everything else.
 
 | Option | Default | |
 |---|---|---|
@@ -44,7 +44,8 @@ seconds: `sfu` is the call thread (100% = one core full), `other` is everything 
 | `--ramp` | 30 | seconds over which users connect |
 | `--duration` | 120 | seconds of full load after the ramp |
 
-`SERVER_CPUS` and `LOADGEN_CPUS` (cpuset lists, default `0-3` and `4-15`) pick the cores for each container.
+`SERVER_CPUS` and `LOADGEN_CPUS` (cpuset lists, default `0-3` and `4-15`) pick the cores for each container, and
+`MEDIA_THREADS` (default 4) sets the server's `LAKLAK_MEDIA_THREADS`.
 
 ## What it can't tell
 
