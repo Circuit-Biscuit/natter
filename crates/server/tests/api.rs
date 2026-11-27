@@ -151,6 +151,8 @@ async fn full_flow() {
         media_port: 0,
         media_threads: 2,
         signups_per_ip_hour: 20,
+        turn_urls: vec!["turn:turn.example.org:3478?transport=udp".into()],
+        turn_secret: Some("turn-secret".into()),
         camera_kbps: 1000,
         game_utc_offset_min: 60,
         public_ip: Some("127.0.0.1".parse().unwrap()),
@@ -748,6 +750,16 @@ async fn full_flow() {
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(res.headers()["content-type"], "image/png");
     assert_eq!(res.headers()["x-content-type-options"], "nosniff");
+
+    // Relay credentials for calls: day-long, named after the user, signed with the shared secret; signed in only.
+    let (s, ice) = call(&app, "GET", "/api/voice/ice", Some(&t1), None).await;
+    assert_eq!(s, StatusCode::OK, "{ice}");
+    let server = &ice["ice_servers"][0];
+    assert_eq!(server["urls"], json!(["turn:turn.example.org:3478?transport=udp"]));
+    let username = server["username"].as_str().unwrap();
+    assert!(username.ends_with(&format!(":{u1}")), "{username}");
+    assert_eq!(server["credential"].as_str().unwrap().len(), 28, "base64 of 20 bytes");
+    assert_eq!(call(&app, "GET", "/api/voice/ice", None, None).await.0, StatusCode::UNAUTHORIZED);
 
     // Calls: a str0m peer offers mic + data channel; the SFU answers and everyone sees the voice state.
     let voice: Id = space["channels"]

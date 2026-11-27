@@ -13,7 +13,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use laklak_proto::{
-    Event, Id, MessageKind, Millis, VoiceAnswer, VoiceJoin, VoiceState, VoiceUpdate, perm,
+    Event, IceServer, IceServers, Id, MessageKind, Millis, VoiceAnswer, VoiceJoin, VoiceState, VoiceUpdate, perm,
 };
 use str0m::bwe::Bitrate;
 use str0m::change::SdpOffer;
@@ -243,6 +243,27 @@ pub async fn join(
     }))
 }
 
+/// Relay servers for this user's calls, with credentials good for a day (coturn's `use-auth-secret`: the user name
+/// is the expiry time, the password its HMAC-SHA1 with the shared secret).
+pub async fn ice(State(st): State<St>, auth: Auth) -> Json<IceServers> {
+    let (urls, Some(secret)) = (&st.cfg.turn_urls, &st.cfg.turn_secret) else {
+        return Json(IceServers::default());
+    };
+    if urls.is_empty() {
+        return Json(IceServers::default());
+    }
+    let username = format!("{}:{}", now_ms() / 1000 + 24 * 3600, auth.user);
+    let credential = turn_credential(secret, &username);
+    Json(IceServers { ice_servers: vec![IceServer { urls: urls.clone(), username, credential }] })
+}
+
+fn turn_credential(secret: &str, username: &str) -> String {
+    use hmac::{KeyInit, Mac};
+    let mut mac = hmac::Hmac::<sha1::Sha1>::new_from_slice(secret.as_bytes()).expect("HMAC takes any key");
+    mac.update(username.as_bytes());
+    data_encoding::BASE64.encode(&mac.finalize().into_bytes())
+}
+
 pub async fn update(
     State(st): State<St>,
     auth: Auth,
@@ -341,5 +362,17 @@ pub async fn watch_sfu(st: St, mut events: UnboundedReceiver<SfuEvent>) {
         {
             tracing::warn!("voice leave after drop: {e:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::turn_credential;
+
+    #[test]
+    fn turn_credentials() {
+        // RFC 2202's HMAC-SHA1 test case 2, and a TURN user name as coturn's REST API expects it.
+        assert_eq!(turn_credential("Jefe", "what do ya want for nothing?"), "7/zfauXrL6LSdBbV8YTfnCWafHk=");
+        assert_eq!(turn_credential("turn-secret", "1800000000:42"), "Sn7xpP0Q3BaxaNyq+z3OCUZ08Zg=");
     }
 }

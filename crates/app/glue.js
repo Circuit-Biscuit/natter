@@ -196,7 +196,13 @@ export async function voiceJoin(base, token, channel, myId, optsJson) {
   opts = Object.assign(opts, o);
   ensureAudioContext();
   local.mic = await getMic();
-  pc = new RTCPeerConnection({ bundlePolicy: "max-bundle" });
+  // Relay (TURN) servers for networks that block the call server's UDP port, if it has them (older servers: 404).
+  let iceServers = [];
+  try {
+    const r = await fetch(base + "/api/voice/ice", { headers: { Authorization: "Bearer " + token } });
+    if (r.ok) iceServers = (await r.json()).ice_servers || [];
+  } catch (_) {}
+  pc = new RTCPeerConnection({ bundlePolicy: "max-bundle", iceServers });
   const micStream = new MediaStream(local.mic ? [local.mic] : []);
   const order = [
     ["mic", "audio"],

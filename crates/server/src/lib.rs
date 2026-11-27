@@ -44,6 +44,11 @@ pub struct Config {
     pub media_port: u16,
     /// Call threads (`LAKLAK_MEDIA_THREADS`, default 1), one UDP port each from `media_port` up; a call stays on one.
     pub media_threads: u16,
+    /// Relay (TURN) server addresses handed to call clients (`LAKLAK_TURN_URLS`, comma-separated), e.g.
+    /// `turn:chat.example.com:3478?transport=udp`, and the secret shared with it (`LAKLAK_TURN_SECRET`, coturn's
+    /// `static-auth-secret`): the server signs day-long credentials, so the relay needs no user list.
+    pub turn_urls: Vec<String>,
+    pub turn_secret: Option<String>,
     /// New accounts per hour from one address (`LAKLAK_SIGNUPS_PER_IP_HOUR`, default 20). Mobile networks put many
     /// people behind one address, so it's generous; raise it for a launch day.
     pub signups_per_ip_hour: usize,
@@ -91,6 +96,10 @@ impl Config {
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(50000),
+            turn_urls: var("LAKLAK_TURN_URLS")
+                .map(|v| v.split(',').map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).collect())
+                .unwrap_or_default(),
+            turn_secret: var("LAKLAK_TURN_SECRET"),
             signups_per_ip_hour: var("LAKLAK_SIGNUPS_PER_IP_HOUR")
                 .map(|v| v.parse())
                 .transpose()?
@@ -463,6 +472,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .route("/api/search", get(messages::search))
         .route("/api/channels/{id}/voice", post(voice::join))
         .route("/api/voice", patch(voice::update).delete(voice::leave))
+        .route("/api/voice/ice", get(voice::ice))
         .route("/api/channels/{id}/ring", post(voice::ring));
 
     app = match &cfg.web_dir {

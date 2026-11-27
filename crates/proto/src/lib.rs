@@ -1018,6 +1018,20 @@ pub struct VoiceAnswer {
     pub sdp: String,
 }
 
+/// `GET /api/voice/ice`: relay (TURN) servers for networks that block the call server's UDP port, in the shape
+/// `RTCPeerConnection`'s `iceServers` takes. Empty when the server has no relay.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IceServers {
+    pub ice_servers: Vec<IceServer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IceServer {
+    pub urls: Vec<String>,
+    pub username: String,
+    pub credential: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VoiceUpdate {
     pub muted: Option<bool>,
