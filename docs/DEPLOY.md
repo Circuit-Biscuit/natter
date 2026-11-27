@@ -186,9 +186,10 @@ snapshots:
 
 ```sh
 RESTIC_REPOSITORY=sftp:u123456@u123456.your-storagebox.de:laklak   # e.g. a Hetzner Storage Box (SSH key for root)
-# RESTIC_REPOSITORY=s3:https://<account>.r2.cloudflarestorage.com/laklak-backups
+# RESTIC_REPOSITORY=s3:https://<account>.r2.cloudflarestorage.com/laklak-backups   # or Cloudflare R2 (10 GB free)
 # AWS_ACCESS_KEY_ID=…
 # AWS_SECRET_ACCESS_KEY=…
+# AWS_DEFAULT_REGION=auto
 RESTIC_PASSWORD=<a long random password; without it the backups can't be read, so keep it somewhere else too>
 ```
 
