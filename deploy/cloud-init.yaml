@@ -1,0 +1,17 @@
+#cloud-config
+# First boot of a new cloud server (Hetzner Cloud: "Cloud config" when creating it; most clouds take this as user
+# data). Set DOMAIN below and point its DNS at the server's IP; Laklak then runs behind HTTPS a few minutes after boot.
+# SSH: keys only. Progress: /var/log/laklak-install.log on the server.
+package_update: true
+package_upgrade: true
+ssh_pwauth: false
+write_files:
+  - path: /etc/ssh/sshd_config.d/90-laklak.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+runcmd:
+  - systemctl reload ssh || systemctl reload sshd || true
+  - curl -fsSL -o /root/laklak-install.sh https://raw.githubusercontent.com/Circuit-Biscuit/laklak/main/deploy/install.sh
+  - DOMAIN=chat.example.com ACME_EMAIL= bash /root/laklak-install.sh > /var/log/laklak-install.log 2>&1

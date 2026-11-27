@@ -1,7 +1,32 @@
 # Deploying Laklak
 
-One binary, one data folder, one HTTPS host name, one UDP port — with or without a Nextcloud. These steps target
-Ubuntu 24.04 with Apache (for example next to an existing Nextcloud); a Caddy variant follows.
+One binary, one data folder, one HTTPS host name, UDP ports for calls — with or without a Nextcloud.
+
+## One script
+
+On a fresh Ubuntu 24.04 or Debian 12+ server (x86_64) whose DNS name already points at it:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/Circuit-Biscuit/laklak/main/deploy/install.sh
+sudo DOMAIN=chat.example.com bash install.sh
+```
+
+`deploy/install.sh` installs the latest release (`VERSION=0.13.1` to pick one; its SHA-256 is checked), with:
+
+* **Caddy** for HTTPS (its certificate comes from Let's Encrypt), HSTS, and access logs kept two weeks without the
+  `?token=` older apps put in the `/gateway` URL;
+* **`/etc/laklak.env`** written once (invite-only sign-ups, this machine's IP for calls, one call thread per core),
+  then left alone: edit it and `systemctl restart laklak`;
+* a **firewall** (ufw: SSH, 80, 443, the call ports), the **call socket buffers** (step 3), **journal logs kept two
+  weeks**, automatic security updates;
+* a **nightly backup** (see Backups) and a hardened `laklak.service`.
+
+Run it again to upgrade: it swaps in the new release only if the version changed, waits if a call is running
+(`FORCE=1` doesn't), keeps the previous one in `/opt/laklak.old` and prints how to roll back. On a cloud, paste
+`deploy/cloud-init.yaml` as the server's user data (set `DOMAIN` in it first): the server installs itself on first
+boot, with SSH keys only.
+
+The steps below do the same by hand, with Apache (for example next to an existing Nextcloud) or Caddy.
 
 ## 1. Install
 
@@ -152,6 +177,25 @@ rsync -a /var/lib/laklak/files/ /backup/laklak-files/
 ```
 
 Files sent by Nextcloud users are in their Nextcloud and covered by its backup.
+
+**With `install.sh`** this runs every night (`laklak-backup.timer`): the database to `/var/backups/laklak/`, one copy
+per weekday. That guards against mistakes, not against losing the disk: for an off-site copy, create
+`/etc/laklak-backup.env` (mode 600) for [restic](https://restic.net), which encrypts everything before it leaves the
+machine. The database, the uploaded files and `/etc/laklak.env` then go there too, keeping 7 daily and 4 weekly
+snapshots:
+
+```sh
+RESTIC_REPOSITORY=sftp:u123456@u123456.your-storagebox.de:laklak   # e.g. a Hetzner Storage Box (SSH key for root)
+# RESTIC_REPOSITORY=s3:https://<account>.r2.cloudflarestorage.com/laklak-backups
+# AWS_ACCESS_KEY_ID=…
+# AWS_SECRET_ACCESS_KEY=…
+RESTIC_PASSWORD=<a long random password; without it the backups can't be read, so keep it somewhere else too>
+```
+
+Test it with `systemctl start laklak-backup && journalctl -u laklak-backup -n 5`. To restore:
+`restic restore latest --target /tmp/restore`, stop Laklak, put `laklak.db` (the `laklak-N.db` copy) and `files/`
+back into `/var/lib/laklak/` owned by `laklak`, start it. Deleted accounts and messages stay in old snapshots for up
+to four weeks: say so in your privacy policy.
 
 ## Upgrades
 

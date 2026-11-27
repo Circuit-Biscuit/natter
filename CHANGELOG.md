@@ -9,6 +9,11 @@
   token as its first message, when the server supports it (older servers keep getting the old form). Servers still
   accept the old form from apps up to 0.13. Operators: once nobody uses 0.13 or older, nothing secret is logged; until
   then, drop `token` from your access logs (the Caddy config in `deploy/` does).
+- **One-script install** (`deploy/install.sh`, docs/DEPLOY.md › One script): on a fresh Ubuntu or Debian server,
+  the latest release (checksum checked) behind Caddy's HTTPS, a firewall, call socket buffers, logs kept two weeks,
+  automatic security updates and nightly backups, optionally encrypted off-site with restic. Run it again to
+  upgrade, with the previous version kept for rollback. `deploy/cloud-init.yaml` does it on a new cloud server's
+  first boot.
 - **Security headers on the web app:** no embedding in other sites (`frame-ancestors 'none'`, `X-Frame-Options`), no
   MIME sniffing, the origin only as referrer, and camera, microphone and screen sharing for this site only. A proxy's
   own headers take precedence.
