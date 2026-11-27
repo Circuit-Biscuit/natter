@@ -333,10 +333,13 @@ problems=()
 curl -fsS -m 5 -o /dev/null http://127.0.0.1:8080/health || problems+=("Laklak doesn't answer on the server (journalctl -u laklak)")
 if [ -n "${DOMAIN:-}" ]; then
   curl -fsS -m 10 -o /dev/null "https://$DOMAIN/health" || problems+=("https://$DOMAIN/health doesn't answer (Caddy, DNS or the certificate)")
-  end=$(timeout 10 openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" </dev/null 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
-  if [ -n "$end" ]; then
-    left=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
-    [ "$left" -ge 14 ] || problems+=("the HTTPS certificate runs out in $left days")
+  # Caddy renews with a third of the certificate's life left; under a quarter means renewing has failed for a while.
+  dates=$(timeout 10 openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" </dev/null 2>/dev/null | openssl x509 -noout -startdate -enddate 2>/dev/null)
+  if [ -n "$dates" ]; then
+    from=$(date -d "$(sed -n 's/^notBefore=//p' <<<"$dates")" +%s)
+    to=$(date -d "$(sed -n 's/^notAfter=//p' <<<"$dates")" +%s)
+    left=$((to - $(date +%s)))
+    [ $((left * 4)) -ge $((to - from)) ] || problems+=("the HTTPS certificate runs out in $((left / 3600)) hours and wasn't renewed")
   fi
 fi
 for unit in laklak caddy coturn; do
