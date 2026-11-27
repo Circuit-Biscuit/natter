@@ -26,6 +26,34 @@ Run it again to upgrade: it swaps in the new release only if the version changed
 `deploy/cloud-init.yaml` as the server's user data (set `DOMAIN` in it first): the server installs itself on first
 boot, with SSH keys only.
 
+### On Hetzner Cloud
+
+With the [`hcloud` CLI](https://github.com/hetznercloud/cli) and an API token for your project:
+
+```sh
+hcloud ssh-key create --name me --public-key-from-file ~/.ssh/id_ed25519.pub
+hcloud firewall create --name laklak
+for rule in "tcp 22" "tcp 80" "tcp 443" "udp 443" "udp 50000-50001"; do
+  set -- $rule
+  hcloud firewall add-rule laklak --direction in --protocol "$1" --port "$2" --source-ips 0.0.0.0/0 --source-ips ::/0
+done
+cp deploy/cloud-init.yaml my-cloud-init.yaml   # set DOMAIN (and ACME_EMAIL) in it
+hcloud server create --name laklak-1 --type cpx22 --image ubuntu-24.04 --location nbg1 \
+  --ssh-key me --firewall laklak --user-data-from-file my-cloud-init.yaml
+```
+
+Then point the domain's A (and AAAA) record at the server's IPs; the install log is `/var/log/laklak-install.log`,
+and `https://<domain>/api/info` answers once Caddy has its certificate. Create the first account right away: it
+becomes the admin.
+
+* **Size:** in our load test (`loadtest/`) one call thread carried about 200 people in voice calls, or about 100
+  with a fifth of them on camera, and a 4-core server with 4 threads about 400 with cameras. Chat is cheap by
+  comparison (5,000 connected people and 100 messages a second used one core). A 2-core CPX22 is a good start.
+* **Call ports:** one UDP port per call thread, from 50000 (`install.sh` sets one thread per core on the first
+  install). After `hcloud server change-type` to more cores, raise `LAKLAK_MEDIA_THREADS` in `/etc/laklak.env`,
+  widen the UDP range in both the Hetzner firewall and ufw (`ufw allow 50000:50003/udp`), and restart.
+* **Backups off the server:** see Backups below (Cloudflare R2's free tier covers a new server).
+
 The steps below do the same by hand, with Apache (for example next to an existing Nextcloud) or Caddy.
 
 ## 1. Install
