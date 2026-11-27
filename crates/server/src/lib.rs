@@ -402,6 +402,9 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         None => None,
     };
     let mailer = mail::Mailer::new(cfg.smtp_url.as_deref(), cfg.smtp_from.as_deref())?;
+    if cfg.registration == Registration::Open && mailer.is_none() {
+        tracing::warn!("sign-up is open but the server can't send e-mail (LAKLAK_SMTP_URL): new accounts aren't confirmed");
+    }
     if let Some(m) = &mailer {
         match m.check().await {
             Ok(()) => tracing::info!("password reset e-mail is on"),
