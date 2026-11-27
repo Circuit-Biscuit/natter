@@ -1,5 +1,6 @@
 # Every push and pull request: protocol, server, app and noise-suppression tests (incl. the end-to-end test with a fake Nextcloud),
-# and a release build of the WebAssembly app. Installers are built by release.yml.
+# a release build of the WebAssembly app, and a check of dependencies for known vulnerabilities. Installers are built
+# by release.yml.
 name: CI
 
 on:
@@ -25,3 +26,14 @@ jobs:
       - run: cargo test --locked -p laklak-proto -p laklak-server -p laklak-app -p laklak-denoise
       - run: trunk build --release
         working-directory: crates/app
+
+  advisories:
+    # Known vulnerabilities in dependencies (RustSec). A new advisory turns CI red until the dependency is updated.
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - run: cargo deny check advisories
