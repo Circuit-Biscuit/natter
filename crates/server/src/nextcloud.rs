@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 
 use crate::auth::Auth;
 use crate::messages::{NewUpload, image_dims, insert_upload, new_token, store_local};
-use crate::{ApiErr, R, St, bad, db, forbidden, not_found, now_ms, spaces};
+use crate::{ApiErr, ClientIp, R, St, bad, db, forbidden, not_found, now_ms, spaces};
 
 /// Path segments: keep the characters WebDAV is happy with, encode the rest.
 const SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
@@ -273,8 +273,11 @@ pub async fn is_nc_session(st: &St, session: Id) -> bool {
 
 // ---------------------------------------------------------------- sign-in
 
-pub async fn login_start(State(st): State<St>) -> R<Json<NcLoginStart>> {
+pub async fn login_start(State(st): State<St>, ClientIp(ip): ClientIp) -> R<Json<NcLoginStart>> {
     let nc = nc_of(&st)?;
+    // Each start costs a call to the Nextcloud.
+    st.over_ip_limit("nextcloud sign-in", ip, 10, Duration::from_secs(600))?;
+    st.note_ip("nextcloud sign-in", ip);
     {
         let mut flows = nc.flows.lock().unwrap();
         flows.retain(|_, (_, at)| at.elapsed() < Duration::from_secs(1200));

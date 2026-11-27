@@ -17,7 +17,7 @@ use laklak_proto::{
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ApiErr, R, St, bad, conflict, db, forbidden, gateway, messages, nextcloud, not_found, now_ms,
+    ApiErr, ClientIp, R, St, bad, conflict, db, forbidden, gateway, messages, nextcloud, not_found, now_ms,
     spaces, voice,
 };
 
@@ -165,7 +165,10 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
     }))
 }
 
-pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<Json<AuthResp>> {
+pub async fn register(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json<RegisterReq>) -> R<Json<AuthResp>> {
+    // Before anything costly (password hashing): bots signing up in bulk from one address.
+    st.over_ip_limit("sign-up", ip, st.cfg.signups_per_ip_hour, Duration::from_secs(3600))?;
+    st.note_ip("sign-up", ip);
     let username = username_key(&req.username);
     if !valid_username(&username) {
         return Err(bad("usernames are 2-32 characters: a-z, 0-9, _ and ."));
@@ -243,7 +246,9 @@ pub async fn register(State(st): State<St>, Json(req): Json<RegisterReq>) -> R<J
 /// Signs in with a username or the account's e-mail address (usernames never contain '@'). Every outcome goes to the
 /// log with its reason, so "I can't sign in" can be told apart: no such account, or a wrong password. The log names
 /// an account only when it exists, and never holds what was typed otherwise, or a password.
-pub async fn login(State(st): State<St>, Json(req): Json<LoginReq>) -> R<Json<AuthResp>> {
+pub async fn login(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json<LoginReq>) -> R<Json<AuthResp>> {
+    // Besides 10 per account: guessing across many accounts from one address.
+    st.over_ip_limit("failed sign-in", ip, 30, Duration::from_secs(600))?;
     let via = login_kind(&req.username);
     let q = if via == "e-mail" {
         sqlx::query_as("SELECT id, username, password_hash, nc_user_id IS NOT NULL FROM users WHERE email = ?")
@@ -273,6 +278,7 @@ pub async fn login(State(st): State<St>, Json(req): Json<LoginReq>) -> R<Json<Au
     let fail = |why: String| {
         tracing::info!("sign-in failed: {why}");
         st.login_fails.lock().unwrap().entry(key.clone()).or_default().push(Instant::now());
+        st.note_ip("failed sign-in", ip);
         ApiErr::new(StatusCode::UNAUTHORIZED, "wrong username or password")
     };
     let Some((id, username, hash, nextcloud)) = row else {
@@ -447,10 +453,13 @@ fn code_key(typed: &str) -> String {
 
 /// "Forgot password?": e-mails a code (30 minutes, 5 tries) to the account's address. Always the same answer, sent
 /// before the mail goes out, so neither it nor its timing says whether the account exists.
-pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPassword>) -> R<StatusCode> {
+pub async fn forgot_password(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json<ForgotPassword>) -> R<StatusCode> {
     if st.mailer.is_none() {
         return Err(not_found("e-mail reset on this server (ask one of its admins to reset your password)"));
     }
+    // Besides 3 per account: someone mailing codes to many accounts.
+    st.over_ip_limit("reset request", ip, 5, Duration::from_secs(900))?;
+    st.note_ip("reset request", ip);
     let Some((id, username, name, email)) = local_account(&st, &req.login).await? else {
         tracing::info!("reset code not sent: no local account has that {}", login_kind(&req.login));
         return Ok(StatusCode::NO_CONTENT);
@@ -498,10 +507,13 @@ pub async fn forgot_password(State(st): State<St>, Json(req): Json<ForgotPasswor
 }
 
 /// The code from that e-mail and a new password: sets it, signs out every other device and signs this one in.
-pub async fn reset_with_code(State(st): State<St>, Json(req): Json<ResetWithCode>) -> R<Json<AuthResp>> {
+pub async fn reset_with_code(State(st): State<St>, ClientIp(ip): ClientIp, Json(req): Json<ResetWithCode>) -> R<Json<AuthResp>> {
     check_password(&req.new_password)?;
+    // Besides 5 tries per code: guessing codes across accounts.
+    st.over_ip_limit("wrong reset code", ip, 20, Duration::from_secs(600))?;
     let wrong = |why: String| {
         tracing::info!("reset code rejected: {why}");
+        st.note_ip("wrong reset code", ip);
         bad("that code is wrong or has expired: ask for a new one")
     };
     let Some((id, username, ..)) = local_account(&st, &req.login).await? else {

@@ -150,6 +150,7 @@ async fn full_flow() {
         max_upload: 10 * 1024 * 1024,
         media_port: 0,
         media_threads: 2,
+        signups_per_ip_hour: 20,
         camera_kbps: 1000,
         game_utc_offset_min: 60,
         public_ip: Some("127.0.0.1".parse().unwrap()),
@@ -1072,6 +1073,27 @@ async fn full_flow() {
     assert_eq!(by_email("carol@example.org", "not-her-password").await, StatusCode::UNAUTHORIZED);
     assert_eq!(by_email("nobody@example.org", "carols-new-one").await, StatusCode::UNAUTHORIZED);
     assert_eq!(by_email("carol@", "carols-new-one").await, StatusCode::UNAUTHORIZED);
+
+    // Per-address limits: behind a local proxy the visitor is the last X-Forwarded-For entry. 30 failed sign-ins
+    // from one public address lock that address out (even with the right password), not another one, and never a
+    // private address.
+    let login_from = |ip: &str, user: &str, pw: &str| {
+        let req = Request::post("/api/auth/login")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", format!("198.51.100.1, {ip}"))
+            .body(Body::from(json!({"username": user, "password": pw}).to_string()))
+            .unwrap();
+        let app = app.clone();
+        async move { app.oneshot(req).await.unwrap().status() }
+    };
+    for i in 0..30 {
+        assert_eq!(login_from("203.0.113.9", &format!("nobody{i}"), "x").await, StatusCode::UNAUTHORIZED);
+    }
+    assert_eq!(login_from("203.0.113.9", "carol", "carols-new-one").await, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(login_from("203.0.113.10", "carol", "carols-new-one").await, StatusCode::OK);
+    for i in 0..31 {
+        assert_eq!(login_from("10.0.0.5", &format!("lan{i}"), "x").await, StatusCode::UNAUTHORIZED);
+    }
 
     let _ = std::fs::remove_dir_all(data);
 }

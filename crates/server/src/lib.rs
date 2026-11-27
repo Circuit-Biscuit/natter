@@ -44,6 +44,9 @@ pub struct Config {
     pub media_port: u16,
     /// Call threads (`LAKLAK_MEDIA_THREADS`, default 1), one UDP port each from `media_port` up; a call stays on one.
     pub media_threads: u16,
+    /// New accounts per hour from one address (`LAKLAK_SIGNUPS_PER_IP_HOUR`, default 20). Mobile networks put many
+    /// people behind one address, so it's generous; raise it for a launch day.
+    pub signups_per_ip_hour: usize,
     /// Most a camera may send in a call, kbit/s (`LAKLAK_CAMERA_KBPS`, 0 = no cap).
     pub camera_kbps: u32,
     /// Daily Word's time zone: minutes ahead of UTC (`LAKLAK_GAME_UTC_OFFSET`, default 60 = Central Europe).
@@ -88,6 +91,10 @@ impl Config {
                 .map(|v| v.parse())
                 .transpose()?
                 .unwrap_or(50000),
+            signups_per_ip_hour: var("LAKLAK_SIGNUPS_PER_IP_HOUR")
+                .map(|v| v.parse())
+                .transpose()?
+                .unwrap_or(20),
             media_threads: var("LAKLAK_MEDIA_THREADS")
                 .map(|v| v.parse())
                 .transpose()?
@@ -129,6 +136,8 @@ pub struct AppState {
     /// Reset e-mails sent per account lately (a few per quarter hour).
     reset_sends: Mutex<HashMap<Id, Vec<Instant>>>,
     send_budget: Mutex<HashMap<Id, (f64, Instant)>>,
+    /// Recent attempts per (what, client address), for the per-address limits (`over_ip_limit`).
+    ip_attempts: Mutex<HashMap<(&'static str, IpAddr), Vec<Instant>>>,
 }
 
 pub type St = Arc<AppState>;
@@ -163,6 +172,81 @@ impl AppState {
         } else {
             Err(((1.0 - *tokens) / 5.0 * 1000.0).ceil() as u64)
         }
+    }
+
+    /// Refuses (429) once `max` of `what` came from this address within `window`; `note_ip` counts one. IPv6 counts
+    /// per /64 (one household or phone). Private and loopback addresses aren't limited: a LAN, a load test, the
+    /// tests; real visitors behind the reverse proxy always show with their public address.
+    pub fn over_ip_limit(&self, what: &'static str, ip: IpAddr, max: usize, window: std::time::Duration) -> R<()> {
+        let Some(key) = ip_key(ip) else { return Ok(()) };
+        let mut map = self.ip_attempts.lock().unwrap();
+        let Some(list) = map.get_mut(&(what, key)) else { return Ok(()) };
+        list.retain(|t| t.elapsed() < window);
+        if list.len() < max {
+            return Ok(());
+        }
+        tracing::info!("{what} refused for {key}: {max} in {} min", window.as_secs() / 60);
+        let wait = window.saturating_sub(list[0].elapsed());
+        Err(ApiErr {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            msg: "too many attempts from your network, try again later".into(),
+            retry_after_ms: Some(wait.as_millis() as u64),
+        })
+    }
+
+    pub fn note_ip(&self, what: &'static str, ip: IpAddr) {
+        let Some(key) = ip_key(ip) else { return };
+        let mut map = self.ip_attempts.lock().unwrap();
+        // ponytail: a sweep when the map gets big; a timer if it ever shows up in a profile.
+        if map.len() > 100_000 {
+            map.retain(|_, v| v.last().is_some_and(|t| t.elapsed().as_secs() < 3600));
+        }
+        map.entry((what, key)).or_default().push(Instant::now());
+    }
+}
+
+/// What the per-address limits count by: the address, an IPv6 one's /64, or nothing for private and loopback ones.
+fn ip_key(ip: IpAddr) -> Option<IpAddr> {
+    let ip = match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(IpAddr::V6(v6), IpAddr::V4),
+        v4 => v4,
+    };
+    match ip {
+        IpAddr::V4(v4) if v4.is_private() || v4.is_loopback() || v4.is_link_local() => None,
+        IpAddr::V6(v6) if v6.is_loopback() || v6.is_unique_local() || v6.is_unicast_link_local() => None,
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            Some(IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0)))
+        }
+        v4 => Some(v4),
+    }
+}
+
+/// The address a request came from. Behind a reverse proxy on this machine (Caddy, Apache) the peer is loopback
+/// and the proxy appended the visitor's address to `X-Forwarded-For`: its last entry is what the proxy saw, which a
+/// visitor can't forge through it.
+pub struct ClientIp(pub IpAddr);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for ClientIp {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let peer = parts
+            .extensions
+            .get::<axum::extract::ConnectInfo<SocketAddr>>()
+            .map_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), |c| c.0.ip());
+        if !peer.is_loopback() {
+            return Ok(ClientIp(peer));
+        }
+        let forwarded = parts
+            .headers
+            .get_all("x-forwarded-for")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(','))
+            .next_back()
+            .and_then(|a| a.trim().parse().ok());
+        Ok(ClientIp(forwarded.unwrap_or(peer)))
     }
 }
 
@@ -272,6 +356,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         login_fails: Mutex::default(),
         reset_sends: Mutex::default(),
         send_budget: Mutex::default(),
+        ip_attempts: Mutex::default(),
     });
     db::upgrade_roles(&st.db, || st.id())
         .await
@@ -455,4 +540,20 @@ async fn shutdown() {
     #[cfg(not(unix))]
     let _ = ctrl_c.await;
     tracing::info!("shutting down");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ip_key;
+
+    #[test]
+    fn address_keys() {
+        let k = |s: &str| ip_key(s.parse().unwrap()).map(|ip| ip.to_string());
+        assert_eq!(k("203.0.113.5").as_deref(), Some("203.0.113.5"));
+        assert_eq!(k("2001:db8:1:2:3:4:5:6").as_deref(), Some("2001:db8:1:2::"), "IPv6 by /64");
+        assert_eq!(k("::ffff:203.0.113.5").as_deref(), Some("203.0.113.5"), "IPv4-mapped");
+        for local in ["10.1.2.3", "192.168.1.1", "172.16.0.9", "127.0.0.1", "::1", "fd00::1", "fe80::1"] {
+            assert_eq!(k(local), None, "{local} isn't limited");
+        }
+    }
 }
