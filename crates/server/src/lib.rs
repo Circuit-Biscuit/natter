@@ -29,7 +29,7 @@ use laklak_proto::{ApiError, EPOCH_MS, Id, Millis, Registration};
 use sqlx::SqlitePool;
 use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
-use tower_http::set_header::SetResponseHeader;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -382,17 +382,33 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
 
     app = match &cfg.web_dir {
         // The app is a single page: unknown paths get index.html.
-        Some(dir) => app.fallback_service(
-            // `fallback` (not `not_found_service`) so app routes like /invite/abc answer 200.
-            // `no-cache` = ask the server every time (a cheap 304 when nothing changed). Without it browsers cache
-            // index.html by guesswork and keep running the old app after an update, while the desktop app, which
-            // carries its own copy, already has the new one.
-            SetResponseHeader::overriding(
-                ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html"))),
-                axum::http::header::CACHE_CONTROL,
-                axum::http::HeaderValue::from_static("no-cache"),
-            ),
-        ),
+        Some(dir) => {
+            use axum::http::{HeaderName, HeaderValue, header};
+            let set = |name: HeaderName, value: &'static str| {
+                SetResponseHeaderLayer::if_not_present(name, HeaderValue::from_static(value))
+            };
+            app.fallback_service(
+                tower::ServiceBuilder::new()
+                    // `no-cache` = ask the server every time (a cheap 304 when nothing changed). Without it browsers
+                    // cache index.html by guesswork and keep running the old app after an update, while the desktop
+                    // app, which carries its own copy, already has the new one.
+                    .layer(SetResponseHeaderLayer::overriding(header::CACHE_CONTROL, HeaderValue::from_static("no-cache")))
+                    // Unless a proxy in front set them: no framing by other sites (clickjacking), no MIME guessing,
+                    // only the origin as referrer (YouTube's player needs one), camera/mic/screen for this site only.
+                    // ponytail: no script-src yet: Trunk's inline loader needs a hash that changes with every web
+                    // build (and the web folder is swapped without a restart); XSS defence is the app escaping output.
+                    .layer(set(header::CONTENT_SECURITY_POLICY, "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"))
+                    .layer(set(header::X_FRAME_OPTIONS, "DENY"))
+                    .layer(set(header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
+                    .layer(set(header::REFERRER_POLICY, "strict-origin-when-cross-origin"))
+                    .layer(set(
+                        HeaderName::from_static("permissions-policy"),
+                        "camera=(self), microphone=(self), display-capture=(self), geolocation=()",
+                    ))
+                    // `fallback` (not `not_found_service`) so app routes like /invite/abc answer 200.
+                    .service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")))),
+            )
+        }
         None => app.fallback(|| async { not_found("route") }),
     };
 

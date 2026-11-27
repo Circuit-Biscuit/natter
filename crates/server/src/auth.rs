@@ -161,6 +161,7 @@ pub async fn info(State(st): State<St>) -> R<Json<ServerInfo>> {
         klipy_key: None,
         camera_kbps: st.cfg.camera_kbps,
         email_reset: st.mailer.is_some(),
+        gateway_identify: true,
     }))
 }
 

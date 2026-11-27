@@ -3,7 +3,8 @@
 use std::cell::{Cell, RefCell};
 
 use leptos::prelude::*;
-use laklak_proto::{Event, Id, Op};
+use leptos::task::spawn_local;
+use laklak_proto::{Event, Id, Op, ServerInfo};
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{CloseEvent, MessageEvent, WebSocket};
 
@@ -12,6 +13,7 @@ use crate::{api, util};
 
 struct Socket {
     ws: WebSocket,
+    _on_open: Closure<dyn FnMut(web_sys::Event)>,
     _on_message: Closure<dyn FnMut(MessageEvent)>,
     _on_close: Closure<dyn FnMut(CloseEvent)>,
 }
@@ -25,6 +27,8 @@ thread_local! {
     static LAST_ACTIVITY: Cell<f64> = const { Cell::new(0.0) };
     static IDLE: Cell<bool> = const { Cell::new(false) };
     static LAST_TYPING: RefCell<(Id, f64)> = const { RefCell::new((0, 0.0)) };
+    /// Whether the server takes the token in an `Op::Identify` frame (its `/api/info`), and for which address.
+    static IDENTIFY: RefCell<Option<(String, bool)>> = const { RefCell::new(None) };
 }
 
 fn generation() -> u32 {
@@ -34,16 +38,49 @@ fn generation() -> u32 {
 pub fn connect() {
     disconnect();
     let generation = generation();
-    let s = store();
-    s.conn.set(Conn::Connecting);
-    let Ok(ws) = WebSocket::new(&api::gateway_url()) else {
+    store().conn.set(Conn::Connecting);
+    let server = api::server();
+    let known = IDENTIFY.with(|i| i.borrow().as_ref().filter(|(s, _)| *s == server).map(|(_, v)| *v));
+    match known {
+        Some(identify) => open(generation, identify),
+        // First connect to this server: ask whether it takes the token in a frame (older servers only read the URL).
+        None => spawn_local(async move {
+            let info = api::get::<ServerInfo>("/api/info").await;
+            if generation != self::generation() {
+                return;
+            }
+            match info {
+                Ok(i) => {
+                    IDENTIFY.with(|c| *c.borrow_mut() = Some((server, i.gateway_identify)));
+                    open(generation, i.gateway_identify);
+                }
+                Err(_) => schedule_reconnect(generation),
+            }
+        }),
+    }
+}
+
+fn open(generation: u32, identify: bool) {
+    let Ok(ws) = WebSocket::new(&api::gateway_url(identify)) else {
         schedule_reconnect(generation);
         return;
     };
+    let on_open = Closure::<dyn FnMut(web_sys::Event)>::new(move |_: web_sys::Event| {
+        if identify && let Some(token) = api::token() {
+            send(Op::Identify { token });
+        }
+    });
+    // Closed before the server said hello: maybe it changed (a rollback to a server without Identify), so ask it
+    // again before the next try instead of failing the same way forever.
+    let greeted = std::rc::Rc::new(Cell::new(false));
+    let greeted_close = greeted.clone();
     let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |e: MessageEvent| {
         let Some(text) = e.data().as_string() else { return };
         match serde_json::from_str::<Event>(&text) {
-            Ok(Event::Hello { heartbeat_ms }) => start_heartbeat(generation, heartbeat_ms),
+            Ok(Event::Hello { heartbeat_ms }) => {
+                greeted.set(true);
+                start_heartbeat(generation, heartbeat_ms);
+            }
             Ok(Event::HeartbeatAck) => LAST_ACK.with(|c| c.set(util::now() as f64)),
             Ok(ev @ Event::Ready(_)) => {
                 ATTEMPTS.with(|a| a.set(0));
@@ -59,13 +96,17 @@ pub fn connect() {
         }
     });
     let on_close = Closure::<dyn FnMut(CloseEvent)>::new(move |_e: CloseEvent| {
+        if !greeted_close.get() {
+            IDENTIFY.with(|c| *c.borrow_mut() = None);
+        }
         if generation == self::generation() {
             schedule_reconnect(generation);
         }
     });
+    ws.set_onopen(Some(on_open.as_ref().unchecked_ref()));
     ws.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
     ws.set_onclose(Some(on_close.as_ref().unchecked_ref()));
-    SOCKET.with(|s| *s.borrow_mut() = Some(Socket { ws, _on_message: on_message, _on_close: on_close }));
+    SOCKET.with(|s| *s.borrow_mut() = Some(Socket { ws, _on_open: on_open, _on_message: on_message, _on_close: on_close }));
 }
 
 /// Close on purpose (sign-out). No reconnect.
@@ -73,6 +114,7 @@ pub fn disconnect() {
     GENERATION.with(|g| g.set(g.get().wrapping_add(1)));
     SOCKET.with(|s| {
         if let Some(sock) = s.borrow_mut().take() {
+            sock.ws.set_onopen(None);
             sock.ws.set_onclose(None);
             sock.ws.set_onmessage(None);
             let _ = sock.ws.close();

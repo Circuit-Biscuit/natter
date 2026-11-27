@@ -264,6 +264,21 @@ async fn full_flow() {
     assert_eq!(ready.spaces.len(), 1);
     assert!(ready.users.iter().any(|u| u.id == u1));
     assert!(!ready.nextcloud);
+    assert!(ready.server.gateway_identify);
+
+    // Without ?token= the first frame signs in (keeps the token out of URLs and proxy logs); a bad one is refused.
+    use futures_util::SinkExt;
+    let identify = |token: &str| WsMessage::Text(serde_json::to_string(&laklak_proto::Op::Identify { token: token.into() }).unwrap().into());
+    let (mut ws_id, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/gateway")).await.unwrap();
+    ws_id.send(identify(&t2)).await.unwrap();
+    next_event(&mut ws_id, |e| matches!(e, Event::Hello { .. })).await;
+    let Event::Ready(r) = next_event(&mut ws_id, |e| matches!(e, Event::Ready(_))).await else { unreachable!() };
+    assert_eq!(r.user.id, u2);
+    drop(ws_id);
+    let (mut ws_bad, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/gateway")).await.unwrap();
+    ws_bad.send(identify("not-a-token")).await.unwrap();
+    next_event(&mut ws_bad, |e| matches!(e, Event::InvalidSession)).await;
+
     // A Laklak account on a server next to a Nextcloud can't browse or share Nextcloud files.
     let (s, _) = call(&app, "GET", "/api/nextcloud/files?path=/", Some(&t2), None).await;
     assert_eq!(s, StatusCode::FORBIDDEN);

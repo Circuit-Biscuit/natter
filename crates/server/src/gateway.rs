@@ -212,6 +212,7 @@ pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
             klipy_key: st.cfg.klipy_key.clone(),
             camera_kbps: st.cfg.camera_kbps,
             email_reset: st.mailer.is_some(),
+            gateway_identify: true,
         },
         nextcloud: nextcloud::is_nc_session(st, session).await,
         email,
@@ -220,20 +221,47 @@ pub async fn ready(st: &St, user: Id, session: Id) -> R<Ready> {
 
 #[derive(Deserialize)]
 pub struct WsQuery {
-    token: String,
+    /// Apps up to 0.13 put the session token here; newer ones send `Op::Identify` instead, so it stays out of URLs.
+    token: Option<String>,
 }
+
+/// How long a socket opened without `?token=` may take to send `Op::Identify`.
+const IDENTIFY_WITHIN: Duration = Duration::from_secs(10);
 
 pub async fn ws(
     State(st): State<St>,
     Query(q): Query<WsQuery>,
     upgrade: WebSocketUpgrade,
 ) -> R<Response> {
-    let auth = auth::session_for_token(&st, &q.token)
+    let upgrade = upgrade.max_message_size(64 * 1024);
+    let Some(token) = q.token else {
+        return Ok(upgrade.on_upgrade(move |socket| identify(st, socket)));
+    };
+    let auth = auth::session_for_token(&st, &token)
         .await?
         .ok_or_else(|| ApiErr::new(StatusCode::UNAUTHORIZED, "sign in first"))?;
-    Ok(upgrade
-        .max_message_size(64 * 1024)
-        .on_upgrade(move |socket| run(st, auth, socket)))
+    Ok(upgrade.on_upgrade(move |socket| run(st, auth, socket)))
+}
+
+/// A socket opened without a token: its first frame must be `Op::Identify` with a live session's token.
+async fn identify(st: St, mut socket: WebSocket) {
+    let first = tokio::time::timeout(IDENTIFY_WITHIN, socket.recv()).await;
+    let token = match first {
+        Ok(Some(Ok(WsMsg::Text(t)))) => match serde_json::from_str::<Op>(&t) {
+            Ok(Op::Identify { token }) => token,
+            _ => return,
+        },
+        _ => return,
+    };
+    match auth::session_for_token(&st, &token).await {
+        Ok(Some(auth)) => run(st, auth, socket).await,
+        // A signed-out or unknown token: say so (apps go back to sign-in), then close.
+        _ => {
+            let text = serde_json::to_string(&Event::InvalidSession).expect("events serialize");
+            let _ = socket.send(WsMsg::Text(Utf8Bytes::from(text))).await;
+            let _ = socket.send(WsMsg::Close(None)).await;
+        }
+    }
 }
 
 async fn run(st: St, auth: auth::Auth, socket: WebSocket) {
@@ -309,6 +337,7 @@ async fn run(st: St, auth: auth::Auth, socket: WebSocket) {
             Ok(Op::Heartbeat) => {
                 let _ = tx.send(Out::Text(ack.clone()));
             }
+            Ok(Op::Identify { .. }) => {} // already signed in
             Ok(Op::Typing { channel_id }) => typing(&st, user, channel_id).await,
             Ok(Op::Idle(idle)) => {
                 st.hub.set_idle(user, conn, idle);

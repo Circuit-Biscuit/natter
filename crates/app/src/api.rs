@@ -51,12 +51,13 @@ pub fn url(path: &str) -> String {
     }
 }
 
-/// WebSocket URL of the gateway.
-pub fn gateway_url() -> String {
+/// WebSocket URL of the gateway. With `identify` the token goes in the first frame instead (servers that say
+/// `gateway_identify`), so it never shows up in a URL or a proxy's log.
+pub fn gateway_url(identify: bool) -> String {
     let base = server();
     let base = if base.is_empty() { crate::util::window().location().origin().unwrap_or_default() } else { base };
     let ws = base.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
-    format!("{ws}/gateway?token={}", token().unwrap_or_default())
+    if identify { format!("{ws}/gateway") } else { format!("{ws}/gateway?token={}", token().unwrap_or_default()) }
 }
 
 #[derive(Debug, Clone)]

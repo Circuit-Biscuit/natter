@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+
+- **Sign-in tokens stay out of URLs.** The app's live connection used to carry your sign-in token in its address
+  (`/gateway?token=…`), so web server and proxy logs kept a copy. Now the app connects to `/gateway` and sends the
+  token as its first message, when the server supports it (older servers keep getting the old form). Servers still
+  accept the old form from apps up to 0.13. Operators: once nobody uses 0.13 or older, nothing secret is logged; until
+  then, drop `token` from your access logs (the Caddy config in `deploy/` does).
+- **Security headers on the web app:** no embedding in other sites (`frame-ancestors 'none'`, `X-Frame-Options`), no
+  MIME sniffing, the origin only as referrer, and camera, microphone and screen sharing for this site only. A proxy's
+  own headers take precedence.
+
 ## [0.13.1] — 2026-11-27
 
 ### New

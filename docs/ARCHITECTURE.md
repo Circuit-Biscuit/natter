@@ -72,8 +72,13 @@ CORS allows any origin: tokens travel in the `Authorization` header, never in co
 
 ### Gateway
 
-`GET /gateway?token=…` upgrades to a WebSocket. Frames are JSON text: server events `{"t": "...", "d": ...}`
+`GET /gateway` upgrades to a WebSocket. Frames are JSON text: server events `{"t": "...", "d": ...}`
 (`laklak_proto::Event`), client ops `{"op": "...", "d": ...}` (`laklak_proto::Op`).
+
+The app's first frame is `Identify { token }` (within 10 s), so the session token never sits in a URL or a proxy's
+access log; a bad token gets `InvalidSession` and the socket closes. Apps up to 0.13 send `?token=…` in the URL
+instead, which still works. The app checks `ServerInfo.gateway_identify` (`/api/info`) first and uses the URL form
+only with older servers.
 
 1. Server sends `Hello { heartbeat_ms }`, then `Ready` with the complete state the app needs (you, every user you share a
    space or DM with, spaces with channels and members, DMs, read states, presences, voice states, settings).
@@ -195,7 +200,7 @@ never a password) · `POST /api/auth/forgot`
 minutes) · `POST /api/auth/reset` (`ResetWithCode` → `AuthResp`; the code lasts 30 minutes and 5 tries, is stored
 hashed, works once, and the reset signs out every other device) · `POST /api/auth/nextcloud` ·
 `POST /api/auth/nextcloud/poll` · `GET /api/invites/{code}` ·
-`GET /files/{token}/{name}` · `GET /gateway?token=` · `GET /health`.
+`GET /files/{token}/{name}` · `GET /gateway` · `GET /health`.
 
 Everything else needs `Authorization: Bearer <token>`:
 

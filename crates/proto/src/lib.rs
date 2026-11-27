@@ -704,6 +704,9 @@ pub struct Ready {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", content = "d")]
 pub enum Op {
+    /// First frame on a `/gateway` opened without `?token=`: the session token, so it never sits in a URL (and in
+    /// proxy logs). Servers say they take it with `ServerInfo::gateway_identify`.
+    Identify { token: String },
     Heartbeat,
     Typing { channel_id: Id },
     /// The app noticed you went away (true) or came back (false).
@@ -747,6 +750,10 @@ pub struct ServerInfo {
     /// an e-mail address.
     #[serde(default)]
     pub email_reset: bool,
+    /// `/gateway` takes the token in an `Op::Identify` first frame (apps then leave it out of the URL). Older
+    /// servers only read `?token=`.
+    #[serde(default)]
+    pub gateway_identify: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
