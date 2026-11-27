@@ -3234,7 +3234,7 @@ checksum = "a4933f3f57a8e9d9da04db23fb153356ecaf00cbd14aee46279c33dc80925c37"
 
 [[package]]
 name = "laklak-app"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "console_error_panic_hook",
  "emojis",
@@ -3251,14 +3251,14 @@ dependencies = [
 
 [[package]]
 name = "laklak-denoise"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "nnnoiseless",
 ]
 
 [[package]]
 name = "laklak-desktop"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3275,7 +3275,7 @@ dependencies = [
 
 [[package]]
 name = "laklak-proto"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3283,7 +3283,7 @@ dependencies = [
 
 [[package]]
 name = "laklak-server"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "argon2",
