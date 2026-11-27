@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install or upgrade a Laklak server on Ubuntu 24.04 or Debian 12+ (x86_64): the release from GitHub (checksum
-# checked), Caddy for HTTPS, a firewall, big call socket buffers, logs kept two weeks, and nightly backups.
-# Run it again to upgrade; your settings and data stay. See docs/DEPLOY.md › "One script".
+# checked), Caddy for HTTPS, a firewall, big call socket buffers, logs kept two weeks, nightly backups and a
+# watchdog that alerts you. Run it again to upgrade; your settings and data stay. See docs/DEPLOY.md › "One script".
 #
 #   curl -fsSLO https://raw.githubusercontent.com/Circuit-Biscuit/laklak/main/deploy/install.sh
 #   sudo DOMAIN=chat.example.com bash install.sh
@@ -10,6 +10,7 @@
 #   VERSION        release to install, e.g. 0.13.1 (default: the latest)
 #   ACME_EMAIL     optional: where Let's Encrypt may write about the certificate
 #   MEDIA_THREADS  call threads on a first install (default: one per core); UDP ports 50000 and up, one each
+#   ALERT_URL      optional: where the watchdog posts problems (an ntfy.sh topic, a Discord or Slack webhook)
 #   FORCE=1        restart even while a call is running
 set -euo pipefail
 
@@ -31,7 +32,7 @@ command -v apt-get >/dev/null || die "needs apt (Ubuntu or Debian)"
 say "Packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -y -q curl ca-certificates sqlite3 restic caddy ufw tcpdump unattended-upgrades >/dev/null
+apt-get install -y -q curl ca-certificates sqlite3 restic caddy ufw tcpdump unattended-upgrades jq openssl >/dev/null
 # Security updates install themselves (Ubuntu's default; Debian needs it switched on).
 printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
 
@@ -204,6 +205,95 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+say "Watchdog"
+install -d -m 700 /var/lib/laklak-watch
+[ -f /var/lib/laklak-watch/installed ] || date +%s > /var/lib/laklak-watch/installed
+if [ ! -f /etc/laklak-alerts.env ]; then
+  cat > /etc/laklak-alerts.env <<EOF
+# Read by laklak-watch. ALERT_URL: an ntfy.sh topic (pick a long random name), a Discord or Slack webhook, or
+# anything that takes a POST. Test it: laklak-watch --test
+DOMAIN=$DOMAIN
+ALERT_URL=${ALERT_URL:-}
+EOF
+  chmod 600 /etc/laklak-alerts.env
+fi
+cat > /usr/local/sbin/laklak-watch <<'WATCH'
+#!/bin/bash
+# Every 5 minutes (laklak-watch.timer): does Laklak answer, here and over HTTPS, with a certificate that isn't about
+# to run out; are its services running, the disk not full, the backups fine? Problems go to the journal
+# (journalctl -u laklak-watch) and, with ALERT_URL in /etc/laklak-alerts.env, there: when they start, once a day
+# while they last, and when they're gone. A dead machine can't alert: watch https://<domain>/health from outside too.
+set -u
+. /etc/laklak-alerts.env
+state=/var/lib/laklak-watch
+
+send() {
+  echo "$1"
+  [ -n "${ALERT_URL:-}" ] || return 0
+  case "$ALERT_URL" in
+    *discord.com/api/webhooks*) body=$(jq -n --arg m "$1" '{content: $m}'); type=application/json ;;
+    *hooks.slack.com*) body=$(jq -n --arg m "$1" '{text: $m}'); type=application/json ;;
+    *) body=$1; type=text/plain ;;
+  esac
+  curl -fsS -m 15 -H "Content-Type: $type" --data-binary "$body" "$ALERT_URL" >/dev/null || echo "could not post the alert"
+}
+if [ "${1:-}" = --test ]; then send "Laklak on ${DOMAIN:-$(hostname)}: alerts work"; exit; fi
+
+problems=()
+curl -fsS -m 5 -o /dev/null http://127.0.0.1:8080/health || problems+=("Laklak doesn't answer on the server (journalctl -u laklak)")
+if [ -n "${DOMAIN:-}" ]; then
+  curl -fsS -m 10 -o /dev/null "https://$DOMAIN/health" || problems+=("https://$DOMAIN/health doesn't answer (Caddy, DNS or the certificate)")
+  end=$(timeout 10 openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" </dev/null 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+  if [ -n "$end" ]; then
+    left=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+    [ "$left" -ge 14 ] || problems+=("the HTTPS certificate runs out in $left days")
+  fi
+fi
+for unit in laklak caddy coturn; do
+  systemctl cat "$unit.service" >/dev/null 2>&1 || continue
+  systemctl is-active -q "$unit" || problems+=("$unit isn't running (journalctl -u $unit)")
+done
+use=$(df --output=pcent / | tail -1 | tr -dc 0-9)
+[ "$use" -lt 85 ] || problems+=("the disk is $use% full")
+systemctl is-failed -q laklak-backup && problems+=("the last backup failed (journalctl -u laklak-backup)")
+# A new install has no backup until its first night.
+if [ $(( $(date +%s) - $(cat $state/installed 2>/dev/null || date +%s) )) -gt 129600 ]; then
+  newest=$(ls -t /var/backups/laklak/laklak-*.db 2>/dev/null | head -1)
+  { [ -n "$newest" ] && [ $(( $(date +%s) - $(stat -c %Y "$newest") )) -lt 129600 ]; } || problems+=("no backup in the last 36 hours")
+fi
+
+now=$(date +%s)
+current=$(printf '%s\n' "${problems[@]+"${problems[@]}"}" | sed '/^$/d')
+previous=$(cat $state/problems 2>/dev/null)
+sent=$(cat $state/sent 2>/dev/null || echo 0)
+[ -z "$current" ] || echo "$current"
+if [ "$current" != "$previous" ] || { [ -n "$current" ] && [ $((now - sent)) -gt 86400 ]; }; then
+  if [ -n "$current" ]; then send "Laklak on ${DOMAIN:-$(hostname)}: $current"; else send "Laklak on ${DOMAIN:-$(hostname)}: all fine again"; fi
+  printf '%s' "$current" > $state/problems
+  echo "$now" > $state/sent
+fi
+WATCH
+chmod 750 /usr/local/sbin/laklak-watch
+cat > /etc/systemd/system/laklak-watch.service <<'UNIT'
+[Unit]
+Description=Laklak watchdog
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/laklak-watch
+UNIT
+cat > /etc/systemd/system/laklak-watch.timer <<'UNIT'
+[Unit]
+Description=Laklak watchdog every 5 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+UNIT
+
 say "Start"
 systemctl daemon-reload
 if [ "$installed" != "$VERSION" ]; then
@@ -219,7 +309,7 @@ if [ "$installed" != "$VERSION" ]; then
   [ ! -d $OPT ] || mv $OPT $OPT.old
   mv $OPT.new $OPT
 fi
-systemctl enable -q --now laklak-backup.timer
+systemctl enable -q --now laklak-backup.timer laklak-watch.timer
 systemctl enable -q laklak caddy
 # Same version as before: leave a running server alone (a restart drops calls); settings apply at the next restart.
 if [ "$installed" != "$VERSION" ]; then systemctl restart laklak; else systemctl start laklak; fi
@@ -234,5 +324,6 @@ cat <<EOF
   Calls:      UDP $media_port-$media_last, $threads thread(s)
   Logs:       journalctl -u laklak, /var/log/caddy/laklak.log (two weeks)
   Backups:    every night to $BACKUPS; add /etc/laklak-backup.env for an off-site copy (docs/DEPLOY.md)
+  Alerts:     laklak-watch every 5 minutes; $(grep -q '^ALERT_URL=.' /etc/laklak-alerts.env && echo "to ALERT_URL (test: laklak-watch --test)" || echo "journal only until ALERT_URL is set in /etc/laklak-alerts.env")
   Rollback:   $( [ -d $OPT.old ] && echo "systemctl stop laklak; mv $OPT $OPT.bad; mv $OPT.old $OPT; systemctl start laklak" || echo "nothing older here")
 EOF

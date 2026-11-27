@@ -369,7 +369,7 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
     tokio::spawn(games::summaries(st.clone()));
 
     let mut app = Router::new()
-        .route("/health", get(|| async { "ok" }))
+        .route("/health", get(health))
         .route("/gateway", get(gateway::ws))
         .route("/api/info", get(auth::info))
         .route("/api/auth/register", post(auth::register))
@@ -508,6 +508,17 @@ pub async fn build(cfg: Config) -> anyhow::Result<(Router, St)> {
         .layer(TraceLayer::new_for_http())
         .with_state(st.clone());
     Ok((app, st))
+}
+
+/// For monitors and the installer: 200 "ok" when the database answers, 503 when it doesn't.
+async fn health(axum::extract::State(st): axum::extract::State<St>) -> (StatusCode, &'static str) {
+    match sqlx::query("SELECT 1").execute(&st.db).await {
+        Ok(_) => (StatusCode::OK, "ok"),
+        Err(e) => {
+            tracing::error!("health check: database: {e}");
+            (StatusCode::SERVICE_UNAVAILABLE, "database unavailable")
+        }
+    }
 }
 
 /// Run until Ctrl+C / SIGTERM.
