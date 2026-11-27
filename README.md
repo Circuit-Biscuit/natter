@@ -14,7 +14,7 @@ A self-hosted chat server with apps for Windows, macOS, Linux and Android — bu
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20macOS%20·%20Linux%20·%20Android%20·%20Web-444)](#downloads)
 [![Status](https://img.shields.io/badge/status-alpha-orange)](#feature-status)
 
-<img src="docs/screenshot-chat.png" width="100%" alt="Laklak: space rail, channel list, a conversation with mentions, replies and reactions, and the member list">
+<img src="docs/screenshot-chat.png" width="100%" alt="Laklak: space rail, channel list, a conversation with reactions, code and a thread, and the thread panel open on the right">
 
 <sub><i>A space with text and voice channels: mentions, replies, reactions, Markdown and live presence.</i></sub>
 
