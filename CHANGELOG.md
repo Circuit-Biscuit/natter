@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.13.2] — 2026-11-28
 
 ### Security
 
@@ -45,6 +45,22 @@
 - **Watchdog** (one-script install): every 5 minutes it checks that Laklak answers, here and over HTTPS, the
   certificate, its services, the disk and the backups, and posts problems to an ntfy.sh topic or a Discord or Slack
   webhook (`ALERT_URL`). `/health` now also asks the database.
+
+### Changed
+
+- **You and your call in one card**, at the top of the channel list under the space name (the user bar and the
+  voice panel at the bottom are gone). Out of a call: your name and status, mic, headset and settings. In a call the
+  status line shows the room and how long you've been in it ("General · 12:04", click it to go there) and a second
+  row holds mic, headset, camera, screen and hang up. Mic and headset are mint while they're open, grey out of a
+  call and red with a slash when muted; camera and screen turn mint when on. Joining, the card grows and the buttons
+  pop in one after another (under a second); Reduce motion turns that off.
+- **Mint for everything live:** voice connected, camera, screen sharing, the talking ring, online dots and the add
+  space button use mint instead of green, with dark text on it.
+- **Splash for everyone on plain Dark.** Splash has been the default look for new installs; accounts still on the
+  old default (Dark, no colour theme) move to it once. Any other theme you picked stays.
+- **Avatars in Splash** (people without a picture) use its four accents: turquoise, pink, yellow and mint.
+- **The design's fonts:** Inter for all text and Fredoka for the space name and channel welcome, both shipped with
+  the app instead of falling back to Segoe UI or the system font.
 
 ## [0.13.1] — 2026-11-27
 
