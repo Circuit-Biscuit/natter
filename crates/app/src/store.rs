@@ -61,6 +61,23 @@ pub struct Settings {
     pub fav_gifs: Vec<Gif>,
     /// Turn `:)` into 🙂 when sending, like Discord.
     pub emoticons: bool,
+    /// Settings saved before Splash became the default lack this; `migrate` moves them to Splash once.
+    #[serde(default)]
+    pub splash_default: bool,
+}
+
+impl Settings {
+    /// One-time: plain Dark (the old default) becomes Splash. Other picks stay. True if it changed anything.
+    pub fn migrate(&mut self) -> bool {
+        if self.splash_default {
+            return false;
+        }
+        if self.theme == "dark" && self.gradient.is_empty() {
+            self.gradient = "splash".into();
+        }
+        self.splash_default = true;
+        true
+    }
 }
 
 /// A GIF from the GIF picker (KLIPY).
@@ -83,6 +100,7 @@ impl Default for Settings {
             theme: "dark".into(),
             // Splash is the default look; picking a base theme in settings clears it.
             gradient: "splash".into(),
+            splash_default: true,
             accent: String::new(),
             app_icon: "classic".into(),
             compact: false,
@@ -438,7 +456,8 @@ pub fn store() -> Store {
 impl Store {
     pub fn init() -> Store {
         let prefs = util::storage_get("laklak.voice").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let settings = util::storage_get("laklak.settings").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let mut settings: Settings = util::storage_get("laklak.settings").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        settings.migrate();
         let s = Store {
             me: RwSignal::new(None),
             my_status: RwSignal::new(Status::Online),
@@ -1497,9 +1516,13 @@ fn apply_ready(r: Ready) {
     s.dms.set(r.dms);
     s.read.set(r.read_states.into_iter().map(|r| (r.channel_id, r)).collect());
     s.voice.set(r.voice_states.into_iter().map(|v| (v.user_id, v)).collect());
-    if let Ok(st) = serde_json::from_value::<Settings>(r.settings.clone()) {
+    if let Ok(mut st) = serde_json::from_value::<Settings>(r.settings.clone()) {
         if r.settings.as_object().is_some_and(|o| !o.is_empty()) {
+            let changed = st.migrate();
             s.settings.set(st);
+            if changed {
+                s.save_settings();
+            }
         }
     }
     // Reconnected: refresh what's on screen, forget the rest (it reloads on demand).

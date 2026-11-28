@@ -113,10 +113,11 @@ pub fn file_size(bytes: u64) -> String {
     if u == 0 { format!("{bytes} B") } else { format!("{v:.1} {}", UNITS[u]) }
 }
 
-/// Stable, pleasant color per user for avatars without a picture.
+/// Stable colour per user for avatars without a picture: one of the `--av-N` tokens in style.css,
+/// so the theme picks the palette (Splash uses its four accents).
 pub fn avatar_color(id: Id) -> &'static str {
     const COLORS: [&str; 8] =
-        ["#5865f2", "#3ba55c", "#faa61a", "#ed4245", "#eb459e", "#4b56d2", "#1abc9c", "#e67e22"];
+        ["var(--av-0)", "var(--av-1)", "var(--av-2)", "var(--av-3)", "var(--av-4)", "var(--av-5)", "var(--av-6)", "var(--av-7)"];
     COLORS[(id.unsigned_abs() as usize / 7) % COLORS.len()]
 }
 

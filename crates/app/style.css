@@ -8,7 +8,7 @@
   --text: #dbdee1; --strong: #f2f3f5; --muted: #949ba4; --faint: #6d6f78;
   --border: #1f2023; --border-soft: rgba(78, 80, 88, .48);
   --accent: #5d68ec; --accent-2: #4b56d2; --link: #00a8fc;
-  --ok: #23a55a; --warn: #f0b232; --danger: #da373c; --danger-text: #fa777c;
+  --ok: #7ee8a2; --on-ok: #0b2a18; --warn: #f0b232; --danger: #da373c; --danger-text: #fa777c;
   --mention-bg: rgba(240, 178, 50, .08); --mention-bar: #f0b232;
   --pill-bg: color-mix(in srgb, var(--accent) 30%, transparent); --pill-fg: color-mix(in srgb, var(--accent) 40%, #fff);
   --group-gap: 17px;
@@ -17,6 +17,8 @@
   --scroll: #1a1b1e;
   /* Logo gradient down the boom L: purple at the top to turquoise at the foot. */
   --lk-1: #9e00ad; --lk-2: #30d5c8;
+  /* Avatar colours for people without a picture; Splash swaps in its four accents. */
+  --av-0: #5865f2; --av-1: #3ba55c; --av-2: #faa61a; --av-3: #ed4245; --av-4: #eb459e; --av-5: #4b56d2; --av-6: #1abc9c; --av-7: #e67e22; --av-fg: #fff;
 }
 .app.light {
   color-scheme: light;
@@ -25,6 +27,8 @@
   --text: #313338; --strong: #060607; --muted: #5c5e66; --faint: #80848e;
   --border: #e1e2e4; --border-soft: rgba(116, 127, 141, .25);
   --link: #006ce7; --danger-text: #da373c;
+  /* Mint darkened for light ground (3:1 on white); white on it. */
+  --ok: #1f9a5c; --on-ok: #fff;
   --mention-bg: rgba(240, 178, 50, .12);
   --pill-bg: color-mix(in srgb, var(--accent) 15%, transparent); --pill-fg: color-mix(in srgb, var(--accent) 80%, #000);
   --code-bg: #f2f3f5; --btn: #6d6f78; --scroll: #c4c9ce;
@@ -82,7 +86,7 @@ a:hover { text-decoration: underline; }
 /* Home is the app icon: the gradient boom L on deep indigo, always a rounded square. */
 .rail-btn.rail-home { background: #1a1b34; border-radius: 16px; }
 .rail-btn.add { color: var(--ok); }
-.rail-item:hover .rail-btn.add { background: var(--ok); color: #fff; }
+.rail-item:hover .rail-btn.add { background: var(--ok); color: var(--on-ok); }
 .space-initials { font-weight: 600; font-size: 16px; }
 .pill {
   position: absolute; left: 0; top: 50%; width: 8px; height: 0; margin-top: 0; margin-left: -4px;
@@ -173,7 +177,7 @@ a:hover { text-decoration: underline; }
 .vp-channel { display: block; color: var(--muted); font-size: 12px; }
 .vp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .vp-actions .btn { background: var(--btn); height: 32px; }
-.vp-actions .btn.on { background: var(--ok); }
+.vp-actions .btn.on { background: var(--ok); color: var(--on-ok); }
 
 .user-panel { height: 52px; background: var(--elev); display: flex; align-items: center; padding: 0 8px; gap: 2px; flex: none; }
 .up-me { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 2px 4px; border-radius: 4px; cursor: pointer; --dot-ring: var(--elev); }
@@ -184,7 +188,7 @@ a:hover { text-decoration: underline; }
 
 .avatar { position: relative; flex: none; border-radius: 50%; }
 .avatar img, .avatar .initials {
-  width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: grid; place-items: center; color: #fff;
+  width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: grid; place-items: center; color: var(--av-fg);
   font-weight: 600; user-select: none;
 }
 .avatar.speaking::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ok); }
@@ -248,7 +252,7 @@ a:hover { text-decoration: underline; }
 .search-box .icon { position: absolute; right: 6px; top: 4px; }
 .banner { flex: none; display: flex; gap: 12px; align-items: center; justify-content: center; padding: 6px 16px; font-size: 14px; font-weight: 500; }
 .banner.warn { background: var(--warn); color: #1e1f22; }
-.banner.update { background: var(--ok); color: #fff; }
+.banner.update { background: var(--ok); color: var(--on-ok); }
 .banner.update .icon-btn { color: inherit; }
 .banner .btn { background: rgba(0, 0, 0, .25); }
 
@@ -478,9 +482,9 @@ a:hover { text-decoration: underline; }
 .round { width: 52px; height: 52px; border-radius: 50%; background: #2b2d31; color: #fff; display: grid; place-items: center; transition: filter .15s, background-color .15s; }
 .round:hover { filter: brightness(1.25); }
 .round.off { background: #fff; color: var(--danger); }
-.round.on { background: var(--ok); }
+.round.on { background: var(--ok); color: var(--on-ok); }
 .round.danger { background: var(--danger); }
-.round.ok { background: var(--ok); }
+.round.ok { background: var(--ok); color: var(--on-ok); }
 .round.ghost { background: transparent; }
 /* Fill window: the call over the whole window, sidebars included (below menus and dialogs). */
 .call.theater { position: fixed; inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); z-index: 40; }
@@ -488,7 +492,7 @@ a:hover { text-decoration: underline; }
 .call-connecting { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, .75); padding: 6px 14px; border-radius: 16px; display: flex; gap: 8px; align-items: center; font-size: 14px; }
 .call-connecting .spinner { width: 16px; height: 16px; border-width: 2px; }
 .ptt-hint { position: absolute; top: 14px; right: 14px; background: rgba(0, 0, 0, .6); padding: 4px 10px; border-radius: 12px; font-size: 12px; }
-.ptt-hint.live { background: var(--ok); }
+.ptt-hint.live { background: var(--ok); color: var(--on-ok); }
 
 .ringing {
   position: fixed; top: calc(24px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: 260px; background: var(--rail); color: var(--strong);
@@ -499,7 +503,7 @@ a:hover { text-decoration: underline; }
 .ringing-name { font-size: 18px; font-weight: 700; margin-top: 8px; }
 .ringing-sub { color: var(--muted); font-size: 14px; }
 .ringing-actions { display: flex; gap: 32px; margin-top: 12px; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(35, 165, 90, .6); } 100% { box-shadow: 0 0 0 18px rgba(35, 165, 90, 0); } }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(126, 232, 162, .6); } 100% { box-shadow: 0 0 0 18px rgba(126, 232, 162, 0); } }
 
 /* ------------------------------------------------------------ overlays */
 
@@ -876,6 +880,8 @@ kbd { background: var(--side); border-radius: 4px; padding: 2px 8px; font-family
   --hover: rgba(172, 175, 200, .1); --active: #292a48; --code-bg: #13142b; --border: #0c0c22; --border-soft: rgba(172, 175, 200, .16);
   --scroll: #292a48; --text: #f0f1fa; --strong: #f0f1fa; --muted: #acafc8; --faint: #8b8eb0;
   --accent: #c04d7e; --accent-2: #a8416d; --link: #30d5c8; --mention-bg: rgba(240, 96, 158, .1); --mention-bar: #f0609e;
+  /* The four accents: turquoise, pink, yellow, mint (mint is also --ok: voice, camera, screen share, talking). */
+  --av-0: #30d5c8; --av-1: #f0609e; --av-2: #f6c344; --av-3: #7ee8a2; --av-4: #30d5c8; --av-5: #f0609e; --av-6: #f6c344; --av-7: #7ee8a2; --av-fg: #1e1f22;
 }
 .app.grad .modal:not(.image), .app.grad .login-card { background: var(--solid); }
 .app.grad .modal.wide { background: var(--grad); }
@@ -1034,7 +1040,7 @@ label.switch-row.off-limits { opacity: .55; cursor: not-allowed; }
 .tri button:disabled { cursor: not-allowed; }
 .tri .deny.active { background: var(--danger); color: #fff; }
 .tri .inherit.active { background: var(--btn); color: #fff; }
-.tri .allow.active { background: var(--ok); color: #fff; }
+.tri .allow.active { background: var(--ok); color: var(--on-ok); }
 
 /* ------------------------------------------------------------ link previews */
 
@@ -1075,7 +1081,7 @@ label.switch-row.off-limits { opacity: .55; cursor: not-allowed; }
 .cc-people { display: flex; flex: none; }
 .cc-people > * + * { margin-left: -6px; }
 .channel-card .btn { flex: none; }
-.channel-card .btn.on { background: var(--ok); }
+.channel-card .btn.on { background: var(--ok); color: var(--on-ok); }
 
 /* Daily Word */
 .modal.game { width: 520px; padding: 16px 20px 20px; position: relative; }
@@ -1160,5 +1166,5 @@ label.switch-row.off-limits { opacity: .55; cursor: not-allowed; }
 .titlebar-btn { width: 46px; height: 100%; display: grid; place-items: center; color: var(--muted); }
 .titlebar-btn:hover { background: var(--hover); color: var(--strong); }
 .titlebar-btn.close:hover { background: #e81123; color: #fff; }
-.titlebar-update { height: 22px; margin-right: 8px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; background: var(--ok); color: #fff; font-size: 12px; font-weight: 600; }
+.titlebar-update { height: 22px; margin-right: 8px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; background: var(--ok); color: var(--on-ok); font-size: 12px; font-weight: 600; }
 .titlebar-update:hover { filter: brightness(1.1); }
