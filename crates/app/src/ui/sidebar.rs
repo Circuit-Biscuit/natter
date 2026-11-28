@@ -1,4 +1,4 @@
-//! Second column: the space's channels (or your DMs), the call panel and your user panel.
+//! Second column: the space's channels (or your DMs), with you and your call in one card at the top.
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -189,8 +189,6 @@ pub fn Sidebar() -> impl IntoView {
                 Some(sp) => view! { <SpaceChannels space=sp/> }.into_any(),
                 None => view! { <DmList/> }.into_any(),
             }}
-            <VoicePanel/>
-            <UserPanel/>
         </aside>
         <div class="sidebar-resize" class:active=move || drag.get().is_some() tabindex="0" role="separator"
             aria-orientation="vertical" aria-label="Resize the channel list" title="Drag to resize, double-click to reset"
@@ -232,6 +230,7 @@ fn SpaceChannels(space: Id) -> impl IntoView {
             <span class="ellipsis">{name}</span>
             <Icon name="chevron" size=18/>
         </header>
+        <MeCard/>
         <div class="channel-list scroll" on:dragover=move |e: web_sys::DragEvent| {
             // Not over a place it can go: no drop line.
             if !e.default_prevented() && dnd.over.get_untracked().is_some() { dnd.over.set(None); }
@@ -381,6 +380,7 @@ fn DmList() -> impl IntoView {
         <header class="sidebar-head">
             <button class="search-like" on:click=move |_| s.modal.set(Some(Modal::QuickSwitcher))>"Find or start a conversation"</button>
         </header>
+        <MeCard/>
         <div class="channel-list scroll">
             <div class="category static">
                 <span class="ellipsis">"DIRECT MESSAGES"</span>
@@ -421,49 +421,22 @@ fn DmList() -> impl IntoView {
     }
 }
 
-#[component]
-fn VoicePanel() -> impl IntoView {
-    let s = store();
-    let channel = Memo::new(move |_| s.call.with(|c| c.channel));
-    view! {
-        {move || channel.get().map(|ch| {
-            let title = move || {
-                let c = s.channel(ch);
-                match c {
-                    Some(c) if c.kind.is_dm() => s.channel_title(&c),
-                    Some(c) => {
-                        let sp = c.space_id.and_then(|sp| s.space(sp)).map(|sp| sp.name).unwrap_or_default();
-                        format!("{} / {}", c.name, sp)
-                    }
-                    None => String::new(),
-                }
-            };
-            view! {
-                <div class="voice-panel">
-                    <div class="vp-top">
-                        <div class="vp-status" class:connecting=move || s.call.with(|c| c.connecting)>
-                            <Icon name="signal" size=16/>
-                            {move || if s.call.with(|c| c.connecting) { "Connecting…" } else { "Voice Connected" }}
-                        </div>
-                        <button class="icon-btn" title="Disconnect" on:click=|_| voice::leave()><Icon name="hangup" size=20/></button>
-                    </div>
-                    <a class="vp-channel ellipsis" href="#" on:click=move |e| { e.prevent_default(); open_channel(ch); }>{title}</a>
-                    <div class="vp-actions">
-                        <button class="btn small" class:on=move || s.call.with(|c| c.video) on:click=|_| voice::toggle_camera()>
-                            <Icon name="video" size=18/>"Camera"
-                        </button>
-                        <button class="btn small" class:on=move || s.call.with(|c| c.screen) on:click=|_| voice::screen_button()>
-                            <Icon name="screen" size=18/>"Screen"
-                        </button>
-                    </div>
-                </div>
-            }
-        })}
-    }
+thread_local! {
+    /// The call you're in and when you joined it on this device, for the timer on your card. Kept outside the
+    /// card so switching spaces (which redraws it) doesn't reset the clock.
+    static JOINED: std::cell::Cell<(Option<Id>, laklak_proto::Millis)> = const { std::cell::Cell::new((None, 0)) };
 }
 
+fn call_time(ms: i64) -> String {
+    let s = ms.max(0) / 1000;
+    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+}
+
+/// You and your call in one card under the space name (or the DM search). Row 1 is you, with mic and headset
+/// while you're not in a call; in a call a second row grows in with mic, headset, camera, screen and hang up,
+/// popping in one after another (the motion is CSS: `.me-card` in style.css).
 #[component]
-fn UserPanel() -> impl IntoView {
+fn MeCard() -> impl IntoView {
     let s = store();
     let me = move || s.me_id();
     let status_menu = move |e: leptos::ev::MouseEvent| {
@@ -478,26 +451,89 @@ fn UserPanel() -> impl IntoView {
         ];
         s.open_menu(&e, items);
     };
+    let call = Memo::new(move |_| s.call.with(|c| c.channel));
+    let in_call = move || call.get().is_some();
+    let connecting = move || s.call.with(|c| c.connecting);
     let muted = move || s.call.with(|c| c.muted);
     let deaf = move || s.call.with(|c| c.deafened);
+    let cam = move || s.call.with(|c| c.video);
+    let screen = move || s.call.with(|c| c.screen);
+
+    // The call timer: a tick a second while you're in a call.
+    let tick = RwSignal::new(crate::util::now());
+    if let Ok(h) = set_interval_with_handle(
+        move || {
+            if call.get_untracked().is_some() {
+                tick.set(crate::util::now());
+            }
+        },
+        std::time::Duration::from_millis(1000),
+    ) {
+        on_cleanup(move || h.clear());
+    }
+    let elapsed = move || {
+        let ch = call.get();
+        let started = JOINED.with(|j| {
+            let (was, at) = j.get();
+            if was == ch { at } else { j.set((ch, crate::util::now())); crate::util::now() }
+        });
+        call_time(tick.get() - started)
+    };
+    let room = move || call.get().and_then(|ch| s.channel(ch)).map(|c| if c.kind.is_dm() { s.channel_title(&c) } else { c.name }).unwrap_or_default();
+    let status_line = move || match call.get() {
+        Some(ch) => view! {
+            <a class="mc-call" class:connecting=connecting href="#" title="Go to the call"
+                on:click=move |e| { e.prevent_default(); e.stop_propagation(); open_channel(ch); }>
+                <Icon name="signal" size=12/>{move || if connecting() { "Connecting…".to_string() } else { room() }}
+            </a>
+            {move || (!connecting()).then(|| format!(" · {}", if deaf() { "deafened".to_string() } else if muted() { "muted".to_string() } else { elapsed() }))}
+        }
+        .into_any(),
+        None => view! { {move || s.status_text(me(), s.nav.get().space).unwrap_or_else(|| super::status_label(s.my_status.get()).to_string())} }.into_any(),
+    };
+    let mic = move || view! {
+        <button class="mc-btn" class:on=move || in_call() && !muted() class:off=muted
+            title=move || if muted() { "Unmute (Ctrl+Shift+M)" } else { "Mute (Ctrl+Shift+M)" } on:click=|_| voice::toggle_mute()>
+            {move || view! { <Icon name=if muted() { "mic-off" } else { "mic" } size=18/> }}
+        </button>
+    };
+    let head = move || view! {
+        <button class="mc-btn" class:on=move || in_call() && !deaf() class:off=deaf
+            title=move || if deaf() { "Undeafen (Ctrl+Shift+D)" } else { "Deafen (Ctrl+Shift+D)" } on:click=|_| voice::toggle_deafen()>
+            {move || view! { <Icon name=if deaf() { "headphones-off" } else { "headphones" } size=18/> }}
+        </button>
+    };
     view! {
-        <div class="user-panel">
-            <div class="up-me" on:click=status_menu>
-                {move || view! { <Avatar user=me() size=32 status=true ring=true/> }}
-                <div class="up-text">
-                    <span class="ellipsis name">{move || s.name(me(), s.nav.get().space)}</span>
-                    <span class="ellipsis sub">{move || s.status_text(me(), s.nav.get().space).unwrap_or_else(|| super::status_label(s.my_status.get()).to_string())}</span>
+        <div class="me-card" class:calling=in_call>
+            <div class="mc-row">
+                <div class="mc-me" on:click=status_menu>
+                    {move || view! { <Avatar user=me() size=32 status=true ring=true/> }}
+                    <div class="mc-text">
+                        <span class="ellipsis name">{move || s.name(me(), s.nav.get().space)}</span>
+                        <span class="ellipsis sub">{status_line}</span>
+                    </div>
+                </div>
+                <span class="mc-r1" inert=in_call>{mic()}</span>
+                <span class="mc-r1" inert=in_call>{head()}</span>
+                <button class="mc-btn" title="User settings (Ctrl+,)" on:click=move |_| s.modal.set(Some(Modal::UserSettings))><Icon name="gear" size=18/></button>
+            </div>
+            <div class="mc-row2" inert=move || !in_call()>
+                <div>
+                    <span style="--i:0">{mic()}</span>
+                    <span style="--i:1">{head()}</span>
+                    <span style="--i:2">
+                        <button class="mc-btn soft" class:on=cam title=move || if cam() { "Turn camera off" } else { "Turn camera on" }
+                            on:click=|_| voice::toggle_camera()><Icon name="video" size=18/></button>
+                    </span>
+                    <span style="--i:3">
+                        <button class="mc-btn soft" class:on=screen title=move || if screen() { "Stop sharing your screen" } else { "Share your screen" }
+                            on:click=|_| voice::screen_button()><Icon name="screen" size=18/></button>
+                    </span>
+                    <span style="--i:4">
+                        <button class="mc-btn leave" title="Leave the call" on:click=|_| voice::leave()><Icon name="hangup" size=18/></button>
+                    </span>
                 </div>
             </div>
-            <button class="icon-btn" class:danger=muted title=move || if muted() { "Unmute (Ctrl+Shift+M)" } else { "Mute (Ctrl+Shift+M)" }
-                on:click=|_| voice::toggle_mute()>
-                {move || view! { <Icon name=if muted() { "mic-off" } else { "mic" }/> }}
-            </button>
-            <button class="icon-btn" class:danger=deaf title=move || if deaf() { "Undeafen (Ctrl+Shift+D)" } else { "Deafen (Ctrl+Shift+D)" }
-                on:click=|_| voice::toggle_deafen()>
-                {move || view! { <Icon name=if deaf() { "headphones-off" } else { "headphones" }/> }}
-            </button>
-            <button class="icon-btn" title="User settings (Ctrl+,)" on:click=move |_| s.modal.set(Some(Modal::UserSettings))><Icon name="gear"/></button>
         </div>
     }
 }
